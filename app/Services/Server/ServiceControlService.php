@@ -29,14 +29,36 @@ class ServiceControlService
     {
         $this->assertAllowedUnit($unit);
 
+        // Key=Value, not --value.
+        //
+        // `systemctl show -p A,B,C --value` prints bare values in systemd's own
+        // order, which is not the order they were requested in. Reading them
+        // positionally put MainPID in the ActiveState slot, so the UI showed
+        // "62010/active" as the state and an empty PID for every unit.
         $result = $this->runner->run([
-            'systemctl', 'show', '-p', 'ActiveState,SubState,MainPID', '--value', $unit,
+            'systemctl', 'show', $unit,
+            '--property=ActiveState',
+            '--property=SubState',
+            '--property=MainPID',
         ]);
 
-        $parts = preg_split('/\s+/', trim($result->output())) ?: [];
-        $activeState = $parts[0] ?? 'unknown';
-        $subState = $parts[1] ?? 'unknown';
-        $mainPid = isset($parts[2]) && is_numeric($parts[2]) ? (int) $parts[2] : null;
+        $values = [];
+
+        foreach (preg_split('/\R/', trim($result->output())) ?: [] as $line) {
+            if (! str_contains($line, '=')) {
+                continue;
+            }
+
+            [$key, $value] = explode('=', $line, 2);
+            $values[trim($key)] = trim($value);
+        }
+
+        $activeState = $values['ActiveState'] ?? 'unknown';
+        $subState = $values['SubState'] ?? 'unknown';
+
+        // systemd reports MainPID=0 for a unit that is not running.
+        $rawPid = $values['MainPID'] ?? '';
+        $mainPid = ctype_digit($rawPid) && $rawPid !== '0' ? (int) $rawPid : null;
 
         return [
             'unit' => $unit,

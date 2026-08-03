@@ -333,6 +333,7 @@ valid_node_major() {
 
 # ── The questionnaire ────────────────────────────────────────────────
 GENERATED_PASSWORD=0
+ADMIN_EXISTS=0
 
 banner
 
@@ -366,12 +367,38 @@ if [[ -n "$DOMAIN" ]]; then
         "Let's Encrypt needs a valid address for expiry notices."
 fi
 
-section "2 · Administrator account" \
-    "Public registration is disabled, so this is the only way in. Turn on two-factor authentication at first login."
+# Does the panel database already contain a user?
+#
+# Without this the wizard asks for a name, an email and a password on every
+# re-run, generates a password it then cannot apply, and prints it in the
+# closing summary as though it were live — which is worse than not asking,
+# because it looks like the credentials changed.
+panel_has_admin() {
+    local db="${PANEL_SHARED}/beacon.sqlite"
 
-ask ADMIN_NAME "Your name:" "Beacon Admin"
-ask ADMIN_EMAIL "Login email:" "${EMAIL:-}" valid_email "That does not look like an email address."
-ask_secret ADMIN_PASSWORD "Password:"
+    [[ -s "$db" ]] || return 1
+    command -v sqlite3 >/dev/null 2>&1 || return 1
+
+    local count
+    count="$(sqlite3 "$db" 'SELECT COUNT(*) FROM users;' 2>/dev/null || echo 0)"
+
+    [[ "${count:-0}" =~ ^[0-9]+$ ]] && (( count > 0 ))
+}
+
+if panel_has_admin; then
+    section "2 · Administrator account" \
+        "An administrator already exists on this server."
+    hint "Skipping — sign in with your existing account."
+    hint "Forgotten it? sudo -u ${PANEL_USER} php ${PANEL_CURRENT}/artisan beacon:create-admin --force"
+    ADMIN_EXISTS=1
+else
+    section "2 · Administrator account" \
+        "Public registration is disabled, so this is the only way in. Turn on two-factor authentication at first login."
+
+    ask ADMIN_NAME "Your name:" "Beacon Admin"
+    ask ADMIN_EMAIL "Login email:" "${EMAIL:-}" valid_email "That does not look like an email address."
+    ask_secret ADMIN_PASSWORD "Password:"
+fi
 
 section "3 · Runtimes and services" \
     "Everything runs natively on the host — no containers."
@@ -404,7 +431,11 @@ section "Ready to install" "Nothing has been changed on this server yet."
 
 tty_out "  ${C_DIM}panel url${C_OFF}      $( [[ -n "$DOMAIN" ]] && echo "https://${DOMAIN}/" || echo "https://$(primary_ip):8443/" )\n"
 tty_out "  ${C_DIM}tls${C_OFF}            $( [[ -n "$DOMAIN" ]] && echo "Let's Encrypt (${EMAIL})" || echo "self-signed" )\n"
-tty_out "  ${C_DIM}administrator${C_OFF}  ${ADMIN_EMAIL}\n"
+if [[ "$ADMIN_EXISTS" -eq 1 ]]; then
+    tty_out "  ${C_DIM}administrator${C_OFF}  ${C_DIM}existing account, unchanged${C_OFF}\n"
+else
+    tty_out "  ${C_DIM}administrator${C_OFF}  ${ADMIN_EMAIL}\n"
+fi
 tty_out "  ${C_DIM}php${C_OFF}            ${BEACON_PHP_VERSIONS[*]}\n"
 tty_out "  ${C_DIM}node${C_OFF}           ${BEACON_DEFAULT_NODE_MAJOR} ${C_DIM}(plus Bun)${C_OFF}\n"
 tty_out "  ${C_DIM}mysql${C_OFF}          $( [[ "$SKIP_MYSQL" -eq 0 ]] && echo "yes" || echo "skipped" )\n"
@@ -1359,6 +1390,7 @@ SQL
 }
 
 maybe_create_admin() {
+    [[ "$ADMIN_EXISTS" -eq 0 ]] || return 0
     [[ -n "$ADMIN_EMAIL" && -n "$ADMIN_PASSWORD" ]] || return 0
     [[ -f "${PANEL_CURRENT}/artisan" ]] || return 0
 
@@ -1377,7 +1409,7 @@ maybe_create_admin() {
 export DEBIAN_FRONTEND=noninteractive
 apt_update
 apt_install nginx redis-server supervisor certbot gettext-base ufw \
-    openssh-client git curl unzip acl python3 rsync gpg
+    openssh-client git curl unzip acl python3 rsync gpg sqlite3
 
 if [[ "$SKIP_MYSQL" -eq 0 ]]; then
     apt_install mysql-server
@@ -1440,7 +1472,11 @@ if [[ -f "${PANEL_CURRENT}/artisan" ]]; then
     tty_out "\n${C_GREEN}${C_BOLD}  ✔ Beacon is ready${C_OFF}\n\n"
     tty_out "  ${C_DIM}url${C_OFF}       ${C_CYAN}${PANEL_URL}${C_OFF}\n"
 
-    if [[ -n "$ADMIN_EMAIL" ]]; then
+    if [[ "$ADMIN_EXISTS" -eq 1 ]]; then
+        # Never print a password that was not applied — on a re-run that reads
+        # as though the credentials rotated, and they did not.
+        tty_out "  ${C_DIM}login${C_OFF}     ${C_DIM}your existing administrator account${C_OFF}\n"
+    elif [[ -n "$ADMIN_EMAIL" ]]; then
         tty_out "  ${C_DIM}login${C_OFF}     ${ADMIN_EMAIL}\n"
 
         if [[ "$GENERATED_PASSWORD" -eq 1 ]]; then

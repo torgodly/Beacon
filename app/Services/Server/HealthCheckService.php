@@ -33,31 +33,43 @@ class HealthCheckService
     }
 
     /**
-     * Detect a systemd sandbox that makes /etc read-only for this process.
+     * Can the panel actually drive the host?
      *
-     * php-fpm ships with ProtectSystem=full on Debian and sury builds, which
-     * mounts /etc read-only for the whole service. sudo raises the UID but
-     * does not escape the mount namespace, so every privileged write Beacon
-     * performs — nginx vhosts, FPM pools, Supervisor units, certbot — fails
-     * as root with a bare "[Errno 30] Read-only file system". Surfacing it
-     * here turns an inscrutable errno into an actionable message.
+     * This asks the only question that matters — does a wrapper call succeed —
+     * rather than inspecting file modes. Inspecting was wrong twice over:
+     *
+     *  - `is_writable('/etc/nginx')` is *supposed* to be false. The panel user
+     *    never writes there directly; every write goes through a root wrapper.
+     *  - `is_file('/etc/sudoers.d/beacon-panel')` is false even when the file
+     *    exists, because /etc/sudoers.d is 0750 root:root and beacon-panel
+     *    cannot stat inside it.
+     *
+     * Both reported a healthy server as broken. `beacon-nginx test` is
+     * read-only, cheap, and exercises sudo, the wrapper and nginx in one go.
      *
      * @return list<array{severity: string, message: string}>
      */
-    private function sandboxChecks(): array
+    private function privilegeChecks(): array
     {
-        foreach (['/etc/nginx', '/etc/supervisor'] as $path) {
-            if (is_dir($path) && ! is_writable($path)) {
-                return [[
-                    'severity' => 'critical',
-                    'message' => "{$path} is read-only for the panel. php-fpm is probably "
-                        .'running under ProtectSystem; re-run install.sh to install the '
-                        .'ReadWritePaths drop-in, then restart php-fpm.',
-                ]];
-            }
+        $result = $this->runner->run(
+            ['sudo', '-n', SudoWrapper::Nginx->path(), 'test'],
+            timeout: 15,
+        );
+
+        // 0 = config valid, 65 = nginx rejected the config. Either way sudo and
+        // the wrapper worked, which is what is being tested here.
+        if ($result->successful() || $result->exitCode() === 65) {
+            return [];
         }
 
-        return [];
+        $detail = trim($result->errorOutput().' '.$result->output());
+
+        return [[
+            'severity' => 'critical',
+            'message' => 'The panel cannot run its privileged helpers. Re-run install.sh, '
+                .'then check /etc/sudoers.d/beacon-panel and the ProtectSystem drop-in.'
+                .($detail !== '' ? ' Reported: '.mb_substr($detail, 0, 200) : ''),
+        ]];
     }
 
     /**
@@ -65,7 +77,7 @@ class HealthCheckService
      */
     private function hostChecks(): array
     {
-        $issues = [...$this->sandboxChecks()];
+        $issues = [...$this->privilegeChecks()];
 
         foreach (SudoWrapper::cases() as $wrapper) {
             $path = $wrapper->path();
@@ -87,12 +99,8 @@ class HealthCheckService
             }
         }
 
-        if (! is_file('/etc/sudoers.d/beacon-panel')) {
-            $issues[] = [
-                'severity' => 'critical',
-                'message' => 'Missing /etc/sudoers.d/beacon-panel — panel cannot manage the host.',
-            ];
-        }
+        // /etc/sudoers.d is 0750 root:root, so the panel user cannot stat inside
+        // it. Whether sudo works at all is covered by privilegeChecks() above.
 
         $beaconSudo = $this->runner->run(['sudo', '-l', '-U', 'beacon']);
         if ($beaconSudo->successful() && trim($beaconSudo->output()) !== '') {
