@@ -774,6 +774,64 @@ ensure_panel_env() {
     chmod 0640 "${PANEL_SHARED}/beacon.sqlite"
 }
 
+# Comment out http-level directives in the distro's nginx.conf that Beacon also
+# sets in conf.d/beacon-global.conf.
+#
+# /etc/nginx/conf.d/*.conf is included *into* the http block, so it is the same
+# context — nginx has no override semantics there and simply refuses to start:
+#   [emerg] "gzip" directive is duplicate in .../beacon-global.conf:10
+# Ubuntu ships `gzip on;` uncommented, which collides on every fresh install.
+# Beacon owns this tuning, so the distro's copies are disabled rather than ours.
+neutralize_nginx_http_conflicts() {
+    local conf=/etc/nginx/nginx.conf
+    [[ -f "$conf" ]] || return 0
+
+    # One pristine copy, kept for reference and never overwritten.
+    cp -n "$conf" "${conf}.beacon-orig" 2>/dev/null || true
+
+    # awk rather than `sed -i -E`: BSD sed treats -i's argument as a backup
+    # suffix and swallows the -E, so the same line behaves differently on the
+    # machine this is developed on and the machine it runs on. One portable
+    # pass, written to a temp file and moved into place.
+    local tmp
+    tmp="$(mktemp)"
+
+    awk '
+        BEGIN {
+            split("server_tokens client_body_timeout gzip gzip_vary " \
+                  "gzip_proxied gzip_comp_level gzip_min_length gzip_types " \
+                  "gzip_buffers gzip_http_version gzip_disable", list, " ")
+            for (i in list) owned[list[i]] = 1
+        }
+        {
+            probe = $0
+            sub(/^[ \t]+/, "", probe)
+
+            # Already-commented lines are skipped, which makes re-runs no-ops.
+            if (probe !~ /^#/) {
+                name = probe
+                sub(/[ \t;].*$/, "", name)
+
+                if (name in owned) {
+                    print "# " $0 "  # disabled by Beacon"
+                    changed++
+                    next
+                }
+            }
+
+            print $0
+        }
+        END { exit(changed > 0 ? 0 : 1) }
+    ' "$conf" > "$tmp" && changed=1 || changed=0
+
+    if [[ "$changed" -eq 1 ]]; then
+        cat "$tmp" > "$conf"
+        echo "    Disabled duplicate http directives in nginx.conf (Beacon sets them in beacon-global.conf)"
+    fi
+
+    rm -f "$tmp"
+}
+
 configure_panel_runtime() {
     echo "==> Configuring panel nginx, PHP-FPM, Supervisor, and scheduler"
 
@@ -782,6 +840,7 @@ configure_panel_runtime() {
         deploy_dir="$(pwd)/deploy"
     fi
 
+    neutralize_nginx_http_conflicts
     install -m 0644 "${deploy_dir}/nginx/beacon-global.conf" /etc/nginx/conf.d/beacon-global.conf
 
     configure_nginx_catch_all
