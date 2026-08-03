@@ -832,6 +832,28 @@ neutralize_nginx_http_conflicts() {
     rm -f "$tmp"
 }
 
+# Block until supervisord answers, or give up after ~30s.
+#
+# `systemctl restart supervisor` returns as soon as systemd has forked the
+# daemon, but supervisord creates its unix socket a moment later. A
+# supervisorctl call in that window does not fail politely — it raises
+#   FileNotFoundError … supervisor/xmlrpc.py line 557
+# and under `set -e` that aborts the install on its very last step.
+wait_for_supervisor() {
+    local waited=0
+
+    while (( waited < 30 )); do
+        if supervisorctl pid >/dev/null 2>&1; then
+            return 0
+        fi
+
+        sleep 1
+        (( waited++ )) || true
+    done
+
+    return 1
+}
+
 configure_panel_runtime() {
     echo "==> Configuring panel nginx, PHP-FPM, Supervisor, and scheduler"
 
@@ -874,12 +896,21 @@ configure_panel_runtime() {
     systemctl enable "php${PANEL_PHP}-fpm" nginx redis-server supervisor 2>/dev/null || true
     systemctl restart "php${PANEL_PHP}-fpm" nginx redis-server supervisor
 
-    supervisorctl reread
-    supervisorctl update
-    # `:*` targets the process group — see bin/wrappers/beacon-supervisor.
-    supervisorctl restart 'beacon-panel-worker:*' \
-        || supervisorctl start 'beacon-panel-worker:*' \
-        || echo "WARN: could not start beacon-panel-worker — check supervisorctl status" >&2
+    # supervisord has to be reachable before supervisorctl says anything useful.
+    if wait_for_supervisor; then
+        supervisorctl reread || true
+        supervisorctl update || true
+
+        # `:*` targets the process group — see bin/wrappers/beacon-supervisor.
+        supervisorctl restart 'beacon-panel-worker:*' \
+            || supervisorctl start 'beacon-panel-worker:*' \
+            || echo "WARN: could not start beacon-panel-worker — run 'supervisorctl status'" >&2
+    else
+        echo "WARN: supervisord never became reachable — the panel will still serve," >&2
+        echo "      but queued work (deploys, PHP installs) will not run until you fix it:" >&2
+        echo "        systemctl status supervisor" >&2
+        echo "        supervisorctl status" >&2
+    fi
 
     local cron_line="* * * * * cd ${PANEL_CURRENT} && /usr/bin/php${PANEL_PHP} artisan schedule:run >> /dev/null 2>&1"
     (crontab -u "$PANEL_USER" -l 2>/dev/null | grep -v 'artisan schedule:run' || true; echo "$cron_line") \
