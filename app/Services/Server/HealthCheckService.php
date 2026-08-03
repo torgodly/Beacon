@@ -33,11 +33,39 @@ class HealthCheckService
     }
 
     /**
+     * Detect a systemd sandbox that makes /etc read-only for this process.
+     *
+     * php-fpm ships with ProtectSystem=full on Debian and sury builds, which
+     * mounts /etc read-only for the whole service. sudo raises the UID but
+     * does not escape the mount namespace, so every privileged write Beacon
+     * performs — nginx vhosts, FPM pools, Supervisor units, certbot — fails
+     * as root with a bare "[Errno 30] Read-only file system". Surfacing it
+     * here turns an inscrutable errno into an actionable message.
+     *
+     * @return list<array{severity: string, message: string}>
+     */
+    private function sandboxChecks(): array
+    {
+        foreach (['/etc/nginx', '/etc/supervisor'] as $path) {
+            if (is_dir($path) && ! is_writable($path)) {
+                return [[
+                    'severity' => 'critical',
+                    'message' => "{$path} is read-only for the panel. php-fpm is probably "
+                        .'running under ProtectSystem; re-run install.sh to install the '
+                        .'ReadWritePaths drop-in, then restart php-fpm.',
+                ]];
+            }
+        }
+
+        return [];
+    }
+
+    /**
      * @return list<array{severity: string, message: string}>
      */
     private function hostChecks(): array
     {
-        $issues = [];
+        $issues = [...$this->sandboxChecks()];
 
         foreach (SudoWrapper::cases() as $wrapper) {
             $path = $wrapper->path();

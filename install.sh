@@ -540,6 +540,40 @@ for ver in "${BEACON_PHP_VERSIONS[@]}"; do
     install -d "/etc/systemd/system/${unit}.service.d"
     printf '[Service]\nOOMScoreAdjust=-500\n' > "/etc/systemd/system/${unit}.service.d/99-beacon-oom.conf"
 done
+# ── systemd sandbox exemptions ──────────────────────────────────────
+#
+# Debian/sury ship php-fpm with `ProtectSystem=full`, which mounts /etc
+# read-only for everything in the service's cgroup. sudo raises the UID but
+# does NOT escape the mount namespace, so a wrapper invoked from the panel
+# runs as root and still cannot write /etc — certbot reports it as
+#   [Errno 30] Read-only file system: '/etc/letsencrypt/.certbot.lock'
+# and it would fail identically for nginx vhosts, FPM pools and Supervisor
+# units. Beacon manages exactly these paths, so they are re-opened for write.
+#
+# ReadWritePaths is a narrow exemption: everything else stays read-only, which
+# keeps most of the sandbox's value.
+# Each path is prefixed with `-`: systemd refuses to start a unit whose
+# ReadWritePaths references a directory that does not exist, and /etc/letsencrypt
+# is not created until certbot first runs.
+BEACON_RW_PATHS="-/etc/nginx -/etc/letsencrypt -/etc/php -/etc/supervisor -/var/www -/var/log/beacon -/opt/beacon -/home/beacon"
+
+write_sandbox_dropin() {
+    local unit="$1"
+    install -d "/etc/systemd/system/${unit}.service.d"
+    cat > "/etc/systemd/system/${unit}.service.d/99-beacon-paths.conf" <<EOF
+[Service]
+# Beacon writes these through its restricted sudo wrappers; see install.sh.
+ReadWritePaths=${BEACON_RW_PATHS}
+EOF
+}
+
+# The panel's own pool is what serves the UI, and supervisord runs the queue
+# worker that performs the same privileged actions asynchronously.
+install -d -m 0755 /etc/letsencrypt
+
+write_sandbox_dropin "php${PANEL_PHP}-fpm"
+write_sandbox_dropin supervisor
+
 systemctl daemon-reload 2>/dev/null || true
 
 # ── Wrappers + sudoers ──────────────────────────────────────────────
