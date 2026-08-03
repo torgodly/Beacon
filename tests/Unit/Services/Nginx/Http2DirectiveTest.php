@@ -76,6 +76,42 @@ class Http2DirectiveTest extends TestCase
         );
     }
 
+    /**
+     * options-ssl-nginx.conf and ssl-dhparams.pem are shipped by
+     * python3-certbot-nginx. Beacon does not install it — certificates come
+     * from `certonly --webroot` so certbot never edits nginx config — so any
+     * reference to those paths fails every TLS vhost with
+     * `open() … failed (2: No such file or directory)`.
+     */
+    public function test_no_template_emits_certbot_plugin_files(): void
+    {
+        $templates = [
+            ...(glob(base_path('resources/views/nginx/*.blade.php')) ?: []),
+            ...(glob(base_path('resources/views/nginx/partials/*.blade.php')) ?: []),
+        ];
+
+        $this->assertNotEmpty($templates);
+
+        foreach ($templates as $path) {
+            // Blade comments are stripped at render, so strip them here too —
+            // otherwise a comment *explaining* the rule trips the assertion.
+            $body = preg_replace('/\{\{--.*?--\}\}/s', '', (string) file_get_contents($path));
+
+            $this->assertStringNotContainsString('options-ssl-nginx.conf', (string) $body, basename($path));
+            $this->assertStringNotContainsString('ssl-dhparams.pem', (string) $body, basename($path));
+        }
+    }
+
+    public function test_tls_policy_is_defined_once_at_http_level(): void
+    {
+        $global = (string) file_get_contents(base_path('deploy/nginx/beacon-global.conf'));
+
+        $this->assertStringContainsString('ssl_protocols TLSv1.2 TLSv1.3;', $global);
+        $this->assertStringContainsString('ssl_ciphers', $global);
+        // A shared session zone declared per-server is a duplicate-zone error.
+        $this->assertStringContainsString('ssl_session_cache', $global);
+    }
+
     private function renderPanelTls(bool $http2Inline): string
     {
         return View::make('nginx.panel-tls', [

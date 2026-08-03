@@ -33,8 +33,9 @@ server {
     ssl_certificate     /etc/letsencrypt/live/{{ $domain }}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/{{ $domain }}/privkey.pem;
     ssl_trusted_certificate /etc/letsencrypt/live/{{ $domain }}/chain.pem;
-    include /etc/letsencrypt/options-ssl-nginx.conf;
-    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+    {{-- TLS policy is set once at http level in conf.d/beacon-global.conf.
+         options-ssl-nginx.conf and ssl-dhparams.pem belong to
+         python3-certbot-nginx, which Beacon does not install. --}}
     add_header Strict-Transport-Security "max-age=31536000" always;
 
     root {{ $panelRoot }}/public;

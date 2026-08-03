@@ -896,7 +896,9 @@ neutralize_nginx_http_conflicts() {
         BEGIN {
             split("server_tokens client_body_timeout gzip gzip_vary " \
                   "gzip_proxied gzip_comp_level gzip_min_length gzip_types " \
-                  "gzip_buffers gzip_http_version gzip_disable", list, " ")
+                  "gzip_buffers gzip_http_version gzip_disable " \
+                  "ssl_protocols ssl_prefer_server_ciphers ssl_ciphers " \
+                  "ssl_session_timeout ssl_session_cache ssl_session_tickets", list, " ")
             for (i in list) owned[list[i]] = 1
         }
         {
