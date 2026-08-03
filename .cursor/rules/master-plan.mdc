@@ -1,0 +1,1628 @@
+# Beacon v1 — Master Implementation & Engineering Plan
+
+> **Revision 2** — incorporates the senior DevOps red-team audit. Three findings accepted, two corrected. See §0 for the verdicts and the reasoning behind each. **No product feature was removed to satisfy the audit.**
+
+## Context
+
+`/Users/torgodly/codeing/Beacon` is currently an unmodified **Laravel 13.23 React starter kit** (single `init` commit): Inertia 3, React 19 + React Compiler, Tailwind 4, shadcn/ui, Lucide, Fortify (2FA + passkeys), Wayfinder typed routes, PHPStan level 7, Pint, PHPUnit. No Beacon code exists yet.
+
+We are building **Beacon** — a self-hosted, single-server control panel / PaaS for Ubuntu 24.04 (and 22.04) that provisions and manages Nginx vhosts, multi-version PHP-FPM, Node/Bun SSR apps, MySQL, Redis, Supervisor, Cron and Let's Encrypt **natively, without Docker**, from a modern React UI.
+
+### Decisions locked in this session
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| Panel datastore | **SQLite** (`/opt/beacon/panel/shared/beacon.sqlite`, WAL) | No circular dependency — stopping the managed MySQL from the Services widget must not kill the panel |
+| Panel cache / queue / locks | **Redis** | Avoids SQLite write contention; gives us `Cache::lock()` for per-site deploy mutexes |
+| Live output transport | **Polling now, Reverb-ready** | Log writes go through an `OutputStream` contract; the UI reads a byte-offset endpoint. Reverb becomes a decorator later, no UI change |
+| Git integration | **User-created GitHub App via manifest flow** | Full API: repo/branch picker, App-level webhook, Deployment + Commit Status API. Fallbacks: SSH deploy keys, and SHA-polling auto-deploy |
+| Panel exposure | **Domain optional, IP:8443 fallback** | `install.sh` takes `--domain`; otherwise self-signed on `:8443`, with an "Attach panel domain" upgrade path in Settings |
+| **OS user model** | **`beacon` (sites) + `beacon-panel` (panel)** | *Revised by audit.* `beacon` holds **zero sudo**. See §0.1 |
+
+---
+
+## 0. Red-team audit resolutions
+
+### 0.1 — Panel code & `.env` vs. site RCE — **ACCEPTED, mechanism corrected**
+
+The proposed fix (`/home/beacon/beacon` as `root:beacon 0755`) does not work:
+
+1. **`0755` leaves `.env` group-readable.** It stops overwrites but not the headline risk in the finding itself — theft of `APP_KEY`, MySQL admin credentials and the GitHub App private key.
+2. **It does not stop sudo abuse.** `sudoers` grants to the *user* `beacon`, not to the panel's code. A site RCE simply runs `sudo -n /opt/beacon/bin/beacon-supervisor write evil` itself and ships a unit with `user=root`. Panel file modes are irrelevant on that path.
+3. **It breaks Laravel.** `storage/` and `bootstrap/cache/` must stay writable by the panel process.
+
+The root cause is not file ownership — **it is shared UID**. No permission bit protects one process from another running as the same user. Only a user split fixes it.
+
+**The spec permits the split.** The requirement enumerates *"web application files, Git repositories, deployment scripts, Artisan commands, npm/bun builds, Cron jobs, Supervisor background processes, and PHP-FPM process pools **across ALL sites**"* — every noun is a **site** workload. The panel is separately described as *"its own **isolated** web app."* The Forge analogy also breaks down precisely here: Forge's panel is SaaS, so no on-box panel exists to protect. Beacon is cPanel-shaped, and cPanel, RunCloud and CloudPanel all refuse to run the panel as the site user.
+
+**Resolution — two users:**
+
+| User | Runs | sudo |
+|---|---|---|
+| `beacon` | Every site: FPM pools, deploy scripts, Composer/npm/bun, artisan, Supervisor programs, cron, Web Console | **none — zero sudoers entries** |
+| `beacon-panel` | The panel only: its FPM pool + queue worker | Six root wrappers **+ `sudo -u beacon` (unprivileged runas)** |
+
+What a site RCE gains, before vs. after:
+
+| | Rev 1 (single user) | Rev 2 (split) |
+|---|---|---|
+| Read panel `.env` (APP_KEY, DB creds, GitHub key) | ✅ yes | ❌ no |
+| Overwrite panel PHP code | ✅ yes | ❌ no |
+| Invoke root sudo wrappers | ✅ yes → **root** | ❌ no |
+| Read/write **other sites'** files | ✅ yes | ⚠️ yes — addressed in §0.2 |
+
+**Every spec'd behaviour is preserved:** pools, cron, Supervisor, Console and deploys still execute as `beacon`. Only the panel moved.
+
+### 0.2 — `open_basedir` — **ACCEPTED with two corrections**
+
+**Correction A — the DX concern is largely unfounded.** `php_admin_value` in a *pool* configures the **FPM SAPI only**. Composer, `artisan` and `npm run build` run under **CLI**, which reads a separate ini tree (`/etc/php/X.Y/cli/`). So Composer autoloading, `artisan migrate` and Next.js builds are **categorically unaffected**. cURL reads its CA bundle at the C level, below PHP's stream layer, so outbound TLS keeps working.
+
+**Correction B — it is not a security boundary, and must not be sold as one.** `open_basedir` restricts PHP *file functions* only. `shell_exec('cat /home/beacon/site-b/.env')` bypasses it completely. Any RCE reaching `exec` walks straight past.
+
+**Also missed by the audit:** a shared `/tmp` and PHP's default `session.save_path` are cross-tenant channels that `open_basedir` does nothing about — the classic shared-hosting session-hijack vector.
+
+**Resolution:** ON by default, with **per-site `sys_temp_dir`, `upload_tmp_dir` and `session.save_path`** (which removes `/tmp` from the path list entirely), an "Additional allowed paths" field, and a documented one-click disable. Labelled *hardening*, not isolation. The real boundary — **per-site UNIX users** — is on the v2 roadmap; `sites.system_user` is added to the schema now so that migration is purely additive.
+
+*(FPM's `chroot` pool directive was considered and rejected: it requires a full library tree per site and breaks Composer's vendor paths.)*
+
+### 0.3 — Swap on small VPS — **ACCEPTED, plus the actual fix**
+
+Correct: Next.js builds routinely peak above 1.5 GB, and the OOM killer targets the largest RSS — usually `mysqld`. But swap only prevents the *catastrophe*; it does not stop the thrash. Three additions:
+
+- **`NODE_OPTIONS=--max-old-space-size`** at ~65% of RAM, injected into the deploy environment. This is the real fix — it makes V8 collect instead of balloon.
+- **`OOMScoreAdjust=-500`** systemd drop-ins for mysql/redis/nginx/panel-FPM, and **`choom -n 750`** on the build subtree — so if something must die, it is the build, never the database.
+- Idempotency the audit omitted: skip when `swapon --show` is non-empty, verify free disk first, and special-case btrfs (`chattr +C`) instead of producing a silently broken swapfile.
+
+### 0.4 — Webhooks over IP / self-signed — **ACCEPTED; it also exposed a bug in Rev 1**
+
+Correct. It also caught an error of mine: Rev 1 registered per-repo hooks via `POST /repos/{o}/{r}/hooks`. **A GitHub App has a single App-level webhook** — that was redundant and wrong. Corrected to App-level delivery with repo filtering from the payload, and `PATCH /app/hook/config` to relocate the URL when a panel domain is attached later.
+
+**Resolution — keep the feature, add a second delivery path.** Beacon supports **poll-based auto-deploy** (`git ls-remote` on a 1-minute cron; deploy when the tracked branch SHA moves). No public ingress needed — it also works behind NAT and for GitLab/Bitbucket. Beacon selects push-webhooks when reachable and falls back to polling when not. Silent failure becomes impossible: a `webhook_reachable` state driven by `GET /app/hook/deliveries`, a Deliveries panel with real response codes, and a Redeliver button.
+
+`insecure_ssl` is **never** enabled — polling is the answer for self-signed installs.
+
+### 0.5 — MySQL admin scope — **ACCEPTED, with two runtime details the audit missed**
+
+Fair, though partly pre-mitigated: Ubuntu's packaged MySQL 8 ships `secure_file_priv=/var/lib/mysql-files/`, so `FILE` is already fenced. Removing it anyway is free.
+
+The binding constraint: **MySQL only lets you grant privileges you hold**, so `beacon_admin` must hold — with `GRANT OPTION` — the full set a site user needs. The fix is to enumerate static privileges and exclude the dangerous ones, not to grant `ALL`. Exact grants in §4.10.
+
+Two details that would otherwise fail at runtime:
+
+- **`BACKUP_ADMIN` is required.** Since 8.0.21, `mysqldump --single-transaction` issues `LOCK INSTANCE FOR BACKUP`. Without it, every backup fails.
+- **`FLUSH PRIVILEGES` is not needed** after `GRANT`/`REVOKE` in MySQL 8 — so `RELOAD` is not required either.
+
+### 0.6 — Residual risk, stated plainly
+
+After Rev 2, **`beacon-panel` remains root-equivalent** (it holds the root wrappers). That is inherent to any on-box control panel and is not solvable — only reducible. It is guarded by: no public registration, single admin, Fortify 2FA/passkeys, `RequirePassword` on destructive screens, and full audit logging.
+
+**Site ↔ site isolation remains partial** (all sites share the `beacon` UID). §0.2 hardens it; per-site users in v2 close it.
+
+---
+
+## 1. System Architecture & Linux Permissions Blueprint
+
+### 1.1 The two system users
+
+```bash
+# ── Site workload user — owns everything under /home/beacon. NO sudo. ──
+useradd --create-home --home-dir /home/beacon --shell /bin/bash --user-group beacon
+usermod --append --groups www-data beacon          # can create www-data-group files
+chown beacon:www-data /home/beacon
+chmod 750 /home/beacon                              # nginx traverses via group; not world-readable
+
+# ── Panel user — owns nothing under /home/beacon. Holds all sudo. ──
+useradd --system --create-home --home-dir /home/beacon-panel \
+        --shell /usr/sbin/nologin --user-group beacon-panel
+
+install -d -o beacon -g beacon -m 0700 /home/beacon/.ssh
+install -d -o beacon -g beacon -m 0700 /home/beacon/.beacon
+install -d -o beacon -g beacon -m 0750 /home/beacon/.beacon/{bin,deploy}
+
+# Panel-written logs live outside /home/beacon so the panel needs no access there
+install -d -o beacon-panel -g beacon-panel -m 0750 /var/log/beacon/{deployments,commands}
+install -d -o beacon -g beacon-panel -m 0750 /var/log/beacon/sites      # supervisor stdout
+
+install -d -o www-data -g www-data -m 0755 /var/www/beacon-acme         # shared ACME webroot
+```
+
+`beacon` keeps a real login shell (`/bin/bash`) — required for `crontab`, Supervisor `environment`, and `bash -lc` deploy scripts. `beacon-panel` gets `nologin`; it is never logged into, only `sudo`-targeted.
+
+### 1.2 Filesystem layout
+
+```
+/home/beacon/                              750 beacon:www-data   ← site tier, NO sudo
+├── .ssh/id_ed25519_<site>                 600 beacon:beacon
+├── .beacon/
+│   ├── bin/<site>-server.sh               750  — SSR launcher (Supervisor exec target)
+│   └── deploy/<site>.sh                   700  — user-editable deployment script
+└── example.com/                          2750 beacon:www-data
+    ├── .env                               640 beacon:www-data
+    ├── storage/tmp/                       700 beacon:beacon    — per-site sys_temp_dir
+    ├── storage/sessions/                  700 beacon:beacon    — per-site session.save_path
+    └── public/ | dist/ | .next/ | .output/
+
+/opt/beacon/                                                     ← panel tier
+├── bin/beacon-{nginx,php,supervisor,certbot,service,pkg,cron,fs,run,update}
+│                                          755 root:root         — beacon-panel executes, cannot write
+└── panel/
+    ├── releases/2026-08-03-120000/        755 root:beacon-panel — immutable after promotion
+    ├── current -> releases/…              symlink, swapped atomically by root
+    └── shared/
+        ├── .env                           640 root:beacon-panel — panel READS, cannot write
+        ├── beacon.sqlite                  640 beacon-panel:beacon-panel
+        ├── storage/                      2770 beacon-panel:beacon-panel
+        └── bootstrap-cache/              2770 beacon-panel:beacon-panel
+
+/var/log/beacon/{deployments,commands}/     750 beacon-panel     — panel owns the Process pipe
+/var/log/beacon/sites/                      750 beacon:beacon-panel
+/etc/sudoers.d/beacon-panel                 440 root:root
+```
+
+> **Why deployment logs live in `/var/log/beacon` and not `/home/beacon`:** the panel captures the child process's stdout through the Symfony `Process` pipe and **writes the log file itself**. The log is therefore authored by `beacon-panel`, so no cross-user file access is needed for the 1 s polling loop — no `sudo` fork per poll.
+
+### 1.3 The setgid rule (why site dirs are `2750`)
+
+Site directories carry the **setgid bit** so every file `git clone`, `composer`, `npm` or the app creates inherits group `www-data`. Without it, new files land `beacon:beacon` and Nginx starts throwing 403s after the first deploy.
+
+```bash
+install -d -o beacon -g www-data -m 2750 /home/beacon/example.com
+```
+
+`beacon`'s umask is **0002** (set in `~/.bashrc` and in every launcher), so files land `0664` and directories `2775`. A post-deploy step re-asserts this defensively — all as `beacon`, no sudo:
+
+```bash
+find "$BEACON_SITE_DIR" -type d -exec chmod 2775 {} +
+find "$BEACON_SITE_DIR" -type f -exec chmod 0664 {} +
+chmod -R ug+rwX "$BEACON_SITE_DIR"/{storage,bootstrap/cache} 2>/dev/null || true
+chmod 0640 "$BEACON_SITE_DIR/.env"
+chmod 0700 "$BEACON_SITE_DIR"/storage/{tmp,sessions} 2>/dev/null || true
+```
+
+*(POSIX ACLs were considered as an alternative to the `beacon-fs` wrapper for panel→site writes and rejected: `chmod -R` above clears the ACL mask, which would make permissions silently drift.)*
+
+### 1.4 PHP-FPM pool: one pool per site
+
+`/etc/php/8.3/fpm/pool.d/example-com.conf`:
+
+```ini
+; Managed by Beacon — regenerated on save. Manual edits will be overwritten.
+[example-com]
+user  = beacon
+group = www-data
+
+listen       = /run/php/php8.3-fpm-example-com.sock
+listen.owner = beacon-panel      ; only the panel needs to stat it
+listen.group = www-data          ; nginx connects via group
+listen.mode  = 0660
+
+pm                       = ondemand      ; idle sites cost zero RSS
+pm.max_children          = 20
+pm.process_idle_timeout  = 10s
+pm.max_requests          = 500
+
+chdir = {{ $site->path }}
+
+catch_workers_output    = yes
+decorate_workers_output = no
+
+php_admin_value[error_log]     = /var/log/beacon/sites/{{ $site->name }}-php-error.log
+php_admin_flag[log_errors]     = on
+php_admin_flag[display_errors] = off
+
+php_admin_value[memory_limit]        = {{ $ini['memory_limit'] }}
+php_admin_value[upload_max_filesize] = {{ $ini['upload_max_filesize'] }}
+php_admin_value[post_max_size]       = {{ $ini['post_max_size'] }}
+php_admin_value[max_execution_time]  = {{ $ini['max_execution_time'] }}
+
+; ── Tenant hardening (audit §0.2) ──────────────────────────────────
+; Per-site temp + session dirs. Removes the shared /tmp and the shared
+; session.save_path cross-tenant channels, and means /tmp is NOT needed
+; in open_basedir at all.
+php_admin_value[sys_temp_dir]      = {{ $site->path }}/storage/tmp
+php_admin_value[upload_tmp_dir]    = {{ $site->path }}/storage/tmp
+php_admin_value[session.save_path] = {{ $site->path }}/storage/sessions
+@if ($site->open_basedir)
+; FPM SAPI only — CLI (composer, artisan, npm) is unaffected.
+; Hardening, NOT a boundary: exec() bypasses open_basedir entirely.
+php_admin_value[open_basedir] = {{ $site->path }}:/usr/share/php{{ $extraPaths }}
+@endif
+@if ($site->strict_functions)
+php_admin_value[disable_functions] = exec,passthru,shell_exec,system,proc_open,popen
+@endif
+```
+
+The socket is `beacon-panel:www-data 0660`: Nginx connects via the group, the site user cannot even `stat` another site's socket. Worker processes are `beacon`, so PHP writes files the site user owns.
+
+**`php_admin_value` vs `php_value`:** per-site tuning uses `php_admin_value` so `ini_set()` cannot escape it. Per-*version* defaults (the "php.ini Quick Config" screen) go to `/etc/php/<X.Y>/{fpm,cli}/conf.d/99-beacon.ini`; a site's pool value always wins.
+
+Pool changes need `systemctl restart php8.3-fpm` (reload does not re-read `pool.d/`). Beacon **debounces** this — toggling five extensions restarts FPM once.
+
+### 1.5 Sudo boundary
+
+**`beacon` has no sudoers entry at all.** Everything below is granted only to `beacon-panel`.
+
+```
+# /etc/sudoers.d/beacon-panel    root:root 0440
+# Installed only after `visudo -cf` validates it.
+Cmnd_Alias BEACON_NGINX  = /opt/beacon/bin/beacon-nginx
+Cmnd_Alias BEACON_PHP    = /opt/beacon/bin/beacon-php
+Cmnd_Alias BEACON_SUP    = /opt/beacon/bin/beacon-supervisor
+Cmnd_Alias BEACON_SSL    = /opt/beacon/bin/beacon-certbot
+Cmnd_Alias BEACON_SVC    = /opt/beacon/bin/beacon-service
+Cmnd_Alias BEACON_PKG    = /opt/beacon/bin/beacon-pkg
+Cmnd_Alias BEACON_CRON   = /opt/beacon/bin/beacon-cron
+Cmnd_Alias BEACON_UPDATE = /opt/beacon/bin/beacon-update
+
+Defaults!BEACON_NGINX,BEACON_PHP,BEACON_SUP,BEACON_SSL,BEACON_SVC,BEACON_PKG,BEACON_CRON,BEACON_UPDATE \
+    !requiretty, env_reset, secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# Root-privileged system mutation
+beacon-panel ALL=(root) NOPASSWD: BEACON_NGINX, BEACON_PHP, BEACON_SUP, BEACON_SSL, \
+                                  BEACON_SVC, BEACON_PKG, BEACON_CRON, BEACON_UPDATE
+
+# Unprivileged runas — everything that must execute *as a site*.
+# Note the runas target is (beacon), NOT (root), and both take zero arguments:
+# the entire job spec arrives on stdin, so there is no argv attack surface.
+beacon-panel ALL=(beacon) NOPASSWD: /opt/beacon/bin/beacon-run, /opt/beacon/bin/beacon-fs
+```
+
+| Needs root | Needs `sudo -u beacon` | Needs neither |
+|---|---|---|
+| `/etc/nginx/**`, `nginx -t`, reload | Deploy scripts, Console commands | Panel's own files, DB, logs |
+| `pool.d/**`, `phpenmod`, FPM restart | `git`, `composer`, `npm`, `bun`, `artisan` | `systemctl is-active` / `show` |
+| `/etc/supervisor/conf.d/**`, `supervisorctl` | Read/write site `.env` + deploy script | `/proc/stat`, `/proc/meminfo`, `statvfs` |
+| `certbot certonly` / `delete` | | MySQL DDL (`beacon_admin` SQL account) |
+| `systemctl restart` on a **whitelisted unit list** | | |
+| `crontab -u beacon`, `apt-get install php*` | | |
+
+**Rules that make this safe:**
+
+1. **No wildcards in sudoers.** Ten fixed absolute paths, nothing else.
+2. Wrappers are `root:root 0755` — `beacon-panel` executes but never modifies them.
+3. Every argument matched against a **strict allow-list regex**; anything else exits `64`.
+4. **File content travels on stdin, never argv** — no arg-injection, no `ARG_MAX` limit, no secrets in `ps`.
+5. Wrappers `set -euo pipefail`, quote every expansion, never `eval`.
+6. **Reserved-name guard:** the panel's own vhost, pool and Supervisor programs (`beacon-panel*`) are refused, so the UI cannot delete the panel out from under itself.
+7. **Content validation, not just argument validation** (new in Rev 2): the Supervisor wrapper rejects any config containing `user\s*=\s*root` or a `command` outside `/home/beacon`, `/usr/bin`, `/usr/local`. Without this, a compromised panel could escalate to root through a Supervisor unit — see §1.7.
+
+### 1.6 Reference wrapper: `/opt/beacon/bin/beacon-nginx`
+
+The pattern every root wrapper follows — validate, stage, test, roll back.
+
+```bash
+#!/usr/bin/env bash
+# /opt/beacon/bin/beacon-nginx — root:root 0755
+# Exit codes: 0 ok | 64 bad usage/argument | 65 nginx config rejected | 66 not found
+set -euo pipefail
+umask 022
+
+SITES_AVAILABLE=/etc/nginx/sites-available
+SITES_ENABLED=/etc/nginx/sites-enabled
+NGINX=/usr/sbin/nginx
+SYSTEMCTL=/usr/bin/systemctl
+RESERVED='^beacon-panel$'
+
+die() { printf 'beacon-nginx: %s\n' "$*" >&2; exit 64; }
+
+valid_name() {
+    local n="${1:-}"
+    [[ -n "$n" ]]                                        || die "missing site name"
+    [[ "$n" =~ ^[a-z0-9]([a-z0-9.-]{0,61}[a-z0-9])?$ ]]  || die "invalid site name: $n"
+    [[ "$n" != *".."* ]]                                 || die "invalid site name: $n"
+}
+guard_reserved() { [[ ! "$1" =~ $RESERVED ]] || die "refusing to modify reserved vhost: $1"; }
+
+action="${1:-}"; shift || true
+
+case "$action" in
+    write)
+        name="${1:-}"; valid_name "$name"; guard_reserved "$name"
+        target="$SITES_AVAILABLE/$name"
+        # mktemp on the SAME filesystem so the final mv is atomic
+        tmp="$(mktemp "$SITES_AVAILABLE/.beacon-XXXXXX")"
+        trap 'rm -f "$tmp"' EXIT
+        cat > "$tmp"                          # <-- config arrives on STDIN
+        [[ -s "$tmp" ]] || die "empty configuration"
+        chmod 0644 "$tmp"
+
+        backup=""
+        if [[ -f "$target" ]]; then backup="$(mktemp)"; cp -a "$target" "$backup"; fi
+        mv -f "$tmp" "$target"; trap - EXIT
+
+        if ! out="$("$NGINX" -t 2>&1)"; then
+            if [[ -n "$backup" ]]; then mv -f "$backup" "$target"; else rm -f "$target"; fi
+            printf '%s\n' "$out" >&2
+            exit 65                            # panel surfaces this verbatim in the UI
+        fi
+        [[ -n "$backup" ]] && rm -f "$backup"
+        printf '%s\n' "$out" ;;
+
+    enable)
+        name="${1:-}"; valid_name "$name"
+        [[ -f "$SITES_AVAILABLE/$name" ]] || exit 66
+        ln -sfn "$SITES_AVAILABLE/$name" "$SITES_ENABLED/$name"
+        if ! out="$("$NGINX" -t 2>&1)"; then
+            rm -f "$SITES_ENABLED/$name"; printf '%s\n' "$out" >&2; exit 65
+        fi ;;
+
+    disable) name="${1:-}"; valid_name "$name"; guard_reserved "$name"; rm -f "$SITES_ENABLED/$name" ;;
+    delete)  name="${1:-}"; valid_name "$name"; guard_reserved "$name"
+             rm -f "$SITES_ENABLED/$name" "$SITES_AVAILABLE/$name" ;;
+    read)    name="${1:-}"; valid_name "$name"
+             [[ -f "$SITES_AVAILABLE/$name" ]] || exit 66; cat "$SITES_AVAILABLE/$name" ;;
+    test)    "$NGINX" -t 2>&1 || exit 65 ;;
+    reload)  "$NGINX" -t 2>&1 || exit 65; "$SYSTEMCTL" reload nginx ;;
+    *)       die "unknown action: ${action:-<none>}" ;;
+esac
+```
+
+> **Why write-then-test-then-rollback:** `nginx -t` validates the *entire* configuration tree, so a candidate vhost can only be meaningfully tested once it is on disk. Staging it, testing, and restoring the backup on failure is the only way to validate without a window where a bad config could survive a reload. This satisfies the spec's critical safety rule — **an invalid vhost never reaches a running Nginx**.
+
+The other root wrappers follow identically:
+
+- **`beacon-php`** — `pool-write <site> <ver>` (stdin), `pool-delete`, `ini-write <ver> <sapi>` (stdin), `ext-enable|ext-disable <ver> <ext>`, `fpm-restart <ver>`. Version `^8\.[1-4]$`, extension `^[a-z0-9_]{1,32}$`.
+- **`beacon-supervisor`** — `write <program>` (stdin, **content-validated**, §1.7), `delete`, `reread-update`, `start|stop|restart <program>`, `status`.
+- **`beacon-certbot`** — `issue <email> <domain…>` via `certonly --webroot -w /var/www/beacon-acme`, `renew`, `delete <lineage>`, `certificates`. Per-label domain regex, 100-domain cap.
+- **`beacon-service`** — `status|restart|start|stop <unit>`, `<unit>` ∈ `^(nginx|mysql|redis-server|supervisor|php8\.[1-4]-fpm)$`.
+- **`beacon-pkg`** — `php-install|php-remove <ver>`, `ext-install <ver> <ext>` against an allow-list.
+- **`beacon-cron`** — `write` (stdin) → `crontab -u beacon -`; `read` → `crontab -u beacon -l`.
+- **`beacon-update`** — panel self-update, §1.8.
+
+### 1.7 Content validation in `beacon-supervisor` (new in Rev 2)
+
+Argument validation is not enough for wrappers that accept a config *body*. A Supervisor unit can specify `user=root`, which would turn a panel compromise into root execution.
+
+```bash
+# /opt/beacon/bin/beacon-supervisor  (write action, excerpt)
+write)
+    prog="${1:-}"
+    [[ "$prog" =~ ^[a-z0-9][a-z0-9._-]{0,63}$ ]] || die "invalid program name"
+    [[ ! "$prog" =~ ^beacon-panel ]]             || die "reserved program name"
+
+    tmp="$(mktemp /etc/supervisor/conf.d/.beacon-XXXXXX)"
+    trap 'rm -f "$tmp"' EXIT
+    cat > "$tmp"
+
+    # ── Content policy: a Supervisor unit must never escalate ──
+    grep -Eqi '^[[:space:]]*user[[:space:]]*=[[:space:]]*root' "$tmp" \
+        && die "supervisor unit may not run as root"
+    grep -Eq  '^[[:space:]]*user[[:space:]]*=[[:space:]]*beacon[[:space:]]*$' "$tmp" \
+        || die "supervisor unit must declare user = beacon"
+    grep -Eq  '^[[:space:]]*command[[:space:]]*=[[:space:]]*(/home/beacon/|/usr/bin/|/usr/local/)' "$tmp" \
+        || die "command must live under /home/beacon, /usr/bin or /usr/local"
+
+    chmod 0644 "$tmp"
+    mv -f "$tmp" "/etc/supervisor/conf.d/${prog}.conf"; trap - EXIT
+    /usr/bin/supervisorctl reread >/dev/null && /usr/bin/supervisorctl update
+    ;;
+```
+
+### 1.8 Panel self-update — `beacon-update` (audit §0.1)
+
+The `releases`/`current` pattern: **build unprivileged, promote as root, health-gate, auto-rollback.** Composer and npm never run as root, so a malicious package cannot execute privileged code — and the promoted tree is root-owned, so a later panel RCE cannot plant a persistent backdoor in it.
+
+```bash
+#!/usr/bin/env bash
+# /opt/beacon/bin/beacon-update — root:root 0755
+set -euo pipefail
+ROOT=/opt/beacon/panel
+REPO=https://github.com/<org>/beacon.git
+KEEP=3
+
+case "${1:-deploy}" in
+deploy)
+    ref="${2:-}"; [[ "$ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "bad tag" >&2; exit 64; }
+    rel="$ROOT/releases/$(date -u +%Y%m%d%H%M%S)"
+
+    # ── 1. Build as beacon-panel. Never as root. ──
+    install -d -o beacon-panel -g beacon-panel -m 0755 "$rel"
+    runuser -u beacon-panel -- git clone --depth 1 --branch "$ref" "$REPO" "$rel"
+    runuser -u beacon-panel -- git -C "$rel" verify-tag "$ref" || echo "WARN: unsigned tag $ref" >&2
+    runuser -u beacon-panel -- composer install -d "$rel" --no-dev --no-interaction \
+                                        --prefer-dist --optimize-autoloader
+    runuser -u beacon-panel -- npm --prefix "$rel" ci
+    runuser -u beacon-panel -- npm --prefix "$rel" run build
+
+    # ── 2. Wire shared state ──
+    rm -rf "$rel/storage" "$rel/bootstrap/cache"
+    ln -sfn "$ROOT/shared/.env"            "$rel/.env"
+    ln -sfn "$ROOT/shared/storage"         "$rel/storage"
+    ln -sfn "$ROOT/shared/bootstrap-cache" "$rel/bootstrap/cache"
+
+    runuser -u beacon-panel -- php "$rel/artisan" migrate --force
+    runuser -u beacon-panel -- php "$rel/artisan" optimize
+
+    # ── 3. Freeze the tree, then promote atomically ──
+    chown -R root:beacon-panel "$rel"; chmod -R go-w "$rel"
+    prev="$(readlink -f "$ROOT/current" || true)"
+    ln -sfn "$rel" "$ROOT/current.new" && mv -Tf "$ROOT/current.new" "$ROOT/current"
+
+    systemctl restart php8.3-fpm            # resets OPcache for the new realpath
+    supervisorctl restart beacon-panel-worker
+
+    # ── 4. Health-gate on the starter kit's existing /up endpoint ──
+    for i in $(seq 1 15); do
+        sleep 1
+        curl -fsS --max-time 3 http://127.0.0.1/up >/dev/null 2>&1 && ok=1 && break
+    done
+    if [[ "${ok:-0}" != 1 && -n "$prev" ]]; then
+        echo "health check failed — rolling back to $prev" >&2
+        ln -sfn "$prev" "$ROOT/current.new" && mv -Tf "$ROOT/current.new" "$ROOT/current"
+        systemctl restart php8.3-fpm; supervisorctl restart beacon-panel-worker
+        exit 70
+    fi
+    ls -1dt "$ROOT"/releases/*/ | tail -n +$((KEEP+1)) | xargs -r rm -rf ;;
+
+rollback)
+    target="$(ls -1dt "$ROOT"/releases/*/ | sed -n 2p)"
+    [[ -n "$target" ]] || { echo "no previous release" >&2; exit 66; }
+    ln -sfn "$target" "$ROOT/current.new" && mv -Tf "$ROOT/current.new" "$ROOT/current"
+    systemctl restart php8.3-fpm; supervisorctl restart beacon-panel-worker ;;
+esac
+```
+
+The panel vhost's root is `/opt/beacon/panel/current/public`. The Laravel template's `fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name` already resolves the symlink to the real release path — which is exactly why `$realpath_root` (not `$document_root`) is used, and why OPcache does not serve a stale tree after promotion.
+
+**`.env` is `root:beacon-panel 0640` — the panel reads it and cannot write it.** This is achievable because all mutable configuration (GitHub App key, server settings, MySQL credentials for *site* databases) lives encrypted in SQLite, not in `.env`. Only `install.sh` and `beacon-update` write it, both as root.
+
+### 1.9 `beacon-run` — executing work as a site (new in Rev 2)
+
+This replaces "the panel is already `beacon`". It takes **zero arguments**; the whole job spec arrives as JSON on stdin, so there is no argv surface and no `sudo` env-plumbing.
+
+```python
+#!/usr/bin/python3
+# /opt/beacon/bin/beacon-run — root:root 0755, invoked as: sudo -u beacon beacon-run
+# stdin: {"cwd": "...", "argv": [...], "env": {...}}
+import json, os, sys
+
+ALLOWED_ROOTS = ("/home/beacon/",)
+ENV_ALLOW_PREFIX = ("BEACON_", "NODE_", "NPM_", "npm_", "COMPOSER_", "GIT_", "CI",
+                    "PATH", "HOME", "USER", "LANG", "LC_ALL", "PORT", "HOST")
+
+def fail(msg, code=64):
+    print(f"beacon-run: {msg}", file=sys.stderr); sys.exit(code)
+
+try:
+    spec = json.load(sys.stdin)
+except ValueError:
+    fail("malformed job spec")
+
+cwd = os.path.realpath(spec.get("cwd", ""))
+if not any(cwd.startswith(r) for r in ALLOWED_ROOTS) or not os.path.isdir(cwd):
+    fail(f"cwd outside permitted roots: {cwd}")
+
+argv = spec.get("argv") or []
+if not isinstance(argv, list) or not all(isinstance(a, str) for a in argv) or not argv:
+    fail("argv must be a non-empty list of strings")
+
+env = {k: str(v) for k, v in (spec.get("env") or {}).items()
+       if isinstance(k, str) and k.startswith(ENV_ALLOW_PREFIX)}
+env.setdefault("HOME", "/home/beacon")
+env.setdefault("USER", "beacon")
+env.setdefault("PATH", "/usr/local/bin:/usr/bin:/bin")
+
+os.chdir(cwd)
+os.umask(0o002)
+# Make builds the OOM killer's preferred victim, never mysqld (audit §0.3)
+if spec.get("oom_expendable"):
+    try:
+        open("/proc/self/oom_score_adj", "w").write("750")
+    except OSError:
+        pass
+os.execvpe(argv[0], argv, env)
+```
+
+`/opt/beacon/bin/beacon-fs` is its sibling for file I/O the panel needs inside `/home/beacon` (`read`/`write`/`stat`/`tail` on a canonicalised, prefix-checked path, content on stdin). Both run **as `beacon`, not root**, so a bug in either yields no privilege gain.
+
+---
+
+## 2. Complete Database Schema
+
+SQLite via Eloquent, migrations kept portable. `AppServiceProvider::boot()`:
+
+```php
+if (DB::connection() instanceof SQLiteConnection) {
+    DB::statement('PRAGMA journal_mode=WAL');
+    DB::statement('PRAGMA busy_timeout=5000');
+    DB::statement('PRAGMA foreign_keys=ON');
+}
+```
+
+### Server & runtime
+
+**`servers`** — singleton (`id = 1`); sites carry `server_id` so multi-server stays additive.
+`id`, `hostname`, `public_ip`, `private_ip?`, `os_release`, `beacon_version`, `timezone`, `panel_domain?`, `panel_port`, `panel_url_public` bool, `wildcard_domain?`, `default_php_version`, `default_node_version`, `default_package_manager`, `total_memory_mb`, `swap_mb`, `settings` json, `provisioned_at?`, timestamps.
+
+**`server_metrics`** — `id`, `server_id`, `cpu_percent` dec(5,2), `memory_used_mb`, `memory_total_mb`, `swap_used_mb`, `disk_used_mb`, `disk_total_mb`, `load_1/5/15`, `uptime_seconds`, `recorded_at`. Index `(server_id, recorded_at)`. Pruned to 48 h.
+
+**`php_versions`** — `id`, `server_id`, `version`, `status`, `is_default`, `installed_at?`, `last_error?`, timestamps. Unique `(server_id, version)`.
+
+**`php_extensions`** — `id`, `php_version_id`, `name`, `label`, `apt_package?`, `is_installed`, `is_enabled`, `is_core`, `last_synced_at`. Unique `(php_version_id, name)`.
+
+**`php_settings`** — `id`, `php_version_id`, `sapi` (`fpm|cli|both`), `key`, `value`, timestamps. Unique `(php_version_id, sapi, key)`; `key` against a service allow-list.
+
+**`node_versions`** — `id`, `server_id`, `runtime` (`node|bun`), `version`, `path`, `is_default`, `status`, timestamps.
+
+### Sites
+
+**`sites`**
+`id`, `uuid`, `server_id`, `name` unique, `type` (`laravel|nextjs|nuxt|static`), `path`, `web_directory`,
+**`system_user`** default `beacon` *(new — forward-compat for per-site users, audit §0.2)*,
+`php_version?`, `node_version?`, `package_manager?`, `proxy_port?` unique, `spa_fallback`, `client_max_body_size`,
+**`open_basedir`** bool default **true**, **`open_basedir_extra_paths`** json, **`strict_functions`** bool default false *(new)*,
+`repository_provider?` (`github|custom`), `repository?`, `repository_branch?`, `github_installation_id?`, `github_repo_id?`, `deploy_key_path?`, `deploy_key_public?`,
+`auto_deploy` bool, **`deploy_trigger`** (`webhook|poll|manual`) default `manual`, **`last_polled_sha?`**, **`last_polled_at?`** *(new — audit §0.4)*,
+`deploy_script` text, `deployment_status`, `last_deployed_at?`, `last_deployment_id?`,
+`nginx_customized` bool, `nginx_managed_hash?`,
+`ssl_status`, `status`, timestamps, `deleted_at`.
+
+> `nginx_customized` is the key safety flag: once a hand-edit is saved in the Raw Nginx Editor, Beacon stops regenerating that vhost and shows a "custom config — regeneration paused" banner with an explicit **Reset to generated** action. Without it, changing a site's PHP version would silently discard hand-written rules.
+
+**`site_domains`** — `id`, `site_id`, `domain` unique, `is_primary`, `redirect_to?`, `redirect_status_code?`, `ssl_certificate_id?`, timestamps.
+
+**`ssl_certificates`** — `id`, `site_id`, `provider`, `lineage`, `domains` json, `status`, `certificate_path?`, `private_key_path?`, `issued_at?`, `expires_at?`, `last_renewed_at?`, `auto_renew`, `last_error?`, timestamps.
+
+**`env_snapshots`** — `id`, `site_id`, `user_id?`, `contents` encrypted, `created_at`. Last 10 per site.
+
+### Execution
+
+**`deployments`** — `id`, `uuid`, `site_id`, `user_id?`, `trigger` (`manual|webhook|poll|api|redeploy`), `status`, `branch?`, `commit_sha?`, `commit_message?`, `commit_author?`, `commit_url?`, `github_deployment_id?`, `log_path`, `output?` (256 KB tail), `exit_code?`, `failed_step?`, `peak_memory_mb?`, `started_at?`, `finished_at?`, `duration_ms?`, timestamps. Index `(site_id, created_at)`.
+
+**`commands`** — `id`, `uuid`, `site_id`, `user_id`, `command`, `status`, `exit_code?`, `log_path`, `output?`, `duration_ms?`, `started_at?`, `finished_at?`, timestamps.
+
+**`supervisor_processes`** — `id`, `site_id?`, `name`, `program_name` unique, `kind` (`queue_worker|daemon|ssr`), `command`, `directory`, `run_as` default `beacon`, `numprocs`, `autostart`, `autorestart`, `stop_wait_secs`, `stop_signal`, `environment` json, queue fields (`connection?`, `queue?`, `tries?`, `job_timeout?`, `sleep?`, `max_time?`, `backoff?`, `rest?`), `config_path`, `log_path`, `status`, `status_message?`, `last_status_at?`, `is_system`, timestamps.
+
+**`cron_jobs`** — `id`, `server_id`, `site_id?`, `name`, `command`, `run_as` default `beacon`, `expression`, `frequency_preset`, `is_laravel_scheduler`, `output_redirect?`, `enabled`, `is_system`, `last_ran_at?`, timestamps.
+
+### Databases
+
+**`databases`** — `id`, `server_id`, `name` unique, `charset`, `collation`, `status`, timestamps.
+**`database_users`** — `id`, `server_id`, `username`, `password` encrypted, `host` default `localhost`, `status`, timestamps. Unique `(username, host)`.
+**`database_user_database`** — `database_id`, `database_user_id`, `privileges` (`all|readonly|custom`), `custom_grants?` json.
+**`database_backups`** — `id`, `uuid`, `database_id`, `filename`, `path`, `size_bytes?`, `status`, `error?`, `started_at?`, `finished_at?`, `expires_at?`, timestamps.
+
+### Integrations & audit
+
+**`github_installations`** — `id`, `user_id`, `app_id`, `app_slug`, `client_id`, `client_secret` encrypted, `private_key` encrypted, `webhook_secret` encrypted, `installation_id?`, `account_login?`, `account_type?`, `permissions?` json, **`webhook_url?`**, **`webhook_reachable`** bool, **`last_delivery_at?`**, **`last_delivery_status?`** *(new — audit §0.4)*, `connected_at?`, timestamps.
+
+**`webhook_deliveries`** *(new)* — `id`, `github_installation_id`, `delivery_id`, `event`, `repository?`, `status_code?`, `duration_ms?`, `redelivered_at?`, `payload_digest`, `created_at`. Powers the Deliveries panel; pruned to 200 rows.
+
+**`activity_logs`** — `id`, `user_id?`, `subject_type?`/`subject_id?` (morphs), `event`, `description`, `properties?` json, `ip_address?`, `user_agent?`, `created_at`.
+
+**Encryption:** all `encrypted` columns use Laravel's `encrypted` cast. Since `.env` is now unreadable by `beacon`, `APP_KEY` is out of a site RCE's reach — which is what makes these columns meaningfully protected rather than theatre.
+
+---
+
+## 3. Nginx & Supervisor Configuration Templates
+
+Templates live in `resources/views/nginx/*.blade.php` and `resources/views/supervisor/*.blade.php`, rendered by `NginxTemplateRenderer` / `SupervisorTemplateRenderer` and piped to the wrappers on stdin.
+
+### 3.0 Global includes (written once by `install.sh`)
+
+```nginx
+# /etc/nginx/conf.d/beacon-global.conf
+map $http_upgrade $connection_upgrade {   # required by every reverse-proxy vhost
+    default upgrade;
+    ''      close;
+}
+server_tokens off;
+client_body_timeout 30s;
+gzip on; gzip_vary on; gzip_proxied any; gzip_comp_level 5; gzip_min_length 256;
+gzip_types application/javascript application/json application/xml image/svg+xml text/css text/plain text/xml;
+```
+
+```nginx
+{{-- resources/views/nginx/partials/acme.blade.php --}}
+# Shared ACME webroot — works before the app is deployed, and for every site type.
+location ^~ /.well-known/acme-challenge/ {
+    root /var/www/beacon-acme;
+    default_type "text/plain";
+    allow all;
+}
+```
+
+```nginx
+{{-- resources/views/nginx/partials/ssl.blade.php --}}
+ssl_certificate     /etc/letsencrypt/live/{{ $lineage }}/fullchain.pem;
+ssl_certificate_key /etc/letsencrypt/live/{{ $lineage }}/privkey.pem;
+ssl_trusted_certificate /etc/letsencrypt/live/{{ $lineage }}/chain.pem;
+include /etc/letsencrypt/options-ssl-nginx.conf;
+ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+add_header Strict-Transport-Security "max-age=31536000" always;
+```
+
+> **Certbot runs `certonly --webroot`, never `--nginx`.** Beacon owns the vhost completely and renders the `443` block itself; letting the certbot Nginx plugin rewrite it would mean the next regeneration silently drops TLS.
+>
+> **HTTP/2 syntax:** Ubuntu 24.04 ships nginx 1.24, where the form is `listen 443 ssl http2;`. nginx ≥ 1.25.1 wants a separate `http2 on;`. `NginxService::http2Directive()` runs `nginx -v` once, caches, and emits the correct form.
+
+### 3.a Laravel (PHP-FPM)
+
+```nginx
+{{-- resources/views/nginx/laravel.blade.php --}}
+# ─── Managed by Beacon — site: {{ $site->name }} ───
+server {
+    listen 80; listen [::]:80;
+    server_name {{ $serverNames }};
+    @include('nginx.partials.acme')
+@if ($certificate)
+    location / { return 301 https://{{ $site->name }}$request_uri; }
+}
+server {
+    @if ($http2Inline) listen 443 ssl http2; listen [::]:443 ssl http2;
+    @else              listen 443 ssl; listen [::]:443 ssl; http2 on; @endif
+    server_name {{ $serverNames }};
+    @include('nginx.partials.ssl', ['lineage' => $certificate->lineage])
+@endif
+
+    root {{ $site->path }}{{ $site->web_directory }};
+    index index.php index.html;
+    charset utf-8;
+
+    add_header X-Frame-Options        "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff"    always;
+    add_header Referrer-Policy        "strict-origin-when-cross-origin" always;
+
+    client_max_body_size {{ $site->client_max_body_size }};
+
+@foreach ($redirects as $redirect)
+    if ($host = '{{ $redirect->domain }}') {
+        return {{ $redirect->redirect_status_code }} $scheme://{{ $redirect->redirect_to }}$request_uri;
+    }
+@endforeach
+
+    location / { try_files $uri $uri/ /index.php?$query_string; }
+    location = /favicon.ico { access_log off; log_not_found off; }
+    location = /robots.txt  { access_log off; log_not_found off; }
+    error_page 404 /index.php;
+
+    location ~ \.php$ {
+        fastcgi_pass unix:/run/php/php{{ $site->php_version }}-fpm-{{ $site->poolName() }}.sock;
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        include fastcgi_params;
+        # $realpath_root resolves symlinks — required for the releases/current layout
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        fastcgi_param DOCUMENT_ROOT   $realpath_root;
+        fastcgi_hide_header X-Powered-By;
+        fastcgi_read_timeout 60;
+        fastcgi_buffers 16 16k;
+        fastcgi_buffer_size 32k;
+    }
+
+    location ~ /\.(?!well-known).* { deny all; }   # blocks .env and .git, keeps ACME
+
+    access_log /var/log/nginx/{{ $site->name }}-access.log;
+    error_log  /var/log/nginx/{{ $site->name }}-error.log error;
+}
+```
+
+### 3.b Next.js / Nuxt (reverse proxy)
+
+```nginx
+{{-- resources/views/nginx/proxy.blade.php --}}
+upstream beacon_{{ $site->upstreamName() }} {
+    server 127.0.0.1:{{ $site->proxy_port }};
+    keepalive 16;
+}
+server {
+    listen 80; listen [::]:80;
+    server_name {{ $serverNames }};
+    @include('nginx.partials.acme')
+@if ($certificate)
+    location / { return 301 https://{{ $site->name }}$request_uri; }
+}
+server {
+    @if ($http2Inline) listen 443 ssl http2; listen [::]:443 ssl http2;
+    @else              listen 443 ssl; listen [::]:443 ssl; http2 on; @endif
+    server_name {{ $serverNames }};
+    @include('nginx.partials.ssl', ['lineage' => $certificate->lineage])
+@endif
+
+    client_max_body_size {{ $site->client_max_body_size }};
+
+    # Immutable build assets served from disk — never wake the Node process
+@if ($site->type === 'nextjs')
+    location /_next/static/ { alias {{ $site->path }}/.next/static/;
+        expires 365d; add_header Cache-Control "public, immutable"; access_log off; }
+@else
+    location /_nuxt/ { alias {{ $site->path }}/.output/public/_nuxt/;
+        expires 365d; add_header Cache-Control "public, immutable"; access_log off; }
+@endif
+
+    location / {
+        proxy_pass http://beacon_{{ $site->upstreamName() }};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;   # from beacon-global.conf
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host  $host;
+        proxy_read_timeout 60s; proxy_connect_timeout 10s; proxy_buffering on;
+    }
+
+    access_log /var/log/nginx/{{ $site->name }}-access.log;
+    error_log  /var/log/nginx/{{ $site->name }}-error.log error;
+}
+```
+
+**Port allocation:** `PortAllocator` picks the lowest free port in `3000–3999`, guarded by a unique index on `sites.proxy_port` *and* a live `ss -ltn` check, inside `Cache::lock('beacon:port-alloc')`.
+
+### 3.c Static site
+
+```nginx
+{{-- resources/views/nginx/static.blade.php --}}
+server {
+    listen 80; listen [::]:80;
+    server_name {{ $serverNames }};
+    @include('nginx.partials.acme')
+@if ($certificate)
+    location / { return 301 https://{{ $site->name }}$request_uri; }
+}
+server {
+    @if ($http2Inline) listen 443 ssl http2; listen [::]:443 ssl http2;
+    @else              listen 443 ssl; listen [::]:443 ssl; http2 on; @endif
+    server_name {{ $serverNames }};
+    @include('nginx.partials.ssl', ['lineage' => $certificate->lineage])
+@endif
+
+    root {{ $site->path }}{{ $site->web_directory }};   {{-- /dist, /out, /build, / --}}
+    index index.html index.htm;
+
+    add_header X-Frame-Options        "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff"    always;
+
+    location / {
+@if ($site->spa_fallback)
+        try_files $uri $uri/ /index.html;
+@else
+        try_files $uri $uri/ =404;
+@endif
+    }
+    location ~* \.(?:js|css|woff2?|ttf|eot|svg|png|jpe?g|gif|webp|avif|ico)$ {
+        expires 365d; add_header Cache-Control "public, immutable"; access_log off; }
+    location = /index.html { add_header Cache-Control "no-cache"; }
+    location ~ /\.(?!well-known).* { deny all; }
+
+    access_log /var/log/nginx/{{ $site->name }}-access.log;
+    error_log  /var/log/nginx/{{ $site->name }}-error.log error;
+}
+```
+
+### 3.d Supervisor — Laravel queue worker
+
+```ini
+{{-- resources/views/supervisor/queue-worker.blade.php --}}
+; ─── Managed by Beacon — do not edit by hand ───
+[program:{{ $process->program_name }}]
+process_name    = %(program_name)s_%(process_num)02d
+command         = /usr/bin/php{{ $site->php_version }} {{ $site->path }}/artisan queue:work {{ $process->connection }} --queue={{ $process->queue }} --sleep={{ $process->sleep }} --tries={{ $process->tries }} --max-time={{ $process->max_time }} --timeout={{ $process->job_timeout }}
+directory       = {{ $site->path }}
+user            = beacon
+numprocs        = {{ $process->numprocs }}
+autostart       = {{ $process->autostart ? 'true' : 'false' }}
+autorestart     = {{ $process->autorestart ? 'true' : 'false' }}
+startsecs       = 5
+stopasgroup     = true
+killasgroup     = true
+stopsignal      = {{ $process->stop_signal }}
+; Must exceed --timeout so an in-flight job is never killed mid-write
+stopwaitsecs    = {{ $process->stop_wait_secs }}
+redirect_stderr = true
+stdout_logfile  = /var/log/beacon/sites/{{ $site->name }}-{{ $process->name }}.log
+stdout_logfile_maxbytes = 10MB
+stdout_logfile_backups  = 3
+environment     = HOME="/home/beacon",USER="beacon"
+```
+
+Form defaults: `connection=redis`, `queue=default`, `sleep=3`, `tries=3`, `job_timeout=90`, `max_time=3600`, `stop_wait_secs=3600`, `numprocs=1`. `--max-time=3600` recycles workers hourly so a leaking app never OOMs the box; `stop_wait_secs > job_timeout` is enforced by the FormRequest. `user = beacon` is literal, not templated — the wrapper's content policy (§1.7) rejects anything else.
+
+### 3.e Supervisor — SSR daemon
+
+Supervisor's `environment=` is one line with awkward `%` escaping, so Beacon generates a **launcher script** instead. It is readable and editable by the developer, and `exec` guarantees signals reach Node rather than an `npm` wrapper.
+
+```bash
+#!/usr/bin/env bash
+# /home/beacon/.beacon/bin/example.com-server.sh — 0750 beacon:beacon
+set -euo pipefail
+umask 0002
+cd /home/beacon/example.com
+set -a; [ -f .env ] && . ./.env; set +a
+export PATH="/usr/local/node/v22/bin:$PATH"
+export NODE_ENV=production HOST=127.0.0.1 PORT=3001
+# exec → PID is preserved, Supervisor's SIGTERM reaches Node directly
+exec node_modules/.bin/next start -H "$HOST" -p "$PORT"   # Nuxt: exec node .output/server/index.mjs
+```
+
+```ini
+{{-- resources/views/supervisor/ssr.blade.php --}}
+[program:{{ $process->program_name }}]
+command         = {{ $process->command }}
+directory       = {{ $site->path }}
+user            = beacon
+numprocs        = 1
+autostart       = true
+autorestart     = true
+startsecs       = 10
+startretries    = 3
+stopasgroup     = true
+killasgroup     = true
+stopsignal      = SIGTERM
+stopwaitsecs    = 20
+redirect_stderr = true
+stdout_logfile  = /var/log/beacon/sites/{{ $site->name }}-ssr.log
+stdout_logfile_maxbytes = 10MB
+stdout_logfile_backups  = 3
+environment     = HOME="/home/beacon",USER="beacon"
+```
+
+### 3.f Cron: the managed block
+
+Beacon owns a delimited region of `beacon`'s crontab and rewrites it wholesale from the DB, preserving hand-written entries outside it. Written through `beacon-cron write` (root wrapper → `crontab -u beacon -`).
+
+```cron
+# >>> BEACON MANAGED BLOCK — generated {{ $timestamp }}. Do not edit between markers. <<<
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+* * * * * cd /home/beacon/example.com && /usr/bin/php8.3 artisan schedule:run >> /dev/null 2>&1
+0 3 * * * cd /home/beacon/example.com && /usr/bin/php8.3 artisan backup:run >> /var/log/beacon/sites/example.com-cron.log 2>&1
+# <<< END BEACON MANAGED BLOCK >>>
+```
+
+The panel's own scheduler runs in `beacon-panel`'s crontab, not `beacon`'s — a site can no longer see or touch it.
+
+### 3.g systemd OOM protection (audit §0.3)
+
+```ini
+# /etc/systemd/system/mysql.service.d/99-beacon-oom.conf   (same for redis-server, nginx, php8.3-fpm)
+[Service]
+OOMScoreAdjust=-500
+```
+
+Paired with `choom`-equivalent `oom_score_adj=750` on build subtrees (§1.9), the kernel's victim ordering becomes deterministic: **the build dies, the database survives.**
+
+---
+
+## 4. Core Service Classes & Command Execution Flow
+
+### 4.1 Namespace layout
+
+```
+app/
+├── Actions/Site/{CreateSite,DeleteSite,ChangePhpVersion,AttachDomain}.php
+├── Contracts/{OutputStream,SourceProvider}.php
+├── Jobs/{RunDeployment,RunSiteCommand,InstallPhpVersion,BackupDatabase,
+│          PollServerMetrics,PollRepositoryHeads}.php
+├── Services/
+│   ├── System/{ProcessRunner,SudoWrapper,SiteRunner,SiteFilesystem,ProcessResult}.php
+│   ├── Nginx/{NginxService,NginxTemplateRenderer,NginxErrorParser,PortAllocator}.php
+│   ├── Php/{PhpService,PhpExtensionService,PhpIniService,PhpPoolWriter}.php
+│   ├── Runtime/{NodeService,BunService,MemoryBudget}.php
+│   ├── Deployment/{DeploymentService,DeployScriptFactory,GitService}.php
+│   ├── Github/{GitHubAppClient,GitHubManifestFlow,DeploymentStatusReporter,
+│   │            WebhookReachability}.php
+│   ├── Supervisor/{SupervisorService,SupervisorTemplateRenderer,SupervisorStatusParser}.php
+│   ├── Ssl/{CertbotService,CertificateParser}.php
+│   ├── Cron/CronService.php
+│   ├── Database/{MySqlService,DatabaseBackupService,SqlIdentifier}.php
+│   └── Server/{ServerMetricsService,ServiceControlService,HealthCheckService}.php
+└── Support/OutputStream/{FileOutputStream,LogTail}.php
+```
+
+### 4.2 `ProcessRunner` — the one place commands are executed
+
+Three exits from the panel: **as itself**, **as root via a wrapper**, **as `beacon` via `beacon-run`**.
+
+```php
+<?php
+
+namespace App\Services\System;
+
+use App\Contracts\OutputStream;
+use Symfony\Component\Process\Exception\ProcessTimedOutException;
+use Symfony\Component\Process\Process;
+
+class ProcessRunner
+{
+    public const SITE_USER  = 'beacon';
+    public const PANEL_USER = 'beacon-panel';
+
+    /** @param list<string> $command  @param array<string,string> $env */
+    public function run(
+        array $command, ?string $cwd = null, array $env = [], int $timeout = 60,
+        ?string $input = null, ?OutputStream $stream = null,
+    ): ProcessResult {
+        $process = new Process($command, $cwd, $env + $this->baseEnv(), $input, $timeout);
+        $process->setIdleTimeout(null);
+        $startedAt = hrtime(true);
+
+        try {
+            $process->run($stream ? fn (string $t, string $c) => $stream->append($c) : null);
+        } catch (ProcessTimedOutException) {
+            return ProcessResult::timedOut($process, $this->elapsedMs($startedAt));
+        }
+
+        return ProcessResult::from($process, $this->elapsedMs($startedAt));
+    }
+
+    /**
+     * Invoke a ROOT wrapper. Config content travels on STDIN — never in argv.
+     * @param list<string> $args
+     */
+    public function sudoRoot(SudoWrapper $wrapper, array $args, ?string $stdin = null, int $timeout = 300): ProcessResult
+    {
+        return $this->run(['sudo', '-n', $wrapper->path(), ...$args], timeout: $timeout, input: $stdin);
+    }
+
+    /**
+     * Execute AS THE SITE USER. Runas target is `beacon` (unprivileged), the
+     * wrapper takes zero arguments, and the whole job spec goes over stdin —
+     * so there is no argv surface and no sudo env plumbing.
+     *
+     * @param list<string> $argv  @param array<string,string> $env
+     */
+    public function asSite(
+        array $argv, string $cwd, array $env = [], int $timeout = 120,
+        ?OutputStream $stream = null, bool $oomExpendable = false,
+    ): ProcessResult {
+        return $this->run(
+            command: ['sudo', '-n', '-u', self::SITE_USER, '/opt/beacon/bin/beacon-run'],
+            timeout: $timeout,
+            input: json_encode(compact('cwd', 'argv', 'env') + ['oom_expendable' => $oomExpendable],
+                               JSON_THROW_ON_ERROR),
+            stream: $stream,
+        );
+    }
+
+    /** @return array<string,string> */
+    private function baseEnv(): array
+    {
+        return ['HOME' => '/home/beacon-panel', 'USER' => self::PANEL_USER,
+                'PATH' => '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'];
+    }
+
+    private function elapsedMs(int|float $t): int { return (int) ((hrtime(true) - $t) / 1_000_000); }
+}
+```
+
+`SiteFilesystem` wraps `beacon-fs` for the panel's reads/writes inside `/home/beacon` (site `.env`, deploy scripts, Supervisor log tails) — canonicalised paths, prefix-checked, content on stdin.
+
+### 4.3 `PhpExtensionService` — the cPanel-style toggle
+
+Three states: **not installed** (offer `apt install`), **installed + disabled**, **installed + enabled**. The FPM restart is *debounced* so ten checkboxes restart FPM once.
+
+```php
+<?php
+
+namespace App\Services\Php;
+
+use App\Models\{PhpExtension, PhpVersion};
+use App\Services\System\{ProcessRunner, SudoWrapper};
+use Illuminate\Support\Facades\File;
+use RuntimeException;
+
+class PhpExtensionService
+{
+    /** Extensions Beacon will apt-install → package suffix. @var array<string,string> */
+    public const INSTALLABLE = [
+        'redis' => 'redis', 'imagick' => 'imagick', 'gd' => 'gd', 'bcmath' => 'bcmath',
+        'pdo_mysql' => 'mysql', 'pdo_pgsql' => 'pgsql', 'intl' => 'intl', 'zip' => 'zip',
+        'swoole' => 'swoole', 'mbstring' => 'mbstring', 'curl' => 'curl', 'xml' => 'xml',
+        'soap' => 'soap', 'sqlite3' => 'sqlite3', 'apcu' => 'apcu',
+        'memcached' => 'memcached', 'igbinary' => 'igbinary', 'xdebug' => 'xdebug',
+    ];
+
+    /** Never disableable — Laravel and the panel need these. */
+    public const LOCKED = ['json','openssl','mbstring','tokenizer','ctype','fileinfo','opcache'];
+
+    /** @var array<string,true> versions needing an FPM restart at request end */
+    private array $dirty = [];
+
+    public function __construct(private readonly ProcessRunner $runner) {}
+
+    /** Reconcile the DB with disk: mods-available = installed, fpm/conf.d symlink = enabled. */
+    public function sync(PhpVersion $version): void
+    {
+        $available = collect(File::glob("/etc/php/{$version->version}/mods-available/*.ini"))
+            ->map(fn (string $p) => basename($p, '.ini'))->values();
+
+        $enabled = collect(File::glob("/etc/php/{$version->version}/fpm/conf.d/*.ini"))
+            // conf.d entries carry a load priority prefix: "20-redis.ini"
+            ->map(fn (string $p) => preg_replace('/^\d+-/', '', basename($p, '.ini')))
+            ->filter()->flip();
+
+        foreach ($available->merge(array_keys(self::INSTALLABLE))->unique() as $name) {
+            $version->extensions()->updateOrCreate(['name' => $name], [
+                'label'        => $name,
+                'apt_package'  => isset(self::INSTALLABLE[$name])
+                    ? "php{$version->version}-".self::INSTALLABLE[$name] : null,
+                'is_installed' => $available->contains($name),
+                'is_enabled'   => $enabled->has($name),
+                'is_core'      => in_array($name, self::LOCKED, true),
+                'last_synced_at' => now(),
+            ]);
+        }
+    }
+
+    public function enable(PhpExtension $extension): void
+    {
+        $version = $extension->phpVersion;
+
+        if (! $extension->is_installed) {
+            $this->install($extension);          // apt-get install also enables it
+        } else {
+            // phpenmod -v 8.3 -s ALL redis → symlinks mods-available into every SAPI's conf.d
+            $result = $this->runner->sudoRoot(SudoWrapper::Php,
+                ['ext-enable', $version->version, $extension->name]);
+
+            if ($result->failed()) {
+                throw new RuntimeException(
+                    "Could not enable {$extension->name} on PHP {$version->version}: {$result->errorOutput()}");
+            }
+        }
+
+        $extension->update(['is_installed' => true, 'is_enabled' => true]);
+        $this->markDirty($version);
+    }
+
+    public function disable(PhpExtension $extension): void
+    {
+        if ($extension->is_core) {
+            throw new RuntimeException("{$extension->name} is required by Beacon and cannot be disabled.");
+        }
+
+        $result = $this->runner->sudoRoot(SudoWrapper::Php,
+            ['ext-disable', $extension->phpVersion->version, $extension->name]);
+
+        if ($result->failed()) {
+            throw new RuntimeException("Could not disable {$extension->name}: {$result->errorOutput()}");
+        }
+
+        $extension->update(['is_enabled' => false]);
+        $this->markDirty($extension->phpVersion);
+    }
+
+    private function install(PhpExtension $extension): void
+    {
+        if (! array_key_exists($extension->name, self::INSTALLABLE)) {
+            throw new RuntimeException("{$extension->name} is not an installable extension.");
+        }
+
+        // apt can be slow on a cold mirror — this runs inside a queued job, not a web request.
+        $result = $this->runner->sudoRoot(SudoWrapper::Package,
+            ['ext-install', $extension->phpVersion->version, $extension->name], timeout: 600);
+
+        if ($result->failed()) {
+            throw new RuntimeException(
+                "apt failed installing {$extension->apt_package}: {$result->combinedOutput()}");
+        }
+    }
+
+    /** Coalesce N toggles into one FPM restart, flushed after the response is sent. */
+    private function markDirty(PhpVersion $version): void
+    {
+        if (isset($this->dirty[$version->version])) {
+            return;
+        }
+
+        $this->dirty[$version->version] = true;
+
+        app()->terminating(function () use ($version): void {
+            // Pool + module changes need a full restart; reload does not re-read conf.d.
+            $this->runner->sudoRoot(SudoWrapper::Php, ['fpm-restart', $version->version], timeout: 120);
+            unset($this->dirty[$version->version]);
+        });
+    }
+}
+```
+
+### 4.4 `NginxService::saveRaw()` — the critical safety path
+
+```php
+public function saveRaw(Site $site, string $contents): void
+{
+    $result = $this->runner->sudoRoot(SudoWrapper::Nginx, ['write', $site->name], stdin: $contents);
+
+    // 65 = the wrapper already rolled the previous config back in
+    if ($result->exitCode() === 65) {
+        throw ValidationException::withMessages([
+            'contents' => NginxErrorParser::humanize($result->errorOutput()),
+        ]);
+    }
+
+    if ($result->failed()) {
+        throw new RuntimeException("nginx write failed: {$result->errorOutput()}");
+    }
+
+    $site->update(['nginx_customized' => true, 'nginx_managed_hash' => hash('sha256', $contents)]);
+    $this->reload();
+    activity()->on($site)->log('nginx.saved');
+}
+```
+
+`NginxErrorParser::humanize()` turns
+
+```
+nginx: [emerg] unknown directive "proxy_pas" in /etc/nginx/sites-available/example.com:34
+```
+
+into `{ line: 34, directive: 'proxy_pas', message: 'unknown directive' }`, which the React editor renders as an inline gutter marker on line 34 — the UI requirement from spec §6.
+
+### 4.5 `DeploymentService` — step-by-step execution
+
+```php
+public function run(Deployment $deployment): void
+{
+    $site = $deployment->site;
+
+    // One deploy per site. A push storm queues; it never interleaves.
+    $lock = Cache::lock("beacon:deploy:{$site->id}", self::SCRIPT_TIMEOUT + 60);
+
+    if (! $lock->get()) {
+        $deployment->update(['status' => 'cancelled', 'failed_step' => 'lock']);
+        return;
+    }
+
+    // The panel owns this file handle — no cross-user access on the 1s polling path
+    $stream = new FileOutputStream($deployment->log_path);   // /var/log/beacon/deployments/<uuid>.log
+
+    try {
+        $deployment->update(['status' => 'running', 'started_at' => now()]);
+        $site->update(['deployment_status' => 'running']);
+        $this->github->inProgress($deployment);
+
+        $this->step($stream, 'Fetching source',        fn () => $this->fetchSource($site, $deployment, $stream));
+        $this->step($stream, 'Running deploy script',  fn () => $this->runScript($site, $stream));
+        $this->step($stream, 'Normalising permissions',fn () => $this->fixPermissions($site, $stream));
+        $this->step($stream, 'Restarting processes',   fn () => $this->restartProcesses($site, $stream));
+
+        $this->finish($deployment, 'success', 0);
+        $this->github->success($deployment);
+    } catch (Throwable $e) {
+        $stream->append("\n\033[31m✖ {$e->getMessage()}\033[0m\n");
+        $this->finish($deployment, 'failed', $e->getCode() ?: 1);
+        $this->github->failure($deployment);
+    } finally {
+        $lock->release();
+    }
+}
+
+private function runScript(Site $site, OutputStream $stream): ProcessResult
+{
+    $this->files->write($site->deployScriptPath(), $site->deploy_script, 0700);   // via beacon-fs
+
+    // `bash -eo pipefail` → first failing line aborts; a pipeline failure is not
+    // swallowed by the last command's status.
+    // GNU timeout kills the whole process group; oomExpendable marks the build
+    // as the OOM killer's first victim so mysqld is never chosen (audit §0.3).
+    $result = $this->runner->asSite(
+        argv: ['/usr/bin/timeout', '--foreground', '--kill-after=10s', self::SCRIPT_TIMEOUT.'s',
+               '/bin/bash', '-eo', 'pipefail', $site->deployScriptPath()],
+        cwd: $site->path,
+        env: $this->deployEnvironment($site),
+        timeout: self::SCRIPT_TIMEOUT + 30,
+        stream: $stream,
+        oomExpendable: true,
+    );
+
+    if ($result->failed()) {
+        throw new DeploymentFailedException(
+            "Deployment script exited with code {$result->exitCode()}.", $result->exitCode() ?: 1);
+    }
+
+    return $result;
+}
+
+/** @return array<string,string> — injected into every deploy script (spec §2.5) */
+private function deployEnvironment(Site $site): array
+{
+    $node = $site->node_version
+        ? "/usr/local/node/v{$site->node_version}/bin"
+        : '/usr/local/node/default/bin';
+
+    return array_filter([
+        'BEACON_SITE'     => $site->name,
+        'BEACON_SITE_DIR' => $site->path,
+        'BEACON_BRANCH'   => (string) $site->repository_branch,
+        'BEACON_PHP'      => $site->php_version ? "/usr/bin/php{$site->php_version}" : null,
+        'BEACON_COMPOSER' => '/usr/local/bin/composer',
+        'BEACON_NODE'     => "{$node}/node",
+        'BEACON_NPM'      => "{$node}/npm",
+        'BEACON_NPX'      => "{$node}/npx",
+        'BEACON_BUN'      => '/usr/local/bun/default/bin/bun',
+        'BEACON_PM'       => $site->package_manager === 'bun'
+            ? '/usr/local/bun/default/bin/bun' : "{$node}/npm",
+        'BEACON_PORT'     => $site->proxy_port ? (string) $site->proxy_port : null,
+
+        // Cap V8's heap at ~65% of physical RAM. This is what actually prevents
+        // the OOM kill — swap only softens the landing (audit §0.3).
+        'NODE_OPTIONS'    => '--max-old-space-size='.MemoryBudget::nodeHeapMb(),
+
+        'PATH' => "{$node}:/usr/local/bun/default/bin:/usr/local/bin:/usr/bin:/bin",
+        'HOME' => '/home/beacon', 'USER' => 'beacon',
+        'CI' => 'true', 'NODE_ENV' => 'production',
+        'COMPOSER_HOME' => '/home/beacon/.composer',
+    ]);
+}
+```
+
+**Default deploy scripts** (`DeployScriptFactory`), seeded per type and fully editable:
+
+```bash
+# Laravel
+cd $BEACON_SITE_DIR
+$BEACON_COMPOSER install --no-interaction --prefer-dist --optimize-autoloader --no-dev
+[ -f package.json ] && { $BEACON_NPM ci || $BEACON_NPM install; $BEACON_NPM run build; }
+$BEACON_PHP artisan migrate --force
+$BEACON_PHP artisan storage:link || true
+$BEACON_PHP artisan optimize
+$BEACON_PHP artisan queue:restart
+```
+
+```bash
+# Next.js / Nuxt / Static — identical shape, differing only in build output
+cd $BEACON_SITE_DIR
+$BEACON_PM install --frozen-lockfile || $BEACON_PM install
+$BEACON_PM run build
+```
+
+### 4.6 Live output: the `OutputStream` contract (Reverb-ready)
+
+```php
+interface OutputStream {
+    public function append(string $chunk): void;
+    public function close(): void;
+}
+```
+
+- **`FileOutputStream`** — appends to `/var/log/beacon/{deployments,commands}/<uuid>.log`, written by the panel itself. Crash-safe, survives page reload.
+- **`LogTail::read($path, int $offset)`** → `['offset' => int, 'chunk' => string, 'eof' => bool]`.
+- **Polling** `GET /sites/{site}/deployments/{deployment}/log?offset=N` → `{ offset, chunk, status, duration_ms }`. React polls at 1 s while `status ∈ {queued, running}`.
+- **Reverb later**: a `BroadcastingOutputStream` decorator also fires `DeploymentOutputReceived`; the polling endpoint stays as the backfill path. **No UI change** — the terminal reconciles by byte offset.
+
+### 4.7 Web Console execution flow
+
+Per spec §7: from the site root, as `beacon`, hard 120 s cap.
+
+```php
+// App\Jobs\RunSiteCommand — queued, so a 2-minute command never occupies an FPM worker
+$result = $this->runner->asSite(
+    argv: ['/usr/bin/timeout', '--foreground', '--kill-after=5s', '120s',
+           '/bin/bash', '-lc', $this->command->command],
+    cwd: $site->path,                      // /home/beacon/example.com
+    env: $this->deployEnvironment($site),
+    timeout: 130,                          // Symfony backstop behind GNU timeout
+    stream: $stream,
+);
+
+$this->command->update([
+    'status' => match (true) {
+        $result->exitCode() === 124 => 'timed_out',   // GNU timeout's deadline code
+        $result->successful()       => 'success',
+        default                     => 'failed',
+    },
+    'exit_code' => $result->exitCode(),
+]);
+```
+
+Exit code `124` is how the UI distinguishes ⏱️ **Timed Out** from ❌ **Failed**.
+
+### 4.8 `ServerMetricsService` — no shelling out
+
+The spec suggests `top`/`free`/`df`. Parsing those is fragile across locales and slow (`top -bn1` sleeps). Reading `/proc` is exact, locale-proof and ~100× cheaper:
+
+| Metric | Source |
+|---|---|
+| CPU % | two reads of `/proc/stat` 200 ms apart → `1 − Δidle/Δtotal` |
+| RAM | `/proc/meminfo` → `MemTotal − MemAvailable` (`free` alone over-reports cache) |
+| Swap | `/proc/meminfo` `SwapTotal`/`SwapFree` |
+| Disk | `disk_free_space('/')` / `disk_total_space('/')` — pure PHP |
+| Uptime | `/proc/uptime` |
+| Load | `sys_getloadavg()` |
+| Service state | `systemctl show -p ActiveState,SubState,MainPID --value <unit>` — **no sudo** |
+
+Cached 2 s for the dashboard poll; `PollServerMetrics` writes a row every minute for sparklines. The panel's own pool must **not** set `open_basedir` or `disk_free_space` fails — enforced by `HealthCheckService`.
+
+### 4.9 GitHub: App-level webhooks + polling fallback (audit §0.4)
+
+```php
+class WebhookReachability
+{
+    /**
+     * A GitHub App has ONE webhook, configured at App level — not per repo.
+     * Rev 1 wrongly created per-repo hooks. Moving the panel to a domain later
+     * therefore means PATCHing the App's hook config, not touching any repo.
+     */
+    public function refresh(GithubInstallation $installation): void
+    {
+        $url = route('webhooks.github');                       // absolute, from APP_URL
+
+        if ($installation->webhook_url !== $url) {
+            $this->client->patchAppHookConfig($installation, ['url' => $url]);  // JWT-authed
+            $installation->update(['webhook_url' => $url]);
+        }
+
+        // Read GitHub's OWN record of delivery outcomes — never assume success
+        $deliveries = $this->client->listAppHookDeliveries($installation);
+        $latest     = $deliveries[0] ?? null;
+
+        $installation->update([
+            'webhook_reachable'    => $latest !== null && $latest['status_code'] < 400,
+            'last_delivery_at'     => $latest['delivered_at'] ?? null,
+            'last_delivery_status' => $latest['status_code'] ?? null,
+        ]);
+    }
+
+    /** Public HTTPS on a resolvable name — GitHub will not trust a self-signed :8443 cert. */
+    public function canReceiveWebhooks(Server $server): bool
+    {
+        return filled($server->panel_domain)
+            && $server->panel_url_public
+            && ! filter_var($server->panel_domain, FILTER_VALIDATE_IP);
+    }
+}
+```
+
+**UI behaviour — the feature is never silently broken and never removed:**
+
+| Panel state | Auto-Deploy control |
+|---|---|
+| Public domain + valid LE cert | **Push webhooks.** Deliveries panel shows real status codes + Redeliver |
+| IP / self-signed / behind NAT | **Poll mode**, selected automatically. Inline note: *"Auto-deploy is running in polling mode (checks every minute). Attach a panel domain for instant push deploys →"* |
+| Webhook configured but last delivery ≥ 400 | Amber banner with the actual status code, Redeliver button, and a one-click **Switch to polling** |
+
+```php
+// App\Jobs\PollRepositoryHeads — every minute, only for sites with deploy_trigger = 'poll'
+$sha = $this->git->remoteHead($site);          // git ls-remote <repo> refs/heads/<branch>
+
+if ($sha !== null && $sha !== $site->last_polled_sha) {
+    $site->update(['last_polled_sha' => $sha, 'last_polled_at' => now()]);
+
+    if ($site->auto_deploy && $site->last_polled_sha !== null) {   // skip the first observation
+        DeploymentService::queue($site, trigger: 'poll', sha: $sha);
+    }
+}
+```
+
+This also gives GitLab, Bitbucket and self-hosted Git full auto-deploy with **zero inbound ingress** — a capability Rev 1 did not have. `insecure_ssl` is never enabled on the App.
+
+Other GitHub pieces: `GitHubAppClient` (RS256 JWT → `POST /app/installations/{id}/access_tokens`, cached 50 min), `GitHubManifestFlow` (self-POSTing form to `https://github.com/settings/apps/new?state=…`, then `POST /app-manifests/{code}/conversions` — one click, no manual credential entry), `DeploymentStatusReporter` (Deployments + Commit Statuses ⏳/✅/❌ deep-linking back to Beacon's log page).
+
+`POST /webhooks/github` is stateless and session-free, guarded by `VerifyGitHubSignature` (`hash_equals('sha256='.hash_hmac('sha256', $raw, $secret), $header)`), filters by `repository.full_name`, records a `webhook_deliveries` row, and returns `202` in milliseconds.
+
+### 4.10 `MySqlService` — least-privilege admin (audit §0.5)
+
+```sql
+-- install.sh, run once as root over the unix socket.
+-- Deliberately NOT `GRANT ALL ON *.*`: that carries FILE, PROCESS, RELOAD,
+-- SHUTDOWN, SUPER and CREATE TABLESPACE, none of which Beacon needs.
+CREATE USER 'beacon_admin'@'localhost' IDENTIFIED BY '<generated-32-byte>';
+
+-- Static privileges. GRANT OPTION is mandatory: MySQL only lets you grant
+-- privileges you hold, and beacon_admin must pass these on to site DB users.
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, INDEX, ALTER, REFERENCES,
+      CREATE TEMPORARY TABLES, LOCK TABLES, EXECUTE, CREATE VIEW, SHOW VIEW,
+      CREATE ROUTINE, ALTER ROUTINE, EVENT, TRIGGER, SHOW DATABASES
+  ON *.* TO 'beacon_admin'@'localhost' WITH GRANT OPTION;
+
+-- CREATE USER also covers DROP USER, RENAME USER, ALTER USER and REVOKE ALL.
+-- BACKUP_ADMIN is REQUIRED: since 8.0.21, `mysqldump --single-transaction`
+-- issues LOCK INSTANCE FOR BACKUP. Without it every backup fails.
+GRANT CREATE USER, BACKUP_ADMIN ON *.* TO 'beacon_admin'@'localhost';
+
+-- NOT granted: FILE, PROCESS, RELOAD, SHUTDOWN, SUPER, CREATE TABLESPACE,
+-- REPLICATION SLAVE/CLIENT, and every *_ADMIN dynamic privilege.
+-- No FLUSH PRIVILEGES needed — MySQL 8 applies GRANT/REVOKE immediately.
+```
+
+```ini
+# /etc/mysql/mysql.conf.d/99-beacon.cnf
+bind-address     = 127.0.0.1     # never on the network; UFW never opens 3306
+secure_file_priv = NULL          # disables LOAD DATA INFILE / SELECT INTO OUTFILE outright
+local_infile     = OFF           # blocks the malicious-server client-file-read attack
+```
+
+Connection and query rules:
+
+- The panel connects **over the unix socket** (`/var/run/mysqld/mysqld.sock`) on a second Laravel connection (`mysql_admin`). The credential is unusable over TCP.
+- Site DB users are created as `'user'@'localhost'`, never `'%'`.
+- Site grants use `ON \`db\`.*` — `ALL` scoped to one database **cannot** include `FILE` (global-only) or `GRANT OPTION`, so it is safe by construction.
+- **Identifiers cannot be bound.** `SqlIdentifier::quote()` enforces `^[A-Za-z0-9_]{1,64}$` and wraps in backticks with internal backticks doubled. Passwords in `CREATE USER … IDENTIFIED BY` are **string literals**, which `PDO::quote()` escapes correctly against the connection charset.
+- Backups: `mysqldump --single-transaction --quick --no-tablespaces --routines --triggers` — `--no-tablespaces` is what keeps `PROCESS` off the required list.
+
+### 4.11 Swap & memory provisioning (audit §0.3)
+
+```bash
+# install.sh — idempotent, filesystem-aware
+ram_mb=$(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo)
+
+if [[ -z "$(swapon --show --noheadings)" && "$ram_mb" -lt 4096 ]]; then
+    swap_mb=$(( ram_mb * 2 )); (( swap_mb < 2048 )) && swap_mb=2048
+    (( swap_mb > 4096 )) && swap_mb=4096
+
+    avail_mb=$(df --output=avail -m / | tail -1)
+    if (( avail_mb > swap_mb + 5120 )); then          # keep 5 GB headroom
+        fstype=$(findmnt -no FSTYPE /)
+        if [[ "$fstype" == "btrfs" ]]; then
+            truncate -s 0 /swapfile && chattr +C /swapfile   # btrfs swap requires nodatacow
+        fi
+        fallocate -l "${swap_mb}M" /swapfile 2>/dev/null \
+            || dd if=/dev/zero of=/swapfile bs=1M count="$swap_mb" status=none
+        chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile
+        grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw,nofail 0 0' >> /etc/fstab
+        printf 'vm.swappiness=10\nvm.vfs_cache_pressure=50\n' > /etc/sysctl.d/99-beacon.conf
+        sysctl -q --system
+    else
+        echo "WARN: not enough free disk for a ${swap_mb}MB swapfile — skipping" >&2
+    fi
+fi
+
+# Critical services become the LAST OOM victims (builds become the first, §1.9)
+for unit in mysql redis-server nginx php8.3-fpm; do
+    install -d "/etc/systemd/system/${unit}.service.d"
+    printf '[Service]\nOOMScoreAdjust=-500\n' > "/etc/systemd/system/${unit}.service.d/99-beacon-oom.conf"
+done
+systemctl daemon-reload
+```
+
+`MemoryBudget::nodeHeapMb()` returns `max(512, floor(MemTotalMb × 0.65))`, feeding `NODE_OPTIONS`. The site create/deploy UI warns when a Next.js/Nuxt build is attempted with less than 2 GB of RAM + swap combined.
+
+### 4.12 Other services in brief
+
+- **`CertbotService`** — `certonly --webroot -w /var/www/beacon-acme --agree-tos -n -m <email> --cert-name <primary> -d …`; parses `certbot certificates`; installs `/etc/letsencrypt/renewal-hooks/deploy/beacon.sh` → `systemctl reload nginx`. A daily job re-syncs `expires_at` and warns under 14 days.
+- **`SupervisorService`** — render → `beacon-supervisor write` (stdin, content-validated) → `reread-update` → `start`. `status()` parses `supervisorctl status`.
+- **`CronService::sync()`** — regenerates the managed block from `cron_jobs`, writes via `beacon-cron write`, preserving lines outside the markers.
+- **`HealthCheckService`** — asserts wrapper ownership/mode, sudoers presence, **that `beacon` has no sudoers entry**, that `/opt/beacon/panel/current` is root-owned, Redis reachability, swap presence on small hosts, and disk headroom. Any failure raises a red banner.
+
+---
+
+## 5. Step-by-Step Development Roadmap
+
+Each phase ends **shippable and tested**: `composer test` (Pint → PHPStan 7 → PHPUnit) and `npm run lint:check && npm run types:check` green.
+
+### Phase 0 — Foundations
+
+1. Rebrand: `APP_NAME=Beacon`, `config/beacon.php` (paths, port range, allowed units, PHP versions, OS users), logo/favicon.
+2. **Lock down auth**: disable Fortify registration, remove the register route/page, add `php artisan beacon:create-admin`.
+3. `AppServiceProvider`: SQLite WAL/`busy_timeout`/`foreign_keys`; `Model::shouldBeStrict()`.
+4. `ProcessRunner` (all three execution modes), `ProcessResult`, `SudoWrapper`, `SiteFilesystem` + unit tests against a fake process factory.
+5. `OutputStream`, `FileOutputStream`, `LogTail`.
+6. Activity log: migration, `LogsActivity` trait, `activity()` helper.
+7. All migrations + models + factories from §2 in one pass.
+8. Shell: Beacon IA in `app-sidebar.tsx` (Dashboard · Sites · Databases · PHP · Runtimes · Services · Activity · Settings); `resources/js/layouts/site/layout.tsx` per-site tabs registered in `app.tsx`'s `layout()` switch beside the existing `settings/` case.
+9. Shared UI: `<Terminal>` (ANSI, offset polling), `<CodeEditor>` (CodeMirror 6 — nginx/bash/ini/dotenv), `<StatusBadge>`, `<MetricCard>`, `<ConfirmDialog>`.
+
+### Phase 1 — Installer, security substrate & Server Dashboard
+
+1. **Wrappers first** — all ten scripts in `bin/wrappers/`, `bin/sudoers/beacon-panel`, with shellcheck + `visudo -cf` + a fuzz suite in CI before anything calls them.
+2. `install.sh` (idempotent, `set -euo pipefail`, tee'd to `/var/log/beacon-install.log`, `--domain`/`--email`/`--no-mysql`):
+   preflight → base packages → **`beacon` + `beacon-panel` users** → **swap + OOM drop-ins (§4.11)** → `ppa:ondrej/php` → PHP 8.1–8.4 → Composer → Nginx + `beacon-global.conf` → MySQL 8 + hardening cnf + **least-privilege `beacon_admin` (§4.10)** → Redis → Supervisor → Certbot → Node/Bun to `/usr/local` → **panel into `/opt/beacon/panel/releases/…` + `current` symlink + `shared/`** → wrappers + `visudo -cf` + sudoers → panel vhost/pool/worker/scheduler cron → UFW → LE cert if `--domain` → admin user → print URL.
+3. `ServerMetricsService` + `/api/server/metrics` + dashboard cards (CPU, RAM, Swap, Disk, Uptime), 5 s polling, 24 h sparklines.
+4. `ServiceControlService` + Services widget (status pills + 1-click restart).
+5. `PhpService::sync()`; PHP versions list (read-only for now).
+6. `HealthCheckService` + degraded-install banner.
+
+**Done when:** a fresh 24.04 droplet goes from `curl … | sudo bash` to HTTPS login in one command; `sudo -l -U beacon` prints **nothing**.
+
+### Phase 2 — Sites, Domains, Nginx & SSL
+
+1. `CreateSite`: validate name → `install -d -m 2750` → per-site `storage/{tmp,sessions}` → allocate `proxy_port` → write FPM pool (with `open_basedir` + per-site tmp/session) → render + write vhost → enable → reload → seed deploy script → primary `site_domains` row.
+2. `NginxService` + renderer + the three templates + `NginxErrorParser` + `http2Directive()`.
+3. Sites index + create wizard.
+4. **Domains** tab: aliases, primary radio, `www` ↔ apex redirects, optional wildcard auto-assign.
+5. `CertbotService`, 1-click issuance, status badges, expiry countdown, renewal hook, daily sync job.
+6. **Nginx** tab: raw editor, save → `nginx -t` → inline gutter error, **Reset to generated**, `nginx_customized` banner.
+7. **Isolation** tab: `open_basedir` toggle, extra allowed paths, strict-functions profile, each with an inline explanation of what it does and does not protect.
+8. `DeleteSite` with typed confirmation.
+
+**Done when:** Laravel, Next.js and static sites all serve over HTTPS; breaking the Nginx config in the editor is rejected with the exact line number **while Nginx keeps serving**; `site-a` cannot `file_get_contents` `site-b`'s `.env`.
+
+### Phase 3 — Deployments, Git & GitHub
+
+1. `GitService` (clone/fetch/reset via `beacon-run`, `GIT_ASKPASS` + env-passed token, `GIT_SSH_COMMAND` for deploy keys, `remoteHead()`).
+2. `DeploymentService` + `RunDeployment` + `DeployScriptFactory` + deploy-script editor with an env-var reference panel.
+3. Deployment history + `<Terminal>` live log; status/duration/commit chips.
+4. `GitHubManifestFlow` + `GitHubAppClient` + installation callback.
+5. Repo/branch pickers (searchable, paginated).
+6. **App-level** webhook + HMAC middleware + `webhook_deliveries` + Deliveries panel + Redeliver.
+7. **`PollRepositoryHeads` fallback** + automatic `deploy_trigger` selection + the reachability UI states (§4.9).
+8. `DeploymentStatusReporter` → Deployments + Commit Statuses.
+9. Custom-Git fallback: `ed25519` deploy key + copy button; polling works here with no webhook at all.
+
+**Done when:** `git push` deploys via webhook on a domain install **and** via polling on an IP install; GitHub shows a green check linking back to Beacon.
+
+### Phase 4 — Runtime managers & operational tools
+
+1. **PHP version manager**: install/remove 8.1–8.4 via queued job with live log; server default; per-site switch.
+2. **Extension manager** (§4.3) + cPanel-style grid, search, three-state chips, bulk apply, debounced restart.
+3. **`php.ini` Quick Config**: per-version `99-beacon.ini` + per-site pool overrides, with a "which value wins" explainer.
+4. **Node & Bun manager** + per-site selector + package-manager toggle.
+5. **Supervisor**: queue-worker preset, custom daemons, SSR launcher generation, start/stop/restart, log viewer.
+6. **Cron**: scheduler toggle, presets + custom expression with a human-readable preview.
+7. **Databases**: create DB/user, privileges, connection-string card, 1-click `.sql.gz` backup + signed download.
+8. **Web Console**: `RunSiteCommand`, type-aware presets, 120 s cap with the `124` distinction, history.
+9. **`.env` editor**: CodeMirror dotenv, `0640` via `beacon-fs`, snapshots, restore, auto-restart of workers/SSR on save.
+
+### Phase 5 — Self-update, hardening, tests, docs
+
+1. `beacon-update` (§1.8) + a **Panel Updates** settings screen: current version, changelog, 1-click update with live log, rollback button.
+2. Feature tests for every destructive path with a **faked `ProcessRunner`** (assert exact argv + stdin; CI never touches a real binary).
+3. Authorization: single-admin gate; `RequirePassword` on Console, `.env` editor, Nginx editor; rate limits on deploy/console.
+4. **Security regression suite** (§ Verification) run in CI on a disposable VM.
+5. Ops: log rotation for `/var/log/beacon`, pruning for metrics/deployments/commands/deliveries, `beacon:doctor`, `beacon:backup` for SQLite + `.env`.
+6. Docs: install, backup/restore (including "losing `APP_KEY` means re-entering DB passwords and the GitHub key"), the security model, and the per-site-user v2 path.
+
+### Phase 6 (v2, out of scope) — per-site UNIX users
+
+Closes the residual site↔site gap in §0.2. `sites.system_user` already exists, so the migration is additive: create `site_<hash>` users, add each to `www-data`, re-`chown` the tree, rewrite pools/Supervisor/cron with the new `run_as`, and extend `beacon-run`'s runas allow-list.
+
+---
+
+## Critical files
+
+| Path | What it is |
+|---|---|
+| `install.sh` | 1-line installer (new, repo root) |
+| `bin/wrappers/beacon-{nginx,php,supervisor,certbot,service,pkg,cron,update}` | Root wrappers → `/opt/beacon/bin` |
+| `bin/wrappers/beacon-{run,fs}` | **Unprivileged** `sudo -u beacon` wrappers (new in Rev 2) |
+| `bin/sudoers/beacon-panel` | → `/etc/sudoers.d/beacon-panel`; **no `beacon` entry** |
+| `app/Services/System/ProcessRunner.php` | Single choke point: self / root-wrapper / as-site |
+| `app/Services/Nginx/NginxService.php` | Generate / validate / save / reload vhosts |
+| `app/Services/Php/PhpExtensionService.php` | cPanel-style extension toggling |
+| `app/Services/Deployment/DeploymentService.php` | Step pipeline + live log + GitHub statuses |
+| `app/Services/Github/WebhookReachability.php` | Webhook-vs-polling decision + delivery truth |
+| `app/Services/Database/MySqlService.php` | Least-privilege DDL + identifier quoting |
+| `resources/views/nginx/{laravel,proxy,static}.blade.php` | vhost templates |
+| `resources/views/supervisor/{queue-worker,ssr}.blade.php` | Supervisor templates |
+| `resources/js/components/{terminal,code-editor}.tsx` | Shared ANSI terminal + CodeMirror 6 |
+
+**Reuse, do not rebuild** — already in the starter kit:
+
+- `resources/js/components/ui/*` (shadcn: card, badge, dialog, select, checkbox, sheet, sidebar, sonner) — the whole Beacon UI is built from these.
+- `resources/js/layouts/settings/layout.tsx` — copy this shape for the per-site tab layout; register in `resources/js/app.tsx:14`.
+- `Inertia::flash('toast', …)` + `use-flash-toast.ts` — see `app/Http/Controllers/Settings/ProfileController.php:37`.
+- Wayfinder — name every route; never hand-write URL strings.
+- `Component.layout = { breadcrumbs: [...] }` from `resources/js/pages/dashboard.tsx:40`.
+- The `/up` health endpoint already registered at `bootstrap/app.php:16` — reused as `beacon-update`'s rollback gate.
+- Fortify 2FA + passkeys; `app/Http/Requests/**` and `app/Concerns/*ValidationRules.php` patterns.
+
+---
+
+## Verification
+
+**CI (no root, any machine):**
+```bash
+composer test          # config:clear → pint --test → phpstan level 7 → phpunit
+npm run lint:check && npm run types:check
+shellcheck install.sh bin/wrappers/*
+visudo -cf bin/sudoers/beacon-panel
+```
+Service tests bind a fake `ProcessRunner` and assert the **exact argv and stdin** for each wrapper, plus snapshot tests for the three vhosts and two Supervisor configs. Nothing in CI touches a real system binary.
+
+**Integration (disposable Ubuntu 24.04 VM) — the real gate:**
+
+1. `curl -fsSL …/install.sh | sudo bash -s -- --domain beacon.test --email me@example.com` → HTTPS login.
+2. Dashboard shows non-zero CPU/RAM/Swap/Disk/uptime; restart Nginx from the widget and confirm a new start time.
+3. Create a Laravel site → `stat -c '%U:%G %a' /home/beacon/example.com` is `beacon:www-data 2750`; `ls -l /run/php/*.sock` is `beacon-panel:www-data 0660`.
+4. GitHub manifest wizard → pick repo/branch → deploy → live terminal → ✅ on the commit.
+5. `git push` auto-deploys within seconds.
+6. **Nginx safety:** type `proxy_pas` in the raw editor and save → rejected with the exact line number, **and `curl https://example.com` still returns 200**.
+7. Toggle `imagick` on 8.3 → visible in `php8.3 -m` and `phpinfo()`; exactly **one** FPM restart in `journalctl`.
+8. Queue worker → `supervisorctl status` RUNNING; `ps -o user= -C php | sort -u` prints only `beacon` and `beacon-panel`.
+9. Console: `sleep 300` → ⏱️ at ~120 s, exit 124; `whoami` → `beacon`; `pwd` → `/home/beacon/example.com`.
+10. Next.js site → 200 through the proxy; `ss -ltnp` shows node on `127.0.0.1:3001` only, **not** `0.0.0.0`.
+11. DB + user + connection string + `.sql.gz` backup + download.
+
+**Security regression suite (audit §0.1–0.5) — must all pass:**
+
+12. `sudo -l -U beacon` prints **nothing**. As `beacon`: `sudo -n /opt/beacon/bin/beacon-nginx reload` is denied.
+13. As `beacon`: `cat /opt/beacon/panel/shared/.env` → **Permission denied**. `echo x >> /opt/beacon/panel/current/artisan` → **Permission denied**.
+14. As `beacon-panel`: `sudo /opt/beacon/bin/beacon-nginx delete beacon-panel` → refused; `… write '../../etc/passwd'` → exit 64; a Supervisor config containing `user=root` → refused (§1.7).
+15. **Cross-site:** a PHP page on `site-a` calling `file_get_contents('/home/beacon/site-b/.env')` → blocked by `open_basedir`. Confirm the documented caveat too: with strict-functions **off**, `shell_exec('cat …')` **does** succeed — this must be a *known, documented* result, not a surprise.
+16. **CLI unaffected:** `composer install` and `npm run build` succeed on a site with `open_basedir` enabled (proves the FPM/CLI ini split).
+17. Two sites, both with file sessions → confirm distinct `session.save_path` directories and no cross-readable session files.
+18. **Swap:** on a 1 GB VM, `swapon --show` is non-empty; a Next.js build completes; `journalctl -k | grep -i 'killed process'` shows no `mysqld` kill.
+19. **Self-update:** `beacon:update` → new release promoted, `current` re-pointed, `/up` green, previous release retained; then deliberately break a release and confirm **automatic rollback** with the panel still serving.
+20. **MySQL:** `SHOW GRANTS FOR 'beacon_admin'@'localhost'` contains no `FILE`, `PROCESS`, `RELOAD`, `SUPER` or `SHUTDOWN`; `SELECT 1 INTO OUTFILE '/tmp/x'` fails; a backup **succeeds** (proving `BACKUP_ADMIN` is present).
+21. **Webhook fallback:** reinstall with no domain → the UI reports poll mode; `git push` still deploys within ~60 s; attach a domain → `PATCH /app/hook/config` fires and the mode flips to webhook.
