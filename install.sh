@@ -18,7 +18,7 @@ PANEL_SHARED="${PANEL_ROOT}/shared"
 PANEL_CURRENT="${PANEL_ROOT}/current"
 PANEL_USER="beacon-panel"
 PANEL_PHP="${BEACON_PANEL_PHP_VERSION:-8.4}"
-PANEL_REPO="${BEACON_PANEL_REPO:-https://github.com/beacon-org/beacon.git}"
+PANEL_REPO="${BEACON_PANEL_REPO:-https://github.com/torgodly/beacon.git}"
 LOG="/var/log/beacon-install.log"
 BEACON_PHP_VERSIONS=(8.1 8.2 8.3 8.4)
 BEACON_NODE_MAJORS=(20 22 24)
@@ -380,10 +380,53 @@ exec > >(tee -a "$LOG") 2>&1
 echo "==> Beacon install started $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "==> Plan: domain='${DOMAIN:-none}' php='${BEACON_PHP_VERSIONS[*]}' node='${BEACON_DEFAULT_NODE_MAJOR}' mysql=$(( 1 - SKIP_MYSQL ))"
 
+# Did the operator upload the repo and run install.sh from inside it?
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
 if [[ -z "$SCRIPT_DIR" || "$SCRIPT_DIR" == "/" || ! -f "${SCRIPT_DIR}/artisan" ]]; then
     SCRIPT_DIR=""
 fi
+
+# ── Fetch our own source when piped ──────────────────────────────────
+# `curl … | sudo bash` gives the shell a script on stdin and nothing else, so
+# SCRIPT_DIR is empty and every file the installer needs from the repo — the
+# sudo wrappers, the sudoers policy, the panel .env template, the nginx and
+# MySQL drop-ins — is missing. Clone the repo once, up front, and carry on as
+# if the operator had uploaded it.
+BEACON_SRC_TMP=""
+cleanup_src_tmp() {
+    [[ -n "$BEACON_SRC_TMP" && -d "$BEACON_SRC_TMP" ]] && rm -rf "$BEACON_SRC_TMP"
+    return 0
+}
+trap cleanup_src_tmp EXIT
+
+if [[ -z "$SCRIPT_DIR" ]]; then
+    echo "==> No local source tree — fetching ${PANEL_REPO}"
+
+    if ! command -v git >/dev/null 2>&1; then
+        DEBIAN_FRONTEND=noninteractive apt-get update -qq || true
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates
+    fi
+
+    BEACON_SRC_TMP="$(mktemp -d /tmp/beacon-src.XXXXXX)"
+
+    # No --branch unless one was asked for: the repo's default branch may be
+    # master or main, and guessing wrong fails the clone outright.
+    if [[ -n "$REF" ]]; then
+        git clone --depth 1 --branch "$REF" "$PANEL_REPO" "$BEACON_SRC_TMP"
+    else
+        git clone --depth 1 "$PANEL_REPO" "$BEACON_SRC_TMP"
+    fi
+
+    if [[ ! -f "${BEACON_SRC_TMP}/artisan" ]]; then
+        echo "ERROR: ${PANEL_REPO} does not look like a Beacon checkout (no artisan)." >&2
+        echo "       Pass --repo URL, or upload the source and run install.sh from inside it." >&2
+        exit 1
+    fi
+
+    SCRIPT_DIR="$BEACON_SRC_TMP"
+    echo "    Source ready at ${SCRIPT_DIR} ($(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown))"
+fi
+
 
 # ── Users ─────────────────────────────────────────────────────────────
 if ! id beacon &>/dev/null; then
@@ -566,9 +609,14 @@ bootstrap_panel() {
             --exclude '.env' \
             "${SCRIPT_DIR}/" "${rel}/"
     else
-        tag="${REF:-main}"
-        echo "    Cloning ${PANEL_REPO} @ ${tag}"
-        runuser -u "$PANEL_USER" -- git clone --depth 1 --branch "$tag" "$PANEL_REPO" "$rel"
+        # Reached only if the source vanished between the fetch and here.
+        # No --branch unless asked: the default branch may be master or main.
+        echo "    Cloning ${PANEL_REPO}${REF:+ @ ${REF}}"
+        if [[ -n "$REF" ]]; then
+            runuser -u "$PANEL_USER" -- git clone --depth 1 --branch "$REF" "$PANEL_REPO" "$rel"
+        else
+            runuser -u "$PANEL_USER" -- git clone --depth 1 "$PANEL_REPO" "$rel"
+        fi
     fi
 
     runuser -u "$PANEL_USER" -- composer install -d "$rel" --no-dev --no-interaction \
@@ -1011,13 +1059,20 @@ if ! command -v composer >/dev/null 2>&1; then
     curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 fi
 
+# ── Panel layout + release ──────────────────────────────────────────
+# MySQL is configured *after* the panel, not before: configure_mysql writes
+# BEACON_MYSQL_PASSWORD into the panel's .env, and that file is created by
+# bootstrap_panel. Run in the old order and the write is silently skipped on a
+# first install, leaving the panel with no database credentials.
+if [[ "$SKIP_PANEL" -eq 0 ]]; then
+    bootstrap_panel
+fi
+
 if [[ "$SKIP_MYSQL" -eq 0 ]]; then
     configure_mysql
 fi
 
-# ── Panel layout + release ──────────────────────────────────────────
 if [[ "$SKIP_PANEL" -eq 0 ]]; then
-    bootstrap_panel
     configure_panel_runtime
     configure_ufw
     if [[ -n "$DOMAIN" ]]; then
