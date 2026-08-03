@@ -579,6 +579,42 @@ configure_nginx_catch_all() {
     rm -f /etc/nginx/sites-enabled/default
 }
 
+# Run a command as the panel user, from a directory it can actually enter.
+#
+# runuser keeps the caller's working directory. The installer runs from root's
+# shell — usually /root, which is mode 0700 — so a child dropped to
+# beacon-panel cannot stat its own cwd, and the first getcwd()/chdir() it
+# attempts dies with "chdir(): Permission denied (errno 13)". Composer does
+# exactly that on startup.
+# runuser also *preserves* the caller's environment, so HOME stays /root.
+# npm would then write its cache to /root/.npm and Composer to /root/.composer,
+# both unreadable to beacon-panel. Pin HOME and the cache locations explicitly.
+panel_run() {
+    local workdir="$1"
+    shift
+    ( cd "$workdir" && runuser -u "$PANEL_USER" -- env \
+        HOME="/home/${PANEL_USER}" \
+        USER="$PANEL_USER" \
+        COMPOSER_HOME="/home/${PANEL_USER}/.composer" \
+        COMPOSER_ALLOW_SUPERUSER=0 \
+        NPM_CONFIG_CACHE="/home/${PANEL_USER}/.npm" \
+        NPM_CONFIG_UPDATE_NOTIFIER=false \
+        NODE_OPTIONS="--max-old-space-size=$(panel_node_heap_mb)" \
+        CI=true \
+        PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+        "$@" )
+}
+
+# Cap V8 so the panel's own Vite build cannot OOM a small VPS.
+panel_node_heap_mb() {
+    local ram
+    ram=$(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 2048)
+    local heap=$(( ram * 65 / 100 ))
+    (( heap < 512 )) && heap=512
+    (( heap > 4096 )) && heap=4096
+    printf '%s' "$heap"
+}
+
 bootstrap_panel() {
     echo "==> Bootstrapping panel under ${PANEL_ROOT}"
 
@@ -608,29 +644,36 @@ bootstrap_panel() {
             --exclude 'bootstrap/cache' \
             --exclude '.env' \
             "${SCRIPT_DIR}/" "${rel}/"
+
+        # `rsync -a` implies -o -g, so as root it stamps the copy with the
+        # source's ownership (root:root). Composer and npm then cannot create
+        # vendor/, node_modules/ or public/build inside their own release
+        # directory. Hand the tree back to the panel user for the build; it is
+        # re-frozen to root:beacon-panel once the build finishes.
+        chown -R "$PANEL_USER:$PANEL_USER" "$rel"
     else
         # Reached only if the source vanished between the fetch and here.
         # No --branch unless asked: the default branch may be master or main.
         echo "    Cloning ${PANEL_REPO}${REF:+ @ ${REF}}"
         if [[ -n "$REF" ]]; then
-            runuser -u "$PANEL_USER" -- git clone --depth 1 --branch "$REF" "$PANEL_REPO" "$rel"
+            panel_run "$rel" git clone --depth 1 --branch "$REF" "$PANEL_REPO" "$rel"
         else
-            runuser -u "$PANEL_USER" -- git clone --depth 1 "$PANEL_REPO" "$rel"
+            panel_run "$rel" git clone --depth 1 "$PANEL_REPO" "$rel"
         fi
     fi
 
-    runuser -u "$PANEL_USER" -- composer install -d "$rel" --no-dev --no-interaction \
+    panel_run "$rel" composer install -d "$rel" --no-dev --no-interaction \
         --prefer-dist --optimize-autoloader
-    runuser -u "$PANEL_USER" -- npm --prefix "$rel" ci
-    runuser -u "$PANEL_USER" -- npm --prefix "$rel" run build
+    panel_run "$rel" npm --prefix "$rel" ci
+    panel_run "$rel" npm --prefix "$rel" run build
 
     rm -rf "$rel/storage" "$rel/bootstrap/cache"
     ln -sfn "${PANEL_SHARED}/.env" "${rel}/.env"
     ln -sfn "${PANEL_SHARED}/storage" "${rel}/storage"
     ln -sfn "${PANEL_SHARED}/bootstrap-cache" "${rel}/bootstrap/cache"
 
-    runuser -u "$PANEL_USER" -- php "$rel/artisan" migrate --force --no-interaction
-    runuser -u "$PANEL_USER" -- php "$rel/artisan" optimize
+    panel_run "$rel" php "$rel/artisan" migrate --force --no-interaction
+    panel_run "$rel" php "$rel/artisan" optimize
 
     chown -R root:"$PANEL_USER" "$rel"
     chmod -R go-w "$rel"
@@ -1031,7 +1074,7 @@ maybe_create_admin() {
     local name="${ADMIN_NAME:-Beacon Admin}"
     echo "==> Creating administrator ${ADMIN_EMAIL}"
 
-    runuser -u "$PANEL_USER" -- php "${PANEL_CURRENT}/artisan" beacon:create-admin \
+    panel_run "$PANEL_CURRENT" php "${PANEL_CURRENT}/artisan" beacon:create-admin \
         --name="$name" \
         --email="$ADMIN_EMAIL" \
         --password="$ADMIN_PASSWORD" \

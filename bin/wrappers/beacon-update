@@ -46,6 +46,30 @@ prune_releases() {
     done < <(ls -1dt "${ROOT}"/releases/*/ 2>/dev/null || true)
 }
 
+# Run a command as the panel user, from a directory it can actually enter.
+#
+# runuser keeps the caller's working directory. This wrapper is invoked over
+# sudo from the panel, so the inherited cwd is whatever the panel process had
+# — frequently unreadable to beacon-panel. Composer calls getcwd()/chdir() on
+# startup and dies with "chdir(): Permission denied (errno 13)".
+# runuser also *preserves* the caller's environment, so HOME stays whatever
+# the panel had. npm would write its cache to an unreadable directory and
+# Composer likewise. Pin HOME and the cache locations explicitly.
+panel_run() {
+    local workdir="$1"
+    shift
+    ( cd "$workdir" && runuser -u "$PANEL_USER" -- env \
+        HOME="/home/${PANEL_USER}" \
+        USER="$PANEL_USER" \
+        COMPOSER_HOME="/home/${PANEL_USER}/.composer" \
+        COMPOSER_ALLOW_SUPERUSER=0 \
+        NPM_CONFIG_CACHE="/home/${PANEL_USER}/.npm" \
+        NPM_CONFIG_UPDATE_NOTIFIER=false \
+        CI=true \
+        PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+        "$@" )
+}
+
 action="${1:-deploy}"; shift || true
 
 case "$action" in
@@ -60,21 +84,21 @@ case "$action" in
         fi
 
         install -d -o "$PANEL_USER" -g "$PANEL_USER" -m 0755 "$rel"
-        runuser -u "$PANEL_USER" -- git clone --depth 1 --branch "$ref" "$REPO" "$rel"
-        runuser -u "$PANEL_USER" -- git -C "$rel" verify-tag "$ref" 2>/dev/null \
+        panel_run "$rel" git clone --depth 1 --branch "$ref" "$REPO" "$rel"
+        panel_run "$rel" git -C "$rel" verify-tag "$ref" 2>/dev/null \
             || printf 'beacon-update: WARN: unsigned tag %s\n' "$ref" >&2
-        runuser -u "$PANEL_USER" -- composer install -d "$rel" --no-dev --no-interaction \
+        panel_run "$rel" composer install -d "$rel" --no-dev --no-interaction \
             --prefer-dist --optimize-autoloader
-        runuser -u "$PANEL_USER" -- npm --prefix "$rel" ci
-        runuser -u "$PANEL_USER" -- npm --prefix "$rel" run build
+        panel_run "$rel" npm --prefix "$rel" ci
+        panel_run "$rel" npm --prefix "$rel" run build
 
         rm -rf "$rel/storage" "$rel/bootstrap/cache"
         ln -sfn "${SHARED}/.env" "${rel}/.env"
         ln -sfn "${SHARED}/storage" "${rel}/storage"
         ln -sfn "${SHARED}/bootstrap-cache" "${rel}/bootstrap/cache"
 
-        runuser -u "$PANEL_USER" -- php "$rel/artisan" migrate --force
-        runuser -u "$PANEL_USER" -- php "$rel/artisan" optimize
+        panel_run "$rel" php "$rel/artisan" migrate --force
+        panel_run "$rel" php "$rel/artisan" optimize
 
         chown -R root:"$PANEL_USER" "$rel"
         chmod -R go-w "$rel"
