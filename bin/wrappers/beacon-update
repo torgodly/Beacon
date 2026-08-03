@@ -106,8 +106,13 @@ case "$action" in
         panel_run "$rel" php "$rel/artisan" migrate --force
         panel_run "$rel" php "$rel/artisan" optimize
 
+        # Root-owned so a panel compromise cannot rewrite its own source, but
+        # readable by all: php-fpm runs as beacon-panel and nginx serves
+        # public/ as www-data, and neither owns the tree. Without a+rX a
+        # restrictive umask during the clone leaves both locked out and the
+        # panel answers "File not found." Secrets live in shared/.env (0640).
         chown -R root:"$PANEL_USER" "$rel"
-        chmod -R go-w "$rel"
+        chmod -R a+rX,go-w "$rel"
 
         promote_release "$rel"
         restart_runtime

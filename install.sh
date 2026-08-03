@@ -659,6 +659,30 @@ panel_node_heap_mb() {
     printf '%s' "$heap"
 }
 
+# Freeze a release: root-owned, nobody but root may write, everybody may read.
+#
+# Root-owned code is the point — a panel compromise cannot rewrite its own
+# source. But it must stay READABLE: php-fpm runs the panel as beacon-panel
+# and nginx serves public/ as www-data, and neither is the owner.
+#
+# This matters because root's umask on many VPS images is 077, so the git
+# clone lands at 0600/0700. The chown to root:beacon-panel then leaves the
+# group with no read bit at all, which surfaces as
+#   Could not open input file: /opt/beacon/panel/current/artisan
+# and a bare "File not found." from PHP-FPM in the browser.
+#
+# The application code is not secret. The secrets live in shared/.env, which
+# is a symlink to a 0640 root:beacon-panel file and is unaffected by this.
+harden_release() {
+    local rel="$1"
+    [[ -d "$rel" ]] || return 0
+
+    chown -R root:"$PANEL_USER" "$rel"
+    # a+rX: read for all, traverse for directories (and keep existing +x on
+    # files such as artisan). go-w: only root may write.
+    chmod -R a+rX,go-w "$rel"
+}
+
 bootstrap_panel() {
     echo "==> Bootstrapping panel under ${PANEL_ROOT}"
 
@@ -681,6 +705,9 @@ bootstrap_panel() {
 
     if [[ -L "$PANEL_CURRENT" && -f "${PANEL_CURRENT}/artisan" ]]; then
         echo "    Panel release already present at ${PANEL_CURRENT} — skipping build"
+        # Still re-apply permissions: an existing release may predate the fix
+        # below, and the build is skipped so nothing else would repair it.
+        harden_release "$(readlink -f "$PANEL_CURRENT")"
         return 0
     fi
 
@@ -736,8 +763,7 @@ bootstrap_panel() {
     panel_run "$rel" php "$rel/artisan" migrate --force --no-interaction
     panel_run "$rel" php "$rel/artisan" optimize
 
-    chown -R root:"$PANEL_USER" "$rel"
-    chmod -R go-w "$rel"
+    harden_release "$rel"
 
     ln -sfn "$rel" "${PANEL_ROOT}/current.new"
     mv -Tf "${PANEL_ROOT}/current.new" "$PANEL_CURRENT"
