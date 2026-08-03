@@ -87,15 +87,21 @@ case "$action" in
         panel_run "$rel" git clone --depth 1 --branch "$ref" "$REPO" "$rel"
         panel_run "$rel" git -C "$rel" verify-tag "$ref" 2>/dev/null \
             || printf 'beacon-update: WARN: unsigned tag %s\n' "$ref" >&2
+        # Wire shared state before composer: its post-autoload-dump hook runs
+        # `artisan package:discover`, which boots Laravel and needs a writable
+        # bootstrap/cache and a readable .env. Linking afterwards also means
+        # composer writes a package manifest into a directory that is then
+        # deleted and replaced.
+        rm -rf "$rel/storage" "$rel/bootstrap/cache"
+        install -d -o "$PANEL_USER" -g "$PANEL_USER" -m 0755 "${rel}/bootstrap"
+        ln -sfn "${SHARED}/.env" "${rel}/.env"
+        ln -sfn "${SHARED}/storage" "${rel}/storage"
+        ln -sfn "${SHARED}/bootstrap-cache" "${rel}/bootstrap/cache"
+
         panel_run "$rel" composer install -d "$rel" --no-dev --no-interaction \
             --prefer-dist --optimize-autoloader
         panel_run "$rel" npm --prefix "$rel" ci
         panel_run "$rel" npm --prefix "$rel" run build
-
-        rm -rf "$rel/storage" "$rel/bootstrap/cache"
-        ln -sfn "${SHARED}/.env" "${rel}/.env"
-        ln -sfn "${SHARED}/storage" "${rel}/storage"
-        ln -sfn "${SHARED}/bootstrap-cache" "${rel}/bootstrap/cache"
 
         panel_run "$rel" php "$rel/artisan" migrate --force
         panel_run "$rel" php "$rel/artisan" optimize

@@ -195,7 +195,34 @@ ask() {
 # invalid sequence, so the pipeline yields a password one or two characters
 # long. openssl has no such failure mode.
 random_password() {
-    LC_ALL=C openssl rand -base64 32 | LC_ALL=C tr -dc 'A-Za-z0-9' | cut -c1-24
+    # The generated password has to satisfy the same rules beacon:create-admin
+    # enforces in production — Password::min(12)->mixedCase()->numbers()
+    # ->symbols() — or the very last step of the install fails with
+    # "The password field must contain at least one symbol" and no
+    # administrator is created.
+    #
+    # base64 only emits [A-Za-z0-9+/=], so symbols are injected explicitly
+    # rather than filtered for. Entropy comes from openssl; $RANDOM only
+    # chooses which symbol, on top of 20 already-random alphanumerics.
+    local set='!@#%^*_+=-' core s1 s2 attempt=0
+
+    while (( attempt++ < 50 )); do
+        core="$(LC_ALL=C openssl rand -base64 48 | LC_ALL=C tr -dc 'A-Za-z0-9' | cut -c1-20)"
+
+        (( ${#core} == 20 )) || continue
+        [[ "$core" == *[a-z]* ]] || continue
+        [[ "$core" == *[A-Z]* ]] || continue
+        [[ "$core" == *[0-9]* ]] || continue
+
+        s1="${set:$(( RANDOM % ${#set} )):1}"
+        s2="${set:$(( RANDOM % ${#set} )):1}"
+
+        printf '%s%s%s%s' "${core:0:7}" "$s1" "${core:7}" "$s2"
+        return 0
+    done
+
+    echo "ERROR: could not generate a compliant password" >&2
+    return 1
 }
 
 # ask_secret <varname> <question> — hidden input, typed twice.
@@ -222,8 +249,25 @@ ask_secret() {
             return 0
         fi
 
+        # Mirror the rules beacon:create-admin enforces in production. Checking
+        # here costs a keystroke; discovering it after a five-minute install
+        # costs the whole run.
         if (( ${#first} < 12 )); then
             oops "Use at least 12 characters."
+            continue
+        fi
+        if [[ "$first" != *[a-z]* || "$first" != *[A-Z]* ]]; then
+            oops "Use both upper and lower case letters."
+            continue
+        fi
+        if [[ "$first" != *[0-9]* ]]; then
+            oops "Include at least one number."
+            continue
+        fi
+        # Strip every alphanumeric; anything left over is a symbol. Avoids
+        # needing `shopt -s extglob` for a +([A-Za-z0-9]) pattern.
+        if [[ -z "${first//[A-Za-z0-9]/}" ]]; then
+            oops "Include at least one symbol, e.g. ! @ # % ^ _ + -"
             continue
         fi
 
@@ -662,15 +706,23 @@ bootstrap_panel() {
         fi
     fi
 
+    # Shared state is wired BEFORE composer, not after.
+    #
+    # composer's post-autoload-dump hook runs `artisan package:discover`, which
+    # boots Laravel and requires bootstrap/cache to exist and be writable — and
+    # rsync deliberately excludes both bootstrap/cache and storage. Linking
+    # afterwards means the very first composer run always dies with
+    # "The …/bootstrap/cache directory must be present and writable."
+    rm -rf "$rel/storage" "$rel/bootstrap/cache"
+    install -d -o "$PANEL_USER" -g "$PANEL_USER" -m 0755 "${rel}/bootstrap"
+    ln -sfn "${PANEL_SHARED}/.env" "${rel}/.env"
+    ln -sfn "${PANEL_SHARED}/storage" "${rel}/storage"
+    ln -sfn "${PANEL_SHARED}/bootstrap-cache" "${rel}/bootstrap/cache"
+
     panel_run "$rel" composer install -d "$rel" --no-dev --no-interaction \
         --prefer-dist --optimize-autoloader
     panel_run "$rel" npm --prefix "$rel" ci
     panel_run "$rel" npm --prefix "$rel" run build
-
-    rm -rf "$rel/storage" "$rel/bootstrap/cache"
-    ln -sfn "${PANEL_SHARED}/.env" "${rel}/.env"
-    ln -sfn "${PANEL_SHARED}/storage" "${rel}/storage"
-    ln -sfn "${PANEL_SHARED}/bootstrap-cache" "${rel}/bootstrap/cache"
 
     panel_run "$rel" php "$rel/artisan" migrate --force --no-interaction
     panel_run "$rel" php "$rel/artisan" optimize
