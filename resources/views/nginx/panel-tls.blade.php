@@ -16,9 +16,16 @@ server {
 }
 
 server {
+{{-- $http2Inline is TRUE for nginx < 1.25.1, which only understands the
+     inline `listen … http2` form; the standalone `http2 on;` directive was
+     added in 1.25.1. Emitting the wrong one makes nginx refuse the config
+     with `unknown directive "http2"`. --}}
+@if ($http2Inline)
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+@else
     listen 443 ssl;
     listen [::]:443 ssl;
-@if($http2Inline)
     http2 on;
 @endif
     server_name {{ $domain }};
