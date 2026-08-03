@@ -662,7 +662,16 @@ panel_node_heap_mb() {
 bootstrap_panel() {
     echo "==> Bootstrapping panel under ${PANEL_ROOT}"
 
+    # Every component of PANEL_CURRENT must be traversable by beacon-panel, or
+    # Supervisor cannot even start the worker:
+    #   supervisor: couldn't chdir to /opt/beacon/panel/current: EACCES
+    # `install -d` does not guarantee the mode it applies to directories it
+    # creates as *parents*, so set them explicitly. The chmod also repairs an
+    # existing installation whose parents were created too restrictively.
+    install -d -m 0755 "$BEACON_ROOT"
+    install -d -m 0755 "$PANEL_ROOT"
     install -d -m 0755 "${PANEL_ROOT}/releases"
+    chmod 0755 "$BEACON_ROOT" "$PANEL_ROOT" "${PANEL_ROOT}/releases"
     install -d -o "$PANEL_USER" -g "$PANEL_USER" -m 2770 "$PANEL_SHARED"
     install -d -o "$PANEL_USER" -g "$PANEL_USER" -m 2770 \
         "${PANEL_SHARED}/storage"/{app/public,framework/{cache,sessions,views},logs}
@@ -854,6 +863,35 @@ wait_for_supervisor() {
     return 1
 }
 
+# Report whether the queue worker actually came up, and show why if not.
+#
+# "FATAL Exited too quickly" tells you nothing on its own — the reason is
+# always in the process log, and making the operator go and find it is a
+# wasted round trip. Print the tail here instead.
+report_worker_health() {
+    local status
+    status="$(supervisorctl status 'beacon-panel-worker:*' 2>/dev/null || true)"
+
+    if printf '%s' "$status" | grep -q RUNNING; then
+        echo "    Queue worker running."
+        return 0
+    fi
+
+    echo "WARN: the panel queue worker is not running." >&2
+    printf '      %s\n' "${status:-<no status returned>}" >&2
+
+    local log=/var/log/beacon/panel-worker.log
+    if [[ -s "$log" ]]; then
+        echo "      Last lines of ${log}:" >&2
+        tail -n 20 "$log" | sed 's/^/        /' >&2
+    else
+        echo "      ${log} is empty — the process likely failed to exec at all." >&2
+    fi
+
+    echo "      The panel still serves; queued work (deploys, PHP installs) will not run." >&2
+    return 0
+}
+
 configure_panel_runtime() {
     echo "==> Configuring panel nginx, PHP-FPM, Supervisor, and scheduler"
 
@@ -874,8 +912,14 @@ configure_panel_runtime() {
     # the catch-all's `default_server` on the same port:
     #   [warn] conflicting server name "_" on 0.0.0.0:80, ignored
     # One of the two then silently loses. In IP mode the catch-all owns :80.
+    # Exported unconditionally: the PHP pool and the Supervisor unit below both
+    # need these regardless of whether a domain vhost is rendered. Scoping the
+    # export to the domain branch made envsubst emit empty strings in IP mode,
+    # producing `directory = ` in the worker unit and an empty FPM socket path.
+    export PANEL_PHP PANEL_CURRENT
+
     if [[ -n "$DOMAIN" ]]; then
-        export PANEL_PHP PANEL_CURRENT PANEL_DOMAIN="$DOMAIN"
+        export PANEL_DOMAIN="$DOMAIN"
         envsubst '${PANEL_PHP} ${PANEL_CURRENT} ${PANEL_DOMAIN}' \
             < "${deploy_dir}/nginx/beacon-panel.conf" \
             > /etc/nginx/sites-available/beacon-panel
@@ -902,9 +946,11 @@ configure_panel_runtime() {
         supervisorctl update || true
 
         # `:*` targets the process group — see bin/wrappers/beacon-supervisor.
-        supervisorctl restart 'beacon-panel-worker:*' \
-            || supervisorctl start 'beacon-panel-worker:*' \
-            || echo "WARN: could not start beacon-panel-worker — run 'supervisorctl status'" >&2
+        supervisorctl restart 'beacon-panel-worker:*' >/dev/null 2>&1 \
+            || supervisorctl start 'beacon-panel-worker:*' >/dev/null 2>&1 \
+            || true
+
+        report_worker_health
     else
         echo "WARN: supervisord never became reachable — the panel will still serve," >&2
         echo "      but queued work (deploys, PHP installs) will not run until you fix it:" >&2
