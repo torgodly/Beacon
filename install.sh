@@ -845,11 +845,22 @@ configure_panel_runtime() {
 
     configure_nginx_catch_all
 
-    export PANEL_PHP PANEL_CURRENT PANEL_DOMAIN="${DOMAIN:-_}"
-    envsubst '${PANEL_PHP} ${PANEL_CURRENT} ${PANEL_DOMAIN}' \
-        < "${deploy_dir}/nginx/beacon-panel.conf" \
-        > /etc/nginx/sites-available/beacon-panel
-    ln -sfn /etc/nginx/sites-available/beacon-panel /etc/nginx/sites-enabled/beacon-panel
+    # The port-80 panel vhost only makes sense with a real hostname.
+    #
+    # Without a domain the panel is served on :8443 by beacon-panel-8443.conf,
+    # and templating server_name to `_` would put this vhost head-to-head with
+    # the catch-all's `default_server` on the same port:
+    #   [warn] conflicting server name "_" on 0.0.0.0:80, ignored
+    # One of the two then silently loses. In IP mode the catch-all owns :80.
+    if [[ -n "$DOMAIN" ]]; then
+        export PANEL_PHP PANEL_CURRENT PANEL_DOMAIN="$DOMAIN"
+        envsubst '${PANEL_PHP} ${PANEL_CURRENT} ${PANEL_DOMAIN}' \
+            < "${deploy_dir}/nginx/beacon-panel.conf" \
+            > /etc/nginx/sites-available/beacon-panel
+        ln -sfn /etc/nginx/sites-available/beacon-panel /etc/nginx/sites-enabled/beacon-panel
+    else
+        rm -f /etc/nginx/sites-enabled/beacon-panel
+    fi
 
     envsubst '${PANEL_PHP} ${PANEL_CURRENT}' \
         < "${deploy_dir}/php/beacon-panel.pool.conf" \
@@ -865,7 +876,10 @@ configure_panel_runtime() {
 
     supervisorctl reread
     supervisorctl update
-    supervisorctl restart beacon-panel-worker || supervisorctl start beacon-panel-worker
+    # `:*` targets the process group — see bin/wrappers/beacon-supervisor.
+    supervisorctl restart 'beacon-panel-worker:*' \
+        || supervisorctl start 'beacon-panel-worker:*' \
+        || echo "WARN: could not start beacon-panel-worker — check supervisorctl status" >&2
 
     local cron_line="* * * * * cd ${PANEL_CURRENT} && /usr/bin/php${PANEL_PHP} artisan schedule:run >> /dev/null 2>&1"
     (crontab -u "$PANEL_USER" -l 2>/dev/null | grep -v 'artisan schedule:run' || true; echo "$cron_line") \

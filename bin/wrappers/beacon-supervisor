@@ -43,10 +43,27 @@ case "$action" in
         ;;
     start|stop|restart)
         prog="${1:-}"; valid_program "$prog"
-        "$SUPERVISORCTL" "$action" "$prog"
+        # Target the process GROUP, not a bare name.
+        #
+        # A program declaring
+        #     process_name = %(program_name)s_%(process_num)02d
+        # registers its worker as `name_00` inside a group called `name`, so
+        # `supervisorctl restart name` matches nothing and reports
+        #     name: ERROR (no such process)
+        # `name:*` addresses every process in the group and works equally for
+        # single-process programs, which get a one-member group of the same
+        # name.
+        "$SUPERVISORCTL" "$action" "${prog}:*"
         ;;
     status)
-        "$SUPERVISORCTL" status "$@"
+        if [[ $# -gt 0 ]]; then
+            prog="${1:-}"; valid_program "$prog"
+            # status exits non-zero when a process is not RUNNING; the caller
+            # parses stdout, so that is expected rather than an error.
+            "$SUPERVISORCTL" status "${prog}:*" || true
+        else
+            "$SUPERVISORCTL" status || true
+        fi
         ;;
     *)
         die "unknown action: ${action:-<none>}"
