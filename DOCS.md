@@ -7,7 +7,36 @@ Production-oriented reference for installing, operating, and securing a Beacon p
 ### One-line install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/beacon-org/beacon/main/install.sh | sudo bash -s -- --domain panel.example.com --email admin@example.com
+curl -fsSL https://raw.githubusercontent.com/beacon-org/beacon/main/install.sh | sudo bash
+```
+
+The installer is a guided wizard. It runs its preflight checks first, then asks:
+
+1. **How will you reach the panel?** — a domain (Let's Encrypt, push webhooks)
+   or the server IP on `:8443` (self-signed, poll-based deploys).
+2. **Administrator account** — name, login email and password. Leave the
+   password blank and Beacon generates a 24-character one, shown once at the end.
+3. **Runtimes and services** — which PHP versions to install, the default Node
+   major, and whether to install MySQL.
+
+It then prints the complete plan and waits for confirmation. Nothing on the
+server is modified until you say yes, and `Ctrl-C` before that point is safe.
+
+Prompts are read from `/dev/tty`, so the wizard works correctly even when the
+script itself arrives on stdin through a `curl … | sudo bash` pipe.
+
+### Unattended installs
+
+Supplying an answer as a flag skips its question. `--yes` disables prompting
+entirely and accepts the default for anything still unset — which means no
+domain, all supported PHP versions, and MySQL installed. The installer also
+detects a missing TTY and switches to this mode on its own.
+
+```bash
+sudo bash install.sh \
+  --domain panel.example.com --email admin@example.com \
+  --admin-email admin@example.com --admin-password "$PANEL_PASSWORD" \
+  --php "8.3 8.4" --node 22 --yes
 ```
 
 ### Common options
@@ -19,7 +48,11 @@ curl -fsSL https://raw.githubusercontent.com/beacon-org/beacon/main/install.sh |
 | `--ref v1.0.0` | Git ref to deploy |
 | `--admin-email EMAIL` | First admin user email |
 | `--admin-password PASS` | First admin password (generated if omitted) |
+| `--php "8.3 8.4"` | PHP versions to install (default: all supported) |
+| `--node 22` | Default Node major version |
 | `--no-mysql` | Skip MySQL provisioning |
+| `-y`, `--yes` | Never prompt; accept defaults for anything unset |
+| `-h`, `--help` | Show all options |
 
 ### IP-only install
 

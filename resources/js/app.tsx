@@ -1,7 +1,9 @@
 import { createInertiaApp } from '@inertiajs/react';
+import { OperationDock } from '@/components/operations/operation-dock';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { initializeTheme } from '@/hooks/use-appearance';
+import { OperationsProvider } from '@/hooks/use-operations';
 import AppLayout from '@/layouts/app-layout';
 import AuthLayout from '@/layouts/auth-layout';
 import SettingsLayout from '@/layouts/settings/layout';
@@ -29,13 +31,19 @@ createInertiaApp({
     withApp(app) {
         return (
             <TooltipProvider delayDuration={0}>
-                {app}
+                {/* The operations dock sits above the page tree so a running
+                 * apt install keeps streaming while the operator navigates. */}
+                <OperationsProvider>
+                    {app}
+                    <OperationDock />
+                </OperationsProvider>
                 <Toaster />
             </TooltipProvider>
         );
     },
     progress: {
-        color: '#4B5563',
+        // cyan-500 — the beam.
+        color: '#06C8E0',
     },
 });
 

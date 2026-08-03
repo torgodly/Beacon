@@ -5,8 +5,11 @@ namespace App\Services\Php;
 use App\Jobs\InstallPhpVersion;
 use App\Models\PhpVersion;
 use App\Models\Server;
+use App\Services\Operations\OperationLog;
+use App\Services\Operations\OperationRunner;
 use App\Services\System\ProcessRunner;
 use App\Services\System\SudoWrapper;
+use App\Support\OutputStream\FileOutputStream;
 use Illuminate\Support\Facades\File;
 use RuntimeException;
 
@@ -16,6 +19,7 @@ class PhpService
         private readonly ProcessRunner $runner,
         private readonly PhpExtensionService $extensions,
         private readonly PhpIniService $ini,
+        private readonly OperationRunner $operations,
     ) {}
 
     /**
@@ -114,17 +118,33 @@ class PhpService
 
     public function performInstall(PhpVersion $phpVersion): void
     {
+        $operation = $this->operations->start(
+            type: 'php.install',
+            title: "Install PHP {$phpVersion->version}",
+            subject: $phpVersion,
+            summary: 'apt-get install',
+        );
+
+        $log = new OperationLog(new FileOutputStream($operation->log_path));
+        $log->step("Installing PHP {$phpVersion->version}");
+        $log->muted("sudo beacon-pkg php-install {$phpVersion->version}");
+
+        // apt is streamed line by line rather than buffered: a cold mirror or
+        // a held dpkg lock can stall for minutes, and silence is the one thing
+        // an operator cannot act on.
         $result = $this->runner->sudoRoot(
             SudoWrapper::Package,
             ['php-install', $phpVersion->version],
             timeout: 600,
+            stream: $log,
         );
 
         if ($result->failed()) {
-            $phpVersion->update([
-                'status' => 'failed',
-                'last_error' => trim($result->combinedOutput()) ?: 'Install failed.',
-            ]);
+            $error = trim($result->combinedOutput()) ?: 'Install failed.';
+
+            $phpVersion->update(['status' => 'failed', 'last_error' => $error]);
+            $this->operations->finish($operation, 'failed', $result->exitCode() ?? 1, $error);
+            $log->error("PHP {$phpVersion->version} install failed.");
 
             return;
         }
@@ -135,7 +155,13 @@ class PhpService
             'last_error' => null,
         ]);
 
+        $log->step('Syncing extensions');
         $this->extensions->sync($phpVersion);
+        $log->line(
+            $phpVersion->extensions()->count().' extensions discovered.',
+        );
+
+        $this->operations->succeed($operation, $log);
     }
 
     public function performRemove(PhpVersion $phpVersion): void
@@ -149,20 +175,35 @@ class PhpService
             return;
         }
 
+        $operation = $this->operations->start(
+            type: 'php.remove',
+            title: "Remove PHP {$phpVersion->version}",
+            subject: $phpVersion,
+            summary: 'apt-get remove',
+        );
+
+        $log = new OperationLog(new FileOutputStream($operation->log_path));
+        $log->step("Removing PHP {$phpVersion->version}");
+        $log->muted("sudo beacon-pkg php-remove {$phpVersion->version}");
+
         $result = $this->runner->sudoRoot(
             SudoWrapper::Package,
             ['php-remove', $phpVersion->version],
             timeout: 600,
+            stream: $log,
         );
 
         if ($result->failed()) {
-            $phpVersion->update([
-                'status' => 'installed',
-                'last_error' => trim($result->combinedOutput()) ?: 'Remove failed.',
-            ]);
+            $error = trim($result->combinedOutput()) ?: 'Remove failed.';
+
+            $phpVersion->update(['status' => 'installed', 'last_error' => $error]);
+            $this->operations->finish($operation, 'failed', $result->exitCode() ?? 1, $error);
+            $log->error("PHP {$phpVersion->version} removal failed.");
 
             return;
         }
+
+        $this->operations->succeed($operation, $log);
 
         $phpVersion->extensions()->delete();
         $phpVersion->settings()->delete();

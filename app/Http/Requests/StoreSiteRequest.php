@@ -27,19 +27,34 @@ class StoreSiteRequest extends FormRequest
                 'not_regex:/\.\./',
             ],
             'type' => ['required', Rule::in(['laravel', 'nextjs', 'nuxt', 'static'])],
+
+            // A PHP version is required for Laravel, and *prohibited* for
+            // everything else — a static site has no FPM pool, so accepting
+            // the field and silently discarding it is how the form ended up
+            // asking for it in the first place.
             'php_version' => [
                 Rule::requiredIf(fn (): bool => $this->input('type') === 'laravel'),
+                Rule::prohibitedIf(fn (): bool => $this->input('type') !== 'laravel'),
                 'nullable',
-                Rule::in(config('beacon.php_versions', [])),
+                Rule::exists('php_versions', 'version')->where('status', 'installed'),
             ],
+
             'node_version' => [
-                Rule::requiredIf(fn (): bool => in_array($this->input('type'), ['nextjs', 'nuxt'], true)),
+                Rule::requiredIf(fn (): bool => $this->needsNode()),
+                Rule::prohibitedIf(fn (): bool => ! $this->needsNode() && $this->input('type') !== 'static'),
                 'nullable',
                 'string',
                 'max:16',
+                Rule::exists('node_versions', 'version')->where('runtime', 'node'),
             ],
             'spa_fallback' => ['sometimes', 'boolean'],
         ];
+    }
+
+    /** Static sites may optionally build with Node; SSR types require it. */
+    private function needsNode(): bool
+    {
+        return in_array($this->input('type'), ['nextjs', 'nuxt'], true);
     }
 
     /**
@@ -49,6 +64,9 @@ class StoreSiteRequest extends FormRequest
     {
         return [
             'name.regex' => 'Enter a valid hostname (lowercase letters, numbers, dots, hyphens).',
+            'php_version.exists' => 'That PHP version is not installed on this server.',
+            'php_version.prohibited' => 'Only Laravel sites run under PHP-FPM.',
+            'node_version.exists' => 'That Node version is not installed on this server.',
         ];
     }
 

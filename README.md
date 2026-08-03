@@ -7,10 +7,33 @@ Beacon is a self-hosted server control panel for Laravel, PHP, and Node.js sites
 On Ubuntu 22.04/24.04 as root:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/beacon-org/beacon/main/install.sh | sudo bash -s -- --domain panel.example.com --email admin@example.com
+curl -fsSL https://raw.githubusercontent.com/beacon-org/beacon/main/install.sh | sudo bash
 ```
 
-Without a domain, the installer exposes the panel at `https://YOUR_IP:8443` with a self-signed certificate. Attach a real hostname later from **Settings → Server**.
+The installer is interactive — it asks how you want to reach the panel, sets up
+your administrator account, and lets you pick which PHP and Node versions to
+install. It shows you the full plan and waits for confirmation before touching
+anything on the server.
+
+Without a domain, the panel is exposed at `https://YOUR_IP:8443` with a
+self-signed certificate; attach a real hostname later from **Settings → Server**.
+
+### Unattended installs
+
+Every question can be answered up front, which skips the prompt. Add `--yes` to
+run with no interaction at all:
+
+```bash
+curl -fsSL .../install.sh | sudo bash -s -- \
+  --domain panel.example.com \
+  --email admin@example.com \
+  --admin-email admin@example.com \
+  --admin-password "$PANEL_PASSWORD" \
+  --yes
+```
+
+Run `sudo bash install.sh --help` for the full list. If the password is omitted,
+Beacon generates one and prints it once at the end.
 
 ## What you get
 

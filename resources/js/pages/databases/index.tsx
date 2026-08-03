@@ -1,12 +1,29 @@
 import { Form, Head, router, usePage } from '@inertiajs/react';
-import { Copy, Database, Download, Plus, Trash2 } from 'lucide-react';
+import {
+    Check,
+    Copy,
+    Database,
+    Download,
+    HardDriveDownload,
+    Plus,
+    Trash2,
+    Users,
+} from 'lucide-react';
 import { useState } from 'react';
 import { ConfirmDialog } from '@/components/confirm-dialog';
-import Heading from '@/components/heading';
+import { EmptyState, PageHeader } from '@/components/console/page-header';
+import { Panel, StatCluster } from '@/components/console/panel';
 import InputError from '@/components/input-error';
-import { StatusBadge } from '@/components/status-badge';
+import { StatusPill, toStatus } from '@/components/status-pill';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    DataTable,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeaderCell,
+    TableRow,
+} from '@/components/ui/data-table';
 import {
     Dialog,
     DialogContent,
@@ -15,8 +32,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Field, Input } from '@/components/ui/input';
 import {
     Select,
     SelectContent,
@@ -32,11 +48,7 @@ import {
 } from '@/routes/databases';
 import { store as storeBackup } from '@/routes/databases/backups';
 
-type DatabaseUserRow = {
-    id: number;
-    username: string;
-    privileges: string;
-};
+type DatabaseUserRow = { id: number; username: string; privileges: string };
 
 type DatabaseBackupRow = {
     uuid: string;
@@ -65,6 +77,54 @@ type DatabaseRow = {
     connections: ConnectionRow[];
 };
 
+function bytes(size: number | null): string {
+    if (size === null) {
+        return '—';
+    }
+
+    if (size < 1024) {
+        return `${size} B`;
+    }
+
+    if (size < 1024 * 1024) {
+        return `${(size / 1024).toFixed(1)} KB`;
+    }
+
+    return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/** Copy-to-clipboard for connection strings — the whole point of the card. */
+function CopyRow({ label, value }: { label: string; value: string }) {
+    const [copied, setCopied] = useState(false);
+
+    return (
+        <div className="flex items-center gap-2">
+            <span className="text-overline w-16 shrink-0 font-mono text-fg-subtle">
+                {label}
+            </span>
+            <code className="min-w-0 flex-1 truncate rounded-sm bg-[var(--bc-bg-surface-sunken)] px-2 py-1 font-mono text-[12px] leading-[18px] text-fg-code">
+                {value}
+            </code>
+            <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label={`Copy ${label}`}
+                onClick={() => {
+                    void navigator.clipboard.writeText(value);
+                    setCopied(true);
+                    window.setTimeout(() => setCopied(false), 1600);
+                }}
+            >
+                {copied ? (
+                    <Check className="size-3.5 text-fg-success" />
+                ) : (
+                    <Copy className="size-3.5" />
+                )}
+            </Button>
+        </div>
+    );
+}
+
 export default function DatabasesIndex({
     databases,
 }: {
@@ -73,408 +133,420 @@ export default function DatabasesIndex({
     const [createOpen, setCreateOpen] = useState(false);
     const [userOpen, setUserOpen] = useState(false);
     const [selectedDatabase, setSelectedDatabase] = useState<string>('');
-    const [privileges, setPrivileges] = useState('all');
 
-    const { flash } = usePage().props as {
-        flash?: { database_user_password?: string };
-    };
+    const page = usePage<{
+        flash?: { database_user_password?: string | null };
+    }>();
+    const revealedPassword = page.props.flash?.database_user_password ?? null;
+
+    const totalUsers = databases.reduce(
+        (total, database) => total + database.users.length,
+        0,
+    );
 
     return (
         <>
             <Head title="Databases" />
-            <div className="flex h-full flex-1 flex-col gap-4 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                    <Heading
-                        title="Databases"
-                        description="Create MySQL databases and users for your sites."
-                    />
-                    <div className="flex gap-2">
-                        <Dialog open={userOpen} onOpenChange={setUserOpen}>
-                            <DialogTrigger asChild>
-                                <Button variant="outline">
-                                    <Plus className="size-4" />
-                                    New user
-                                </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                                <DialogHeader>
-                                    <DialogTitle>
-                                        Create database user
-                                    </DialogTitle>
-                                    <DialogDescription>
-                                        Creates a MySQL user on localhost.
-                                        Optionally grant access to an existing
-                                        database.
-                                    </DialogDescription>
-                                </DialogHeader>
-                                <Form
-                                    {...storeDatabaseUser.form()}
-                                    onSuccess={() => setUserOpen(false)}
-                                    className="grid gap-4"
-                                >
-                                    {({ errors, processing }) => (
-                                        <>
-                                            <div className="grid gap-2">
-                                                <Label htmlFor="username">
-                                                    Username
-                                                </Label>
-                                                <Input
-                                                    id="username"
-                                                    name="username"
-                                                    autoComplete="off"
-                                                />
-                                                <InputError
-                                                    message={errors.username}
-                                                />
-                                            </div>
-                                            <div className="grid gap-2">
-                                                <Label htmlFor="database_id">
-                                                    Database
-                                                </Label>
-                                                <Select
-                                                    value={selectedDatabase}
-                                                    onValueChange={
-                                                        setSelectedDatabase
-                                                    }
+
+            <div className="flex flex-col gap-8 px-6 py-6">
+                <PageHeader
+                    eyebrow="databases"
+                    title="Databases"
+                    description="MySQL databases, users and manual backups. Beacon connects over the unix socket with a least-privilege admin account."
+                    actions={
+                        <div className="flex items-center gap-3">
+                            <Dialog open={userOpen} onOpenChange={setUserOpen}>
+                                <DialogTrigger asChild>
+                                    <Button
+                                        variant="secondary"
+                                        disabled={databases.length === 0}
+                                    >
+                                        <Users />
+                                        New user
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader>
+                                        <DialogTitle>
+                                            Create a database user
+                                        </DialogTitle>
+                                        <DialogDescription>
+                                            The password is generated by Beacon
+                                            and shown once, immediately after
+                                            creation.
+                                        </DialogDescription>
+                                    </DialogHeader>
+
+                                    <Form
+                                        action={storeDatabaseUser()}
+                                        onSuccess={() => setUserOpen(false)}
+                                        className="space-y-4"
+                                    >
+                                        {({ processing, errors }) => (
+                                            <>
+                                                <Field
+                                                    htmlFor="username"
+                                                    label="Username"
+                                                    required
+                                                    error={errors.username}
                                                 >
-                                                    <SelectTrigger id="database_id">
-                                                        <SelectValue placeholder="No database (user only)" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="none">
-                                                            No database
-                                                        </SelectItem>
-                                                        {databases.map(
-                                                            (database) => (
-                                                                <SelectItem
-                                                                    key={
-                                                                        database.id
-                                                                    }
-                                                                    value={String(
-                                                                        database.id,
-                                                                    )}
-                                                                >
-                                                                    {
-                                                                        database.name
-                                                                    }
-                                                                </SelectItem>
-                                                            ),
-                                                        )}
-                                                    </SelectContent>
-                                                </Select>
-                                                {selectedDatabase !== 'none' &&
-                                                    selectedDatabase !== '' && (
-                                                        <input
-                                                            type="hidden"
-                                                            name="database_id"
-                                                            value={
-                                                                selectedDatabase
-                                                            }
-                                                        />
-                                                    )}
-                                            </div>
-                                            {selectedDatabase !== 'none' &&
-                                                selectedDatabase !== '' && (
-                                                    <>
-                                                        <div className="grid gap-2">
-                                                            <Label htmlFor="privileges">
-                                                                Privileges
-                                                            </Label>
-                                                            <Select
-                                                                value={
-                                                                    privileges
-                                                                }
-                                                                onValueChange={
-                                                                    setPrivileges
-                                                                }
-                                                            >
-                                                                <SelectTrigger id="privileges">
-                                                                    <SelectValue />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="all">
-                                                                        Full
-                                                                        access
-                                                                    </SelectItem>
-                                                                    <SelectItem value="readonly">
-                                                                        Read
-                                                                        only
-                                                                    </SelectItem>
-                                                                </SelectContent>
-                                                            </Select>
-                                                            <input
-                                                                type="hidden"
-                                                                name="privileges"
-                                                                value={
-                                                                    privileges
-                                                                }
-                                                            />
-                                                        </div>
-                                                    </>
-                                                )}
-                                            <Button
-                                                type="submit"
-                                                disabled={processing}
-                                            >
-                                                Create user
-                                            </Button>
-                                        </>
-                                    )}
-                                </Form>
-                            </DialogContent>
-                        </Dialog>
+                                                    <Input
+                                                        id="username"
+                                                        name="username"
+                                                        mono
+                                                        autoComplete="off"
+                                                        placeholder="app_user"
+                                                    />
+                                                </Field>
 
-                        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-                            <DialogTrigger asChild>
-                                <Button>
-                                    <Plus className="size-4" />
-                                    New database
-                                </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                                <DialogHeader>
-                                    <DialogTitle>Create database</DialogTitle>
-                                    <DialogDescription>
-                                        Provisions a new MySQL database on this
-                                        server.
-                                    </DialogDescription>
-                                </DialogHeader>
-                                <Form
-                                    {...storeDatabase.form()}
-                                    onSuccess={() => setCreateOpen(false)}
-                                    className="grid gap-4"
-                                >
-                                    {({ errors, processing }) => (
-                                        <>
-                                            <div className="grid gap-2">
-                                                <Label htmlFor="name">
-                                                    Database name
-                                                </Label>
-                                                <Input
-                                                    id="name"
-                                                    name="name"
-                                                    placeholder="app_production"
-                                                    autoComplete="off"
-                                                />
-                                                <InputError
-                                                    message={errors.name}
-                                                />
-                                            </div>
-                                            <Button
-                                                type="submit"
-                                                disabled={processing}
-                                            >
-                                                Create database
-                                            </Button>
-                                        </>
-                                    )}
-                                </Form>
-                            </DialogContent>
-                        </Dialog>
+                                                <div className="flex flex-col gap-1.5">
+                                                    <label
+                                                        htmlFor="database_id"
+                                                        className="text-[14px] leading-5 font-medium text-fg"
+                                                    >
+                                                        Database
+                                                    </label>
+                                                    <Select
+                                                        name="database_id"
+                                                        value={selectedDatabase}
+                                                        onValueChange={
+                                                            setSelectedDatabase
+                                                        }
+                                                    >
+                                                        <SelectTrigger id="database_id">
+                                                            <SelectValue placeholder="Grant access to…" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {databases.map(
+                                                                (database) => (
+                                                                    <SelectItem
+                                                                        key={database.id}
+                                                                        value={String(
+                                                                            database.id,
+                                                                        )}
+                                                                    >
+                                                                        {database.name}
+                                                                    </SelectItem>
+                                                                ),
+                                                            )}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <InputError
+                                                        message={errors.database_id}
+                                                    />
+                                                </div>
+
+                                                <div className="flex justify-end gap-3">
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        onClick={() =>
+                                                            setUserOpen(false)
+                                                        }
+                                                    >
+                                                        Cancel
+                                                    </Button>
+                                                    <Button
+                                                        type="submit"
+                                                        variant="primary"
+                                                        disabled={processing}
+                                                    >
+                                                        {processing
+                                                            ? 'Creating…'
+                                                            : 'Create user'}
+                                                    </Button>
+                                                </div>
+                                            </>
+                                        )}
+                                    </Form>
+                                </DialogContent>
+                            </Dialog>
+
+                            <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+                                <DialogTrigger asChild>
+                                    <Button variant="primary">
+                                        <Plus />
+                                        New database
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader>
+                                        <DialogTitle>Create a database</DialogTitle>
+                                        <DialogDescription>
+                                            Created as utf8mb4 with a
+                                            utf8mb4_unicode_ci collation.
+                                        </DialogDescription>
+                                    </DialogHeader>
+
+                                    <Form
+                                        action={storeDatabase()}
+                                        onSuccess={() => setCreateOpen(false)}
+                                        className="space-y-4"
+                                    >
+                                        {({ processing, errors }) => (
+                                            <>
+                                                <Field
+                                                    htmlFor="name"
+                                                    label="Name"
+                                                    required
+                                                    error={errors.name}
+                                                    help="Letters, numbers and underscores only."
+                                                >
+                                                    <Input
+                                                        id="name"
+                                                        name="name"
+                                                        mono
+                                                        autoFocus
+                                                        autoComplete="off"
+                                                        placeholder="app_production"
+                                                    />
+                                                </Field>
+
+                                                <div className="flex justify-end gap-3">
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        onClick={() =>
+                                                            setCreateOpen(false)
+                                                        }
+                                                    >
+                                                        Cancel
+                                                    </Button>
+                                                    <Button
+                                                        type="submit"
+                                                        variant="primary"
+                                                        disabled={processing}
+                                                    >
+                                                        {processing
+                                                            ? 'Creating…'
+                                                            : 'Create database'}
+                                                    </Button>
+                                                </div>
+                                            </>
+                                        )}
+                                    </Form>
+                                </DialogContent>
+                            </Dialog>
+                        </div>
+                    }
+                />
+
+                {revealedPassword && (
+                    <div
+                        role="alert"
+                        className="rounded-lg border border-[var(--bc-border-warning)] bg-warning-subtle px-4 py-3"
+                    >
+                        <p className="text-overline font-mono text-fg-warning">
+                            shown once
+                        </p>
+                        <p className="mt-1 text-[14px] leading-[22px] text-fg">
+                            Copy this password now — Beacon stores it encrypted
+                            and will not display it again.
+                        </p>
+                        <code className="mt-2 block rounded-sm bg-[var(--bc-bg-surface)] px-2 py-1.5 font-mono text-[13px] text-fg-code">
+                            {revealedPassword}
+                        </code>
                     </div>
-                </div>
-
-                {flash?.database_user_password && (
-                    <Card className="border-amber-500/40 bg-amber-500/5">
-                        <CardContent className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 text-sm">
-                            <div>
-                                <p className="font-medium">
-                                    Save this password now
-                                </p>
-                                <p className="font-mono text-xs">
-                                    {flash.database_user_password}
-                                </p>
-                            </div>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() =>
-                                    void navigator.clipboard.writeText(
-                                        flash.database_user_password ?? '',
-                                    )
-                                }
-                            >
-                                <Copy className="size-3.5" />
-                                Copy
-                            </Button>
-                        </CardContent>
-                    </Card>
                 )}
 
                 {databases.length === 0 ? (
-                    <Card>
-                        <CardContent className="flex flex-col items-center gap-3 px-6 py-12 text-center">
-                            <Database className="size-8 text-muted-foreground" />
-                            <p className="text-sm text-muted-foreground">
-                                No databases yet. Create one to get started.
-                            </p>
-                        </CardContent>
-                    </Card>
+                    <EmptyState
+                        icon={Database}
+                        title="No databases yet"
+                        description="Create a MySQL database and Beacon will hand you a ready-to-paste connection string."
+                        action={
+                            <Button
+                                variant="primary"
+                                onClick={() => setCreateOpen(true)}
+                            >
+                                <Plus />
+                                New database
+                            </Button>
+                        }
+                    />
                 ) : (
-                    databases.map((database) => (
-                        <Card key={database.id}>
-                            <CardHeader className="flex flex-row items-center justify-between gap-3">
-                                <div className="flex items-center gap-3">
-                                    <CardTitle className="font-mono text-base">
-                                        {database.name}
-                                    </CardTitle>
-                                    <StatusBadge
-                                        status="success"
-                                        label={database.status}
-                                    />
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() =>
-                                            router.post(
-                                                storeBackup.url(database.id),
-                                            )
-                                        }
-                                    >
-                                        Backup
-                                    </Button>
-                                    <ConfirmDialog
-                                        trigger={
-                                            <Button
-                                                variant="ghost"
+                    <>
+                        <StatCluster
+                            className="max-w-lg"
+                            stats={[
+                                { label: 'Databases', value: databases.length },
+                                { label: 'Users', value: totalUsers },
+                            ]}
+                        />
+
+                        <div className="flex flex-col gap-4">
+                            {databases.map((database) => (
+                                <Panel
+                                    key={database.id}
+                                    eyebrow="mysql // database"
+                                    title={database.name}
+                                    icon={Database}
+                                    actions={
+                                        <>
+                                            <StatusPill
+                                                status={toStatus(database.status)}
+                                                label={database.status}
                                                 size="sm"
-                                                className="text-destructive"
+                                            />
+                                            <Button
+                                                size="sm"
+                                                variant="secondary"
+                                                onClick={() =>
+                                                    router.post(
+                                                        storeBackup.url(database.id),
+                                                    )
+                                                }
                                             >
-                                                <Trash2 className="size-3.5" />
-                                                Delete
+                                                <HardDriveDownload className="size-3.5" />
+                                                Back up
                                             </Button>
-                                        }
-                                        title={`Delete ${database.name}?`}
-                                        description="This drops the database from MySQL and removes all user grants."
-                                        confirmLabel="Delete database"
-                                        destructive
-                                        onConfirm={() =>
-                                            router.delete(
-                                                destroyDatabase.url(
-                                                    database.id,
-                                                ),
-                                            )
-                                        }
-                                    />
-                                </div>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                {database.connections.length > 0 && (
-                                    <div className="space-y-2">
-                                        <p className="text-sm font-medium">
-                                            Connection strings
-                                        </p>
-                                        {database.connections.map(
-                                            (connection) => (
-                                                <div
-                                                    key={connection.user_id}
-                                                    className="rounded-lg border p-3"
-                                                >
-                                                    <div className="mb-2 flex items-center justify-between gap-2">
-                                                        <span className="font-mono text-xs">
-                                                            {
-                                                                connection.username
-                                                            }
-                                                            @{connection.host}
-                                                        </span>
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={() =>
-                                                                void navigator.clipboard.writeText(
-                                                                    connection.laravel,
-                                                                )
-                                                            }
-                                                        >
-                                                            <Copy className="size-3.5" />
-                                                            Copy .env
-                                                        </Button>
-                                                    </div>
-                                                    <pre className="overflow-x-auto rounded bg-muted/50 p-2 font-mono text-xs whitespace-pre-wrap">
-                                                        {connection.laravel}
-                                                    </pre>
-                                                </div>
-                                            ),
-                                        )}
-                                    </div>
-                                )}
-
-                                {database.backups.length > 0 && (
-                                    <div className="space-y-2">
-                                        <p className="text-sm font-medium">
-                                            Recent backups
-                                        </p>
-                                        {database.backups.map((backup) => (
-                                            <div
-                                                key={backup.uuid}
-                                                className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
-                                            >
-                                                <div>
-                                                    <p className="font-mono text-xs">
-                                                        {backup.filename}
-                                                    </p>
-                                                    <StatusBadge
-                                                        status={
-                                                            backup.status ===
-                                                            'success'
-                                                                ? 'success'
-                                                                : backup.status ===
-                                                                    'failed'
-                                                                  ? 'failed'
-                                                                  : 'running'
-                                                        }
-                                                        label={backup.status}
-                                                    />
-                                                </div>
-                                                {backup.download_url && (
+                                            <ConfirmDialog
+                                                trigger={
                                                     <Button
-                                                        asChild
-                                                        variant="outline"
-                                                        size="sm"
+                                                        size="icon-sm"
+                                                        variant="ghost"
+                                                        aria-label={`Drop ${database.name}`}
                                                     >
-                                                        <a
-                                                            href={
-                                                                backup.download_url
-                                                            }
-                                                        >
-                                                            <Download className="size-3.5" />
-                                                            Download
-                                                        </a>
+                                                        <Trash2 className="size-3.5" />
                                                     </Button>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
+                                                }
+                                                title={`Drop ${database.name}?`}
+                                                description="Every table and all of its data is destroyed. This cannot be undone."
+                                                confirmLabel="Drop database"
+                                                destructive
+                                                confirmationValue={database.name}
+                                                onConfirm={() =>
+                                                    router.delete(
+                                                        destroyDatabase.url(
+                                                            database.id,
+                                                        ),
+                                                    )
+                                                }
+                                            />
+                                        </>
+                                    }
+                                >
+                                    <div className="grid gap-6 lg:grid-cols-2">
+                                        <section className="space-y-3">
+                                            <h3 className="text-overline font-mono text-fg-subtle">
+                                                connection strings
+                                            </h3>
 
-                                {database.users.length === 0 ? (
-                                    <p className="text-sm text-muted-foreground">
-                                        No users linked to this database.
-                                    </p>
-                                ) : (
-                                    <div className="space-y-2">
-                                        {database.users.map((user) => (
-                                            <div
-                                                key={user.id}
-                                                className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
-                                            >
-                                                <span className="font-mono">
-                                                    {user.username}@localhost
-                                                </span>
-                                                <span className="text-xs text-muted-foreground capitalize">
-                                                    {user.privileges}
-                                                </span>
-                                            </div>
-                                        ))}
+                                            {database.connections.length === 0 ? (
+                                                <p className="text-[13px] leading-5 text-fg-muted">
+                                                    Create a user to get a
+                                                    connection string.
+                                                </p>
+                                            ) : (
+                                                <div className="space-y-3">
+                                                    {database.connections.map(
+                                                        (connection) => (
+                                                            <div
+                                                                key={connection.user_id}
+                                                                className="space-y-1.5 rounded-md border border-[var(--bc-border-subtle)] p-3"
+                                                            >
+                                                                <p className="font-mono text-[13px] font-medium text-fg">
+                                                                    {connection.username}
+                                                                    <span className="text-fg-disabled">
+                                                                        @
+                                                                        {connection.host}
+                                                                    </span>
+                                                                </p>
+                                                                <CopyRow
+                                                                    label="laravel"
+                                                                    value={connection.laravel}
+                                                                />
+                                                                <CopyRow
+                                                                    label="url"
+                                                                    value={connection.url}
+                                                                />
+                                                            </div>
+                                                        ),
+                                                    )}
+                                                </div>
+                                            )}
+                                        </section>
+
+                                        <section className="space-y-3">
+                                            <h3 className="text-overline font-mono text-fg-subtle">
+                                                recent backups
+                                            </h3>
+
+                                            {database.backups.length === 0 ? (
+                                                <p className="text-[13px] leading-5 text-fg-muted">
+                                                    No backups taken yet.
+                                                </p>
+                                            ) : (
+                                                <DataTable density="dense">
+                                                    <TableHead>
+                                                        <TableRow>
+                                                            <TableHeaderCell>
+                                                                File
+                                                            </TableHeaderCell>
+                                                            <TableHeaderCell numeric>
+                                                                Size
+                                                            </TableHeaderCell>
+                                                            <TableHeaderCell>
+                                                                Status
+                                                            </TableHeaderCell>
+                                                            <TableHeaderCell />
+                                                        </TableRow>
+                                                    </TableHead>
+                                                    <TableBody>
+                                                        {database.backups.map(
+                                                            (backup) => (
+                                                                <TableRow
+                                                                    key={backup.uuid}
+                                                                >
+                                                                    <TableCell>
+                                                                        <span className="font-mono text-[12px] text-fg-muted">
+                                                                            {backup.filename}
+                                                                        </span>
+                                                                    </TableCell>
+                                                                    <TableCell numeric>
+                                                                        {bytes(
+                                                                            backup.size_bytes,
+                                                                        )}
+                                                                    </TableCell>
+                                                                    <TableCell>
+                                                                        <StatusPill
+                                                                            status={toStatus(
+                                                                                backup.status,
+                                                                            )}
+                                                                            label={backup.status}
+                                                                            size="sm"
+                                                                        />
+                                                                    </TableCell>
+                                                                    <TableCell className="text-right">
+                                                                        {backup.download_url && (
+                                                                            <Button
+                                                                                size="icon-sm"
+                                                                                variant="ghost"
+                                                                                asChild
+                                                                                aria-label={`Download ${backup.filename}`}
+                                                                            >
+                                                                                <a
+                                                                                    href={
+                                                                                        backup.download_url
+                                                                                    }
+                                                                                >
+                                                                                    <Download className="size-3.5" />
+                                                                                </a>
+                                                                            </Button>
+                                                                        )}
+                                                                    </TableCell>
+                                                                </TableRow>
+                                                            ),
+                                                        )}
+                                                    </TableBody>
+                                                </DataTable>
+                                            )}
+                                        </section>
                                     </div>
-                                )}
-                            </CardContent>
-                        </Card>
-                    ))
+                                </Panel>
+                            ))}
+                        </div>
+                    </>
                 )}
             </div>
         </>

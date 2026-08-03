@@ -1,8 +1,7 @@
 import { Link, usePage } from '@inertiajs/react';
 import { motion, useReducedMotion } from 'framer-motion';
 import type { PropsWithChildren } from 'react';
-import Heading from '@/components/heading';
-import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/console/page-header';
 import { cn } from '@/lib/utils';
 import { show } from '@/routes/sites';
 
@@ -12,7 +11,7 @@ export type SiteSummary = {
     [key: string]: unknown;
 };
 
-const siteTabs = [
+const SITE_TABS = [
     { key: 'overview', title: 'Overview' },
     { key: 'domains', title: 'Domains' },
     { key: 'ssl', title: 'SSL' },
@@ -35,77 +34,81 @@ export default function SiteLayout({
     const { url } = usePage();
 
     return (
-        <div className="px-4 py-6">
-            <Heading
+        <div className="flex flex-col gap-6 px-6 py-6">
+            <PageHeader
+                eyebrow={`sites // ${site?.name ?? 'select'}`}
                 title={site?.name ?? 'Sites'}
                 description={
                     site
-                        ? `Manage domains, deployments, and configuration for ${site.name}`
-                        : 'Select a site to view its configuration'
+                        ? 'Domains, deployments, runtime and configuration for this site.'
+                        : 'Select a site to view its configuration.'
                 }
             />
 
-            <div className="flex flex-col gap-6">
-                <nav
-                    className="relative -mb-px flex gap-1 overflow-x-auto border-b"
-                    aria-label="Site sections"
-                >
-                    {siteTabs.map((item) => {
-                        const isActive = site !== undefined && tab === item.key;
+            <nav
+                className="relative -mb-px flex gap-0.5 overflow-x-auto border-b border-[var(--bc-border-default)]"
+                aria-label="Site sections"
+            >
+                {SITE_TABS.map((item) => {
+                    const isActive = site !== undefined && tab === item.key;
 
+                    const classes = cn(
+                        'relative shrink-0 whitespace-nowrap px-3 py-2.5 text-[14px] leading-5 font-medium',
+                        'transition-colors duration-[--bc-duration-fast]',
+                        isActive
+                            ? 'text-fg-strong'
+                            : 'text-fg-muted hover:text-fg',
+                    );
+
+                    if (!site) {
                         return (
-                            <Button
+                            <span
                                 key={item.key}
-                                size="sm"
-                                variant="ghost"
-                                disabled={!site}
-                                asChild={Boolean(site)}
-                                className={cn(
-                                    'relative shrink-0 rounded-none border-b-2 border-transparent px-3 text-muted-foreground',
-                                    isActive && 'text-foreground',
-                                )}
+                                className={cn(classes, 'opacity-50')}
                             >
-                                {site ? (
-                                    <Link
-                                        href={show(site.id, {
-                                            query: { tab: item.key },
-                                        })}
-                                        preserveScroll
-                                    >
-                                        {item.title}
-                                        {isActive && !reduceMotion && (
-                                            <motion.span
-                                                layoutId="site-tab-indicator"
-                                                className="absolute inset-x-0 -bottom-px h-0.5 bg-primary"
-                                                transition={{
-                                                    type: 'spring',
-                                                    stiffness: 380,
-                                                    damping: 32,
-                                                }}
-                                            />
-                                        )}
-                                        {isActive && reduceMotion && (
-                                            <span className="absolute inset-x-0 -bottom-px h-0.5 bg-primary" />
-                                        )}
-                                    </Link>
-                                ) : (
-                                    <span>{item.title}</span>
-                                )}
-                            </Button>
+                                {item.title}
+                            </span>
                         );
-                    })}
-                </nav>
+                    }
 
-                <motion.div
-                    key={`${site?.id ?? 'none'}-${tab}-${url}`}
-                    initial={reduceMotion ? false : { opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.18, ease: 'easeOut' }}
-                    className="flex-1"
-                >
-                    {children}
-                </motion.div>
-            </div>
+                    return (
+                        <Link
+                            key={item.key}
+                            href={show(site.id, { query: { tab: item.key } })}
+                            preserveScroll
+                            className={classes}
+                        >
+                            {item.title}
+                            {/* A 2px cyan underline, so the current tab stays
+                              * legible without relying on colour alone. */}
+                            {isActive &&
+                                (reduceMotion ? (
+                                    <span className="absolute inset-x-0 -bottom-px h-0.5 bg-[var(--bc-bg-brand)]" />
+                                ) : (
+                                    <motion.span
+                                        layoutId="site-tab-indicator"
+                                        className="absolute inset-x-0 -bottom-px h-0.5 bg-[var(--bc-bg-brand)]"
+                                        transition={{
+                                            type: 'spring',
+                                            stiffness: 380,
+                                            damping: 32,
+                                        }}
+                                    />
+                                ))}
+                        </Link>
+                    );
+                })}
+            </nav>
+
+            <motion.div
+                key={`${site?.id ?? 'none'}-${tab}-${url}`}
+                initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.18, ease: [0.2, 0, 0, 1] }}
+                className="flex-1"
+            >
+                {children}
+            </motion.div>
         </div>
     );
 }

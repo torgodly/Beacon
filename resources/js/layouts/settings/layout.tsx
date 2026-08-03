@@ -1,8 +1,14 @@
 import { Link } from '@inertiajs/react';
+import {
+    Github,
+    Palette,
+    RefreshCw,
+    Server,
+    ShieldCheck,
+    UserRound,
+} from 'lucide-react';
 import type { PropsWithChildren } from 'react';
-import Heading from '@/components/heading';
-import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
+import { PageHeader } from '@/components/console/page-header';
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import { cn, toUrl } from '@/lib/utils';
 import { edit as editAppearance } from '@/routes/appearance';
@@ -13,36 +19,26 @@ import { edit as editServer } from '@/routes/server';
 import { edit as editUpdates } from '@/routes/updates';
 import type { NavItem } from '@/types';
 
-const sidebarNavItems: NavItem[] = [
+/**
+ * Settings nav, grouped like the main sidebar: what belongs to you, and what
+ * belongs to the machine.
+ */
+const GROUPS: Array<{ label: string; items: NavItem[] }> = [
     {
-        title: 'Profile',
-        href: edit(),
-        icon: null,
+        label: 'account',
+        items: [
+            { title: 'Profile', href: edit(), icon: UserRound },
+            { title: 'Security', href: editSecurity(), icon: ShieldCheck },
+            { title: 'Appearance', href: editAppearance(), icon: Palette },
+        ],
     },
     {
-        title: 'Security',
-        href: editSecurity(),
-        icon: null,
-    },
-    {
-        title: 'Appearance',
-        href: editAppearance(),
-        icon: null,
-    },
-    {
-        title: 'GitHub',
-        href: editGitHub(),
-        icon: null,
-    },
-    {
-        title: 'Server',
-        href: editServer(),
-        icon: null,
-    },
-    {
-        title: 'Panel updates',
-        href: editUpdates(),
-        icon: null,
+        label: 'server',
+        items: [
+            { title: 'GitHub', href: editGitHub(), icon: Github },
+            { title: 'Server', href: editServer(), icon: Server },
+            { title: 'Panel updates', href: editUpdates(), icon: RefreshCw },
+        ],
     },
 ];
 
@@ -50,46 +46,70 @@ export default function SettingsLayout({ children }: PropsWithChildren) {
     const { isCurrentOrParentUrl } = useCurrentUrl();
 
     return (
-        <div className="px-4 py-6">
-            <Heading
+        <div className="flex flex-col gap-8 px-6 py-6">
+            <PageHeader
+                eyebrow="settings"
                 title="Settings"
-                description="Manage your profile and account settings"
+                description="Your account, and the configuration of this Beacon installation."
             />
 
-            <div className="flex flex-col lg:flex-row lg:space-x-12">
-                <aside className="w-full max-w-xl lg:w-48">
+            <div className="flex flex-col gap-8 lg:flex-row lg:gap-10">
+                <aside className="w-full shrink-0 lg:w-56">
                     <nav
-                        className="flex flex-col space-y-1 space-x-0"
-                        aria-label="Settings"
+                        className="flex flex-col gap-5"
+                        aria-label="Settings sections"
                     >
-                        {sidebarNavItems.map((item, index) => (
-                            <Button
-                                key={`${toUrl(item.href)}-${index}`}
-                                size="sm"
-                                variant="ghost"
-                                asChild
-                                className={cn('w-full justify-start', {
-                                    'bg-muted': isCurrentOrParentUrl(item.href),
-                                })}
-                            >
-                                <Link href={item.href}>
-                                    {item.icon && (
-                                        <item.icon className="h-4 w-4" />
-                                    )}
-                                    {item.title}
-                                </Link>
-                            </Button>
+                        {GROUPS.map((group) => (
+                            <div key={group.label}>
+                                <p className="text-overline px-2 pb-1.5 font-mono text-fg-disabled">
+                                    {group.label}
+                                </p>
+
+                                <div className="flex flex-col gap-0.5">
+                                    {group.items.map((item, index) => {
+                                        const active = isCurrentOrParentUrl(
+                                            item.href,
+                                        );
+
+                                        return (
+                                            <Link
+                                                key={`${toUrl(item.href)}-${index}`}
+                                                href={item.href}
+                                                className={cn(
+                                                    'relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[14px] leading-5 font-medium',
+                                                    'transition-colors duration-[--bc-duration-fast]',
+                                                    active
+                                                        ? 'bg-[var(--bc-bg-selected)] text-fg-strong'
+                                                        : 'text-fg-muted hover:bg-[var(--bc-bg-hover)] hover:text-fg',
+                                                )}
+                                            >
+                                                {/* 2px cyan marker, not colour alone. */}
+                                                {active && (
+                                                    <span
+                                                        aria-hidden="true"
+                                                        className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-[var(--bc-bg-brand)]"
+                                                    />
+                                                )}
+                                                {item.icon && (
+                                                    <item.icon
+                                                        aria-hidden="true"
+                                                        strokeWidth={1.5}
+                                                        className="size-4 shrink-0"
+                                                    />
+                                                )}
+                                                {item.title}
+                                            </Link>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         ))}
                     </nav>
                 </aside>
 
-                <Separator className="my-6 lg:hidden" />
-
-                <div className="flex-1 md:max-w-2xl">
-                    <section className="max-w-xl space-y-12">
-                        {children}
-                    </section>
-                </div>
+                <section className="min-w-0 flex-1 space-y-8 lg:max-w-3xl">
+                    {children}
+                </section>
             </div>
         </div>
     );

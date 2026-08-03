@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
-# Beacon panel installer — idempotent, Ubuntu 22.04/24.04.
-# Usage:
-#   curl -fsSL …/install.sh | sudo bash -s -- [--domain FQDN] [--email EMAIL] [--no-mysql]
-#   sudo bash install.sh [--domain FQDN] [--email EMAIL] [--ref v1.0.0] [--admin-email …]
+# Beacon panel installer — interactive, idempotent, Ubuntu 22.04/24.04.
+#
+# Just run it and answer the questions:
+#   curl -fsSL https://beacon.sh/install.sh | sudo bash
+#   sudo bash install.sh
+#
+# Every answer can also be supplied up front, which skips the matching
+# question. Supplying --yes (or piping with no TTY) runs fully unattended:
+#   sudo bash install.sh --domain panel.example.com --email me@example.com \
+#        --admin-email me@example.com --admin-password '…' --yes
 set -euo pipefail
 
 BEACON_ROOT="/opt/beacon"
@@ -27,34 +33,352 @@ ADMIN_EMAIL=""
 ADMIN_PASSWORD=""
 SKIP_MYSQL=0
 SKIP_PANEL=0
+ASSUME_YES=0
+PHP_SELECTION=""
+NODE_SELECTION=""
+DOMAIN_ANSWERED=0
+MYSQL_ANSWERED=0
+
+usage() {
+    cat <<'USAGE'
+Beacon installer
+
+  sudo bash install.sh                 Guided install — asks a few questions.
+  curl -fsSL … | sudo bash             Same, works over a pipe.
+
+Options (each one skips its question):
+  --domain FQDN          Hostname to serve the panel on (Let's Encrypt).
+  --email EMAIL          Contact address for the TLS certificate.
+  --admin-name NAME      Administrator display name.
+  --admin-email EMAIL    Administrator login.
+  --admin-password PASS  Administrator password (min 12 characters).
+  --php "8.3 8.4"        PHP versions to install. Default: all supported.
+  --node 22              Default Node major version.
+  --no-mysql             Do not install or configure MySQL.
+  --skip-panel           Provision the host only; do not deploy the panel.
+  --ref TAG              Panel release to deploy.
+  --repo URL             Panel git repository.
+  -y, --yes              Never prompt; accept defaults for anything unset.
+  -h, --help             Show this message.
+USAGE
+}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --domain) DOMAIN="$2"; shift 2 ;;
+        --domain) DOMAIN="$2"; DOMAIN_ANSWERED=1; shift 2 ;;
         --email) EMAIL="$2"; shift 2 ;;
         --ref) REF="$2"; shift 2 ;;
         --repo) PANEL_REPO="$2"; shift 2 ;;
         --admin-name) ADMIN_NAME="$2"; shift 2 ;;
         --admin-email) ADMIN_EMAIL="$2"; shift 2 ;;
         --admin-password) ADMIN_PASSWORD="$2"; shift 2 ;;
-        --no-mysql) SKIP_MYSQL=1; shift ;;
+        --php) PHP_SELECTION="$2"; shift 2 ;;
+        --node) NODE_SELECTION="$2"; shift 2 ;;
+        --no-mysql) SKIP_MYSQL=1; MYSQL_ANSWERED=1; shift ;;
         --skip-panel) SKIP_PANEL=1; shift ;;
-        *) echo "Unknown option: $1" >&2; exit 64 ;;
+        -y|--yes) ASSUME_YES=1; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "Unknown option: $1" >&2; usage >&2; exit 64 ;;
     esac
 done
+
+# ── Preflight, before we ask anything ────────────────────────────────
+# Asking six questions and only then discovering we are not root would be
+# a poor trade of the operator's attention.
+if [[ "$(id -u)" -ne 0 ]]; then
+    echo "Beacon must be installed as root. Re-run with sudo:" >&2
+    echo "  curl -fsSL …/install.sh | sudo bash" >&2
+    exit 64
+fi
+
+# Note the `;` rather than `&&`: with `&&` a missing /etc/os-release makes the
+# substitution exit non-zero, and under `set -e` the assignment takes the whole
+# installer down before it has said anything.
+OS_PRETTY="unknown"
+if [[ -r /etc/os-release ]]; then
+    OS_PRETTY="$( . /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-unknown}" )"
+fi
+
+# ── Terminal plumbing ────────────────────────────────────────────────
+# `curl … | sudo bash` hands the script itself to stdin, so a bare `read`
+# would silently swallow the script's own remaining lines. Everything
+# interactive therefore goes through /dev/tty on its own descriptor.
+# The braces matter: `exec 3</dev/tty 2>/dev/null` still lets bash print its
+# own "Device not configured" to the real stderr, because the redirect is
+# applied to exec rather than to the shell reporting the failure.
+HAS_TTY=0
+if { exec 3</dev/tty; } 2>/dev/null; then
+    HAS_TTY=1
+fi
+
+INTERACTIVE=1
+if [[ "$HAS_TTY" -eq 0 || "$ASSUME_YES" -eq 1 ]]; then
+    INTERACTIVE=0
+fi
+
+if [[ -t 2 && -z "${NO_COLOR:-}" ]]; then
+    C_DIM=$'\033[90m'; C_CYAN=$'\033[36m'; C_BOLD=$'\033[1m'
+    C_RED=$'\033[31m'; C_GREEN=$'\033[32m'; C_YELLOW=$'\033[33m'; C_OFF=$'\033[0m'
+else
+    C_DIM=""; C_CYAN=""; C_BOLD=""; C_RED=""; C_GREEN=""; C_YELLOW=""; C_OFF=""
+fi
+
+# Prompts go straight to the terminal, never through the tee'd log — the
+# log should record decisions, not redraw the questionnaire.
+say()  { printf '%s\n' "$*" >&2; }
+tty_out() { if [[ "$HAS_TTY" -eq 1 ]]; then printf '%b' "$*" >/dev/tty; else printf '%b' "$*" >&2; fi; }
+
+banner() {
+    tty_out "\n${C_CYAN}${C_BOLD}"
+    tty_out "  ██████  BEACON\n"
+    tty_out "${C_OFF}${C_DIM}  Self-hosted server control panel · installer${C_OFF}\n\n"
+    tty_out "  ${C_DIM}host${C_OFF}  $(hostname)\n"
+    tty_out "  ${C_DIM}os${C_OFF}    ${OS_PRETTY}\n"
+    tty_out "  ${C_DIM}log${C_OFF}   ${LOG}\n\n"
+}
+
+section() { tty_out "\n${C_BOLD}$1${C_OFF}\n${C_DIM}$2${C_OFF}\n\n"; }
+hint()    { tty_out "  ${C_DIM}$1${C_OFF}\n"; }
+oops()    { tty_out "  ${C_RED}✖ $1${C_OFF}\n"; }
+
+# Best-effort primary IPv4. `hostname -I` is Linux-only and can be empty on a
+# host with only a loopback, so fall back through `ip route` before giving up.
+primary_ip() {
+    local addr
+    addr="$(hostname -I 2>/dev/null | awk '{print $1; exit}')"
+    [[ -z "$addr" ]] && addr="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')"
+    printf '%s' "${addr:-this-server}"
+}
+
+# ask <varname> <question> [default] [validator] [validator-hint]
+ask() {
+    local __var="$1" question="$2" default="${3:-}" validator="${4:-}" vhint="${5:-}"
+    local current="${!__var}" answer
+
+    # Already supplied on the command line — do not ask again.
+    [[ -n "$current" ]] && return 0
+
+    if [[ "$INTERACTIVE" -eq 0 ]]; then
+        printf -v "$__var" '%s' "$default"
+        return 0
+    fi
+
+    while true; do
+        if [[ -n "$default" ]]; then
+            tty_out "  ${question} ${C_DIM}[${default}]${C_OFF} "
+        else
+            tty_out "  ${question} "
+        fi
+
+        IFS= read -r answer <&3 || answer=""
+        answer="${answer:-$default}"
+
+        if [[ -z "$answer" && -z "$default" ]]; then
+            oops "This one is required."
+            continue
+        fi
+
+        if [[ -n "$validator" ]] && ! "$validator" "$answer"; then
+            oops "${vhint:-That does not look right.}"
+            continue
+        fi
+
+        printf -v "$__var" '%s' "$answer"
+        return 0
+    done
+}
+
+# A 24-character password from openssl, which is already a hard dependency.
+#
+# `tr -dc … </dev/urandom` is the usual one-liner and it is quietly broken:
+# under a UTF-8 locale tr aborts with "Illegal byte sequence" on the first
+# invalid sequence, so the pipeline yields a password one or two characters
+# long. openssl has no such failure mode.
+random_password() {
+    LC_ALL=C openssl rand -base64 32 | LC_ALL=C tr -dc 'A-Za-z0-9' | cut -c1-24
+}
+
+# ask_secret <varname> <question> — hidden input, typed twice.
+ask_secret() {
+    local __var="$1" question="$2" first second
+
+    [[ -n "${!__var}" ]] && return 0
+
+    if [[ "$INTERACTIVE" -eq 0 ]]; then
+        printf -v "$__var" '%s' "$(random_password)"
+        GENERATED_PASSWORD=1
+        return 0
+    fi
+
+    while true; do
+        tty_out "  ${question} ${C_DIM}[blank = generate one]${C_OFF} "
+        IFS= read -rs first <&3 || first=""
+        tty_out "\n"
+
+        if [[ -z "$first" ]]; then
+            printf -v "$__var" '%s' "$(random_password)"
+            GENERATED_PASSWORD=1
+            hint "Generated a 24-character password — shown at the end."
+            return 0
+        fi
+
+        if (( ${#first} < 12 )); then
+            oops "Use at least 12 characters."
+            continue
+        fi
+
+        tty_out "  Confirm password: "
+        IFS= read -rs second <&3 || second=""
+        tty_out "\n"
+
+        if [[ "$first" != "$second" ]]; then
+            oops "Those did not match."
+            continue
+        fi
+
+        printf -v "$__var" '%s' "$first"
+        return 0
+    done
+}
+
+# confirm <question> <default y|n>
+confirm() {
+    local question="$1" default="${2:-y}" answer suffix
+
+    if [[ "$INTERACTIVE" -eq 0 ]]; then
+        [[ "$default" == "y" ]]
+        return
+    fi
+
+    [[ "$default" == "y" ]] && suffix="[Y/n]" || suffix="[y/N]"
+
+    while true; do
+        tty_out "  ${question} ${C_DIM}${suffix}${C_OFF} "
+        IFS= read -r answer <&3 || answer=""
+        answer="${answer:-$default}"
+
+        # tr rather than ${answer,,} — the latter is bash 4+, and an installer
+        # is the last place to depend on the shell being new enough.
+        case "$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')" in
+            y|yes) return 0 ;;
+            n|no)  return 1 ;;
+            *) oops "Please answer y or n." ;;
+        esac
+    done
+}
+
+valid_domain() {
+    [[ "$1" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$ ]]
+}
+
+valid_email() {
+    [[ "$1" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[a-z]{2,}$ ]]
+}
+
+valid_php_list() {
+    local version
+    for version in $1; do
+        [[ " ${BEACON_PHP_VERSIONS[*]} " == *" ${version} "* ]] || return 1
+    done
+    [[ -n "$1" ]]
+}
+
+valid_node_major() {
+    [[ " ${BEACON_NODE_MAJORS[*]} " == *" $1 "* ]]
+}
+
+# ── The questionnaire ────────────────────────────────────────────────
+GENERATED_PASSWORD=0
+
+banner
+
+if [[ "$INTERACTIVE" -eq 0 && "$HAS_TTY" -eq 0 && "$ASSUME_YES" -eq 0 ]]; then
+    hint "No terminal attached — running with defaults. Use --help to see the options."
+    tty_out "\n"
+fi
+
+if ! grep -qiE 'ubuntu|debian' /etc/os-release 2>/dev/null; then
+    tty_out "  ${C_YELLOW}⚠ Beacon is tested on Ubuntu 24.04 and 22.04 only.${C_OFF}\n"
+    if ! confirm "Continue anyway?" n; then
+        say "Aborted."
+        exit 1
+    fi
+fi
+
+section "1 · How will you reach the panel?" \
+    "A real hostname gets a free Let's Encrypt certificate and lets GitHub deliver webhooks. Without one, Beacon serves on https://IP:8443 with a self-signed certificate and falls back to polling for deploys — you can attach a domain later from Settings."
+
+if [[ "$DOMAIN_ANSWERED" -eq 0 && -z "$DOMAIN" ]]; then
+    if confirm "Do you have a domain pointed at this server?" y; then
+        ask DOMAIN "Panel hostname:" "" valid_domain \
+            "Enter a fully-qualified hostname, e.g. panel.example.com"
+    else
+        hint "Using https://$(primary_ip):8443 with a self-signed certificate."
+    fi
+fi
+
+if [[ -n "$DOMAIN" ]]; then
+    ask EMAIL "Email for the TLS certificate:" "" valid_email \
+        "Let's Encrypt needs a valid address for expiry notices."
+fi
+
+section "2 · Administrator account" \
+    "Public registration is disabled, so this is the only way in. Turn on two-factor authentication at first login."
+
+ask ADMIN_NAME "Your name:" "Beacon Admin"
+ask ADMIN_EMAIL "Login email:" "${EMAIL:-}" valid_email "That does not look like an email address."
+ask_secret ADMIN_PASSWORD "Password:"
+
+section "3 · Runtimes and services" \
+    "Everything runs natively on the host — no containers."
+
+if [[ -z "$PHP_SELECTION" ]]; then
+    if [[ "$INTERACTIVE" -eq 1 ]]; then
+        hint "Supported: ${BEACON_PHP_VERSIONS[*]}"
+    fi
+    ask PHP_SELECTION "PHP versions to install:" "${BEACON_PHP_VERSIONS[*]}" \
+        valid_php_list "Pick from: ${BEACON_PHP_VERSIONS[*]}"
+fi
+
+ask NODE_SELECTION "Default Node major version:" "$BEACON_DEFAULT_NODE_MAJOR" \
+    valid_node_major "Pick from: ${BEACON_NODE_MAJORS[*]}"
+
+if [[ "$MYSQL_ANSWERED" -eq 0 ]]; then
+    if confirm "Install and configure MySQL 8?" y; then
+        SKIP_MYSQL=0
+    else
+        SKIP_MYSQL=1
+    fi
+fi
+
+# Apply the answers to the install plan.
+read -r -a BEACON_PHP_VERSIONS <<< "$PHP_SELECTION"
+BEACON_DEFAULT_NODE_MAJOR="$NODE_SELECTION"
+
+# ── Summary + point of no return ─────────────────────────────────────
+section "Ready to install" "Nothing has been changed on this server yet."
+
+tty_out "  ${C_DIM}panel url${C_OFF}      $( [[ -n "$DOMAIN" ]] && echo "https://${DOMAIN}/" || echo "https://$(primary_ip):8443/" )\n"
+tty_out "  ${C_DIM}tls${C_OFF}            $( [[ -n "$DOMAIN" ]] && echo "Let's Encrypt (${EMAIL})" || echo "self-signed" )\n"
+tty_out "  ${C_DIM}administrator${C_OFF}  ${ADMIN_EMAIL}\n"
+tty_out "  ${C_DIM}php${C_OFF}            ${BEACON_PHP_VERSIONS[*]}\n"
+tty_out "  ${C_DIM}node${C_OFF}           ${BEACON_DEFAULT_NODE_MAJOR} ${C_DIM}(plus Bun)${C_OFF}\n"
+tty_out "  ${C_DIM}mysql${C_OFF}          $( [[ "$SKIP_MYSQL" -eq 0 ]] && echo "yes" || echo "skipped" )\n"
+tty_out "  ${C_DIM}also${C_OFF}           nginx · redis · supervisor · certbot · ufw\n\n"
+
+if [[ "$INTERACTIVE" -eq 1 ]]; then
+    if ! confirm "Start the install?" y; then
+        say "Aborted — nothing was changed."
+        exit 0
+    fi
+fi
+
+tty_out "\n${C_DIM}This takes 3–8 minutes. Full log: ${LOG}${C_OFF}\n\n"
 
 exec > >(tee -a "$LOG") 2>&1
 
 echo "==> Beacon install started $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-
-if [[ "$(id -u)" -ne 0 ]]; then
-    echo "Run as root (sudo)." >&2
-    exit 64
-fi
-
-if ! grep -qiE 'ubuntu|debian' /etc/os-release 2>/dev/null; then
-    echo "WARN: Beacon is tested on Ubuntu 24.04/22.04 only." >&2
-fi
+echo "==> Plan: domain='${DOMAIN:-none}' php='${BEACON_PHP_VERSIONS[*]}' node='${BEACON_DEFAULT_NODE_MAJOR}' mysql=$(( 1 - SKIP_MYSQL ))"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
 if [[ -z "$SCRIPT_DIR" || "$SCRIPT_DIR" == "/" || ! -f "${SCRIPT_DIR}/artisan" ]]; then
@@ -92,7 +416,7 @@ configure_beacon_shell
 install -d -o beacon -g beacon -m 0700 /home/beacon/.ssh
 install -d -o beacon -g beacon -m 0750 /home/beacon/.beacon/{bin,deploy}
 install -d -o "$PANEL_USER" -g "$PANEL_USER" -m 0750 \
-    /var/log/beacon/{deployments,commands,panel-updates,backups}
+    /var/log/beacon/{deployments,commands,operations,panel-updates,backups}
 install -d -o beacon -g "$PANEL_USER" -m 0750 /var/log/beacon/sites
 install -d -o www-data -g www-data -m 0755 /var/www/beacon-acme
 touch /var/log/beacon/panel-php-error.log /var/log/beacon/panel-worker.log
@@ -154,7 +478,7 @@ if [[ -f "$SUDOERS_SRC" ]]; then
 fi
 
 panel_primary_ip() {
-    hostname -I 2>/dev/null | awk '{print $1; exit}'
+    primary_ip
 }
 
 apt_wait() {
@@ -711,16 +1035,45 @@ elif [[ -f "$(pwd)/deploy/logrotate/beacon" ]]; then
 fi
 
 echo "==> Beacon install complete."
+
+# The closing summary goes to the terminal as well as the log, but the
+# generated password is written to the terminal only — a world-readable
+# install log is the wrong place for a credential.
 if [[ -f "${PANEL_CURRENT}/artisan" ]]; then
     if [[ -n "$DOMAIN" ]]; then
         scheme="http"
         [[ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]] && scheme="https"
-        echo "    Panel URL: ${scheme}://${DOMAIN}/"
+        PANEL_URL="${scheme}://${DOMAIN}/"
     else
-        ip="$(panel_primary_ip)"
-        echo "    Panel URL: https://${ip}:8443/ (self-signed — attach a domain in Settings for Let's Encrypt)"
+        PANEL_URL="https://$(panel_primary_ip):8443/"
     fi
-    echo "    Create an admin: sudo -u ${PANEL_USER} php ${PANEL_CURRENT}/artisan beacon:create-admin"
+
+    tty_out "\n${C_GREEN}${C_BOLD}  ✔ Beacon is ready${C_OFF}\n\n"
+    tty_out "  ${C_DIM}url${C_OFF}       ${C_CYAN}${PANEL_URL}${C_OFF}\n"
+
+    if [[ -n "$ADMIN_EMAIL" ]]; then
+        tty_out "  ${C_DIM}login${C_OFF}     ${ADMIN_EMAIL}\n"
+
+        if [[ "$GENERATED_PASSWORD" -eq 1 ]]; then
+            tty_out "  ${C_DIM}password${C_OFF}  ${C_BOLD}${ADMIN_PASSWORD}${C_OFF}  ${C_YELLOW}← shown once, save it now${C_OFF}\n"
+        fi
+    else
+        tty_out "  ${C_DIM}admin${C_OFF}     sudo -u ${PANEL_USER} php ${PANEL_CURRENT}/artisan beacon:create-admin\n"
+    fi
+
+    tty_out "\n"
+
+    if [[ -z "$DOMAIN" ]]; then
+        tty_out "  ${C_YELLOW}⚠${C_OFF} Self-signed certificate — your browser will warn once.\n"
+        tty_out "    Attach a domain in Settings → Server for Let's Encrypt and\n"
+        tty_out "    push-based GitHub deploys. Until then Beacon polls for changes.\n\n"
+    fi
+
+    tty_out "  ${C_DIM}Next: sign in, enable two-factor auth, then add your first site.${C_OFF}\n\n"
+
+    echo "    Panel URL: ${PANEL_URL}"
 else
+    tty_out "\n  ${C_RED}✖ Panel bootstrap skipped or incomplete${C_OFF}\n"
+    tty_out "    Check ${LOG}\n\n"
     echo "    Panel bootstrap skipped or incomplete — check ${LOG}"
 fi

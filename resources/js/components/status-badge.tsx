@@ -1,15 +1,17 @@
-import type { LucideIcon } from 'lucide-react';
-import {
-    AlertTriangle,
-    CheckCircle2,
-    CircleDashed,
-    CircleSlash,
-    Loader2,
-    XCircle,
-} from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import type { BeaconStatus } from '@/components/status-pill';
+import { StatusPill, toStatus } from '@/components/status-pill';
 
+/**
+ * Compatibility shim over {@link StatusPill}.
+ *
+ * The original component hardcoded raw Tailwind palette classes
+ * (`bg-green-100 text-green-700 dark:bg-green-500/15`), which meant status
+ * colour was duplicated per component, unthemeable, and free to drift from
+ * the chart palette. Everything now resolves through the design system's
+ * nine canonical states.
+ *
+ * Prefer importing StatusPill directly in new code.
+ */
 export type Status =
     | 'success'
     | 'running'
@@ -19,52 +21,14 @@ export type Status =
     | 'stopped'
     | 'info';
 
-const statusConfig: Record<
-    Status,
-    { label: string; icon: LucideIcon; className: string; spin?: boolean }
-> = {
-    success: {
-        label: 'Success',
-        icon: CheckCircle2,
-        className:
-            'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-400',
-    },
-    running: {
-        label: 'Running',
-        icon: Loader2,
-        className:
-            'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400',
-        spin: true,
-    },
-    failed: {
-        label: 'Failed',
-        icon: XCircle,
-        className:
-            'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400',
-    },
-    pending: {
-        label: 'Pending',
-        icon: CircleDashed,
-        className:
-            'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
-    },
-    warning: {
-        label: 'Warning',
-        icon: AlertTriangle,
-        className:
-            'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
-    },
-    stopped: {
-        label: 'Stopped',
-        icon: CircleSlash,
-        className: 'bg-muted text-muted-foreground',
-    },
-    info: {
-        label: 'Info',
-        icon: CircleDashed,
-        className:
-            'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400',
-    },
+const LEGACY: Record<Status, BeaconStatus> = {
+    success: 'live',
+    running: 'building',
+    failed: 'failed',
+    pending: 'queued',
+    warning: 'degraded',
+    stopped: 'stopped',
+    info: 'deploying',
 };
 
 export function StatusBadge({
@@ -76,15 +40,11 @@ export function StatusBadge({
     label?: string;
     className?: string;
 }) {
-    const config = statusConfig[status];
-    const Icon = config.icon;
-
     return (
-        <Badge
-            className={cn('border-transparent', config.className, className)}
-        >
-            <Icon className={cn('size-3', config.spin && 'animate-spin')} />
-            {label ?? config.label}
-        </Badge>
+        <StatusPill
+            status={LEGACY[status] ?? toStatus(status)}
+            label={label}
+            className={className}
+        />
     );
 }

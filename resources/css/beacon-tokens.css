@@ -1,0 +1,377 @@
+/* ============================================================================
+ * Beacon Design System v1.0.0 — token layer
+ *
+ * Generated from Beacon-Design-System-v1.0.pdf. Do not hand-edit values.
+ * Source of truth: resources/design/beacon.tokens.json
+ *
+ * Project deviations from the PDF, all explicitly decided:
+ *   · Light is the default theme (PDF Law 1 says dark). Both are complete.
+ *   · Comfortable density (PDF Law 3 says dense). No values were invented —
+ *     the roomy rungs of the system's own scales are selected as defaults:
+ *     body-lg as body, row-height-relaxed as row height, control-height-lg
+ *     as control height, space-6 as card padding.
+ *   · English LTR only. Arabic scale is retained below but not wired.
+ * ==========================================================================*/
+
+:root {
+    /* ---- Primitive: cyan — brand, interaction, focus, deploy, glow ------- */
+    --bc-cyan-50: #ecfdff;
+    --bc-cyan-100: #cff9fe;
+    --bc-cyan-200: #a5f2fb;
+    --bc-cyan-300: #67e5f7;
+    --bc-cyan-400: #22d0e8;
+    --bc-cyan-500: #06c8e0;
+    --bc-cyan-600: #04a3bc;
+    --bc-cyan-700: #0a788f;
+    --bc-cyan-800: #106175;
+    --bc-cyan-900: #135163;
+    --bc-cyan-950: #063543;
+
+    /* ---- Primitive: slate — hue 211°, every surface and most text -------- */
+    --bc-slate-0: #ffffff;
+    --bc-slate-25: #fafcfd;
+    --bc-slate-50: #f5f8fa;
+    --bc-slate-100: #e8eef3;
+    --bc-slate-200: #d2dce5;
+    --bc-slate-300: #aebecc;
+    --bc-slate-400: #8095a8;
+    --bc-slate-500: #5c7085;
+    --bc-slate-600: #47596b;
+    --bc-slate-700: #364554;
+    --bc-slate-800: #263647;
+    --bc-slate-900: #1c2d3f;
+    --bc-slate-950: #101f2e;
+    --bc-slate-1000: #05131e;
+
+    /* ---- Primitive: green — healthy, live, passed, saved ----------------- */
+    --bc-green-50: #ecfdf3;
+    --bc-green-100: #d1fadf;
+    --bc-green-200: #a6f4c5;
+    --bc-green-300: #6ce9a6;
+    --bc-green-400: #4ade80;
+    --bc-green-500: #21c55d;
+    --bc-green-600: #16a34a;
+    --bc-green-700: #15803d;
+    --bc-green-800: #166534;
+    --bc-green-900: #14532d;
+    --bc-green-950: #052e16;
+
+    /* ---- Primitive: amber — degraded but serving, thresholds ------------- */
+    --bc-amber-50: #fffbeb;
+    --bc-amber-100: #fef3c7;
+    --bc-amber-200: #fde68a;
+    --bc-amber-300: #fcd34d;
+    --bc-amber-400: #fbbf24;
+    --bc-amber-500: #f59e0b;
+    --bc-amber-600: #d97706;
+    --bc-amber-700: #b45309;
+    --bc-amber-800: #92400e;
+    --bc-amber-900: #78350f;
+    --bc-amber-950: #451a03;
+
+    /* ---- Primitive: red — failed, destructive, blocking ------------------ */
+    --bc-red-50: #fef2f2;
+    --bc-red-100: #fee2e2;
+    --bc-red-200: #fecaca;
+    --bc-red-300: #fca5a5;
+    --bc-red-400: #f87171;
+    --bc-red-500: #ef4444;
+    --bc-red-600: #dc2626;
+    --bc-red-700: #b91c1c;
+    --bc-red-800: #991b1b;
+    --bc-red-900: #7f1d1d;
+    --bc-red-950: #450a0a;
+
+    /* ---- Primitive: violet — work in progress, building, queued ---------- */
+    --bc-violet-50: #f5f3ff;
+    --bc-violet-100: #ede9fe;
+    --bc-violet-200: #ddd6fe;
+    --bc-violet-300: #c4b5fd;
+    --bc-violet-400: #a78bfa;
+    --bc-violet-500: #8b5cf6;
+    --bc-violet-600: #7c3aed;
+    --bc-violet-700: #6d28d9;
+    --bc-violet-800: #5b21b6;
+    --bc-violet-900: #4c1d95;
+    --bc-violet-950: #2e1065;
+
+    /* There is deliberately no blue. Informational states use cyan,
+     * in-progress states use violet. See PDF §02. */
+
+    /* ---- Space: 4px base, token name is the multiplier ------------------- */
+    --bc-space-0: 0px;
+    --bc-space-0_5: 2px;
+    --bc-space-1: 4px;
+    --bc-space-1_5: 6px;
+    --bc-space-2: 8px;
+    --bc-space-2_5: 10px;
+    --bc-space-3: 12px;
+    --bc-space-4: 16px;
+    --bc-space-5: 20px;
+    --bc-space-6: 24px;
+    --bc-space-7: 28px;
+    --bc-space-8: 32px;
+    --bc-space-10: 40px;
+    --bc-space-12: 48px;
+    --bc-space-14: 56px;
+    --bc-space-16: 64px;
+    --bc-space-20: 80px;
+    --bc-space-24: 96px;
+    --bc-space-32: 128px;
+
+    /* ---- Radius: restrained, the mark is blocky -------------------------- */
+    --bc-radius-none: 0px;
+    --bc-radius-xs: 3px;
+    --bc-radius-sm: 4px;
+    --bc-radius-md: 6px;
+    --bc-radius-lg: 8px;
+    --bc-radius-xl: 12px;
+    --bc-radius-2xl: 16px;
+    --bc-radius-3xl: 24px;
+    --bc-radius-full: 9999px;
+
+    /* ---- Shell dimensions ------------------------------------------------ */
+    --bc-topbar-height: 56px;
+    --bc-sidebar-width: 264px;
+    --bc-sidebar-width-collapsed: 56px;
+    --bc-content-max: 1280px;
+    --bc-content-max-wide: 1440px;
+    --bc-content-max-prose: 72ch;
+    --bc-page-padding-sm: 16px;
+    --bc-page-padding: 24px;
+    --bc-page-padding-lg: 32px;
+    --bc-gutter: 24px;
+    --bc-columns: 12;
+
+    --bc-row-height-dense: 36px;
+    --bc-row-height: 44px;
+    --bc-row-height-relaxed: 52px;
+
+    --bc-control-height-sm: 28px;
+    --bc-control-height-md: 36px;
+    --bc-control-height-lg: 44px;
+    --bc-touch-target-min: 44px;
+
+    --bc-icon-xs: 12px;
+    --bc-icon-sm: 16px;
+    --bc-icon-md: 20px;
+    --bc-icon-lg: 24px;
+    --bc-icon-xl: 32px;
+    --bc-icon-stroke-sm: 1.5;
+    --bc-icon-stroke-lg: 2;
+
+    /* Comfortable-density selections (see header note) */
+    --bc-density-row-height: var(--bc-row-height-relaxed);
+    --bc-density-control-height: var(--bc-control-height-lg);
+    --bc-density-card-padding: var(--bc-space-6);
+
+    /* ---- Motion ---------------------------------------------------------- */
+    --bc-duration-instant: 0ms;
+    --bc-duration-fast: 80ms;
+    --bc-duration-quick: 120ms;
+    --bc-duration-base: 160ms;
+    --bc-duration-slow: 240ms;
+    --bc-duration-slower: 320ms;
+    --bc-duration-deliberate: 480ms;
+    --bc-duration-loop-shimmer: 1600ms;
+    --bc-duration-loop-pulse: 2000ms;
+
+    --bc-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --bc-ease-decelerate: cubic-bezier(0, 0, 0.2, 1);
+    --bc-ease-accelerate: cubic-bezier(0.4, 0, 1, 1);
+    --bc-ease-linear: linear;
+    --bc-ease-overshoot: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+    /* ---- Chart series: fixed order, never reshuffled --------------------- */
+    --bc-chart-1: var(--bc-cyan-500);
+    --bc-chart-2: var(--bc-violet-500);
+    --bc-chart-3: var(--bc-green-500);
+    --bc-chart-4: var(--bc-amber-500);
+    --bc-chart-5: var(--bc-red-400);
+    --bc-chart-6: var(--bc-cyan-300);
+    --bc-chart-7: var(--bc-violet-400);
+    --bc-chart-8: var(--bc-green-400);
+
+    /* ---- Log levels: terminal is slate-1000 in BOTH themes --------------- */
+    --bc-log-trace: var(--bc-slate-500);
+    --bc-log-debug: var(--bc-slate-400);
+    --bc-log-info: var(--bc-slate-200);
+    --bc-log-notice: var(--bc-cyan-300);
+    --bc-log-warn: var(--bc-amber-400);
+    --bc-log-error: var(--bc-red-400);
+    --bc-log-fatal: var(--bc-red-300);
+    --bc-log-success: var(--bc-green-400);
+    --bc-log-timestamp: var(--bc-slate-500);
+
+    /* ---- The glow: one per viewport. Hard rule. -------------------------- */
+    --bc-glow-brand:
+        0 0 0 1px rgba(6, 200, 224, 0.4), 0 0 24px rgba(6, 200, 224, 0.18);
+}
+
+/* ============================================================================
+ * Semantic layer — LIGHT (project default)
+ * Components consume these, never the primitives above.
+ * ==========================================================================*/
+:root {
+    color-scheme: light;
+
+    --bc-bg-canvas: var(--bc-slate-25);
+    --bc-bg-canvas-alt: var(--bc-slate-50);
+    --bc-bg-surface: var(--bc-slate-0);
+    /* Identical to surface by design: light-theme level 2 is carried by
+     * shadow-md + border/strong, per the elevation recipe. */
+    --bc-bg-surface-raised: var(--bc-slate-0);
+    --bc-bg-surface-sunken: var(--bc-slate-50);
+    --bc-bg-subtle: var(--bc-slate-50);
+    --bc-bg-hover: var(--bc-slate-100);
+    --bc-bg-active: var(--bc-slate-200);
+    --bc-bg-selected: var(--bc-cyan-50);
+    --bc-bg-inverse: var(--bc-slate-900);
+    --bc-bg-overlay: rgba(5, 19, 30, 0.4);
+    --bc-bg-brand: var(--bc-cyan-500);
+    --bc-bg-brand-hover: var(--bc-cyan-400);
+    --bc-bg-brand-active: var(--bc-cyan-600);
+    --bc-bg-brand-subtle: var(--bc-cyan-50);
+    --bc-bg-success: var(--bc-green-600);
+    --bc-bg-success-subtle: var(--bc-green-50);
+    --bc-bg-warning: var(--bc-amber-500);
+    --bc-bg-warning-subtle: var(--bc-amber-50);
+    --bc-bg-danger: var(--bc-red-600);
+    --bc-bg-danger-hover: var(--bc-red-500);
+    --bc-bg-danger-subtle: var(--bc-red-50);
+    --bc-bg-progress: var(--bc-violet-600);
+    --bc-bg-progress-subtle: var(--bc-violet-50);
+    --bc-bg-neutral-subtle: var(--bc-slate-100);
+    --bc-bg-skeleton: var(--bc-slate-100);
+    --bc-bg-terminal: var(--bc-slate-1000);
+
+    --bc-fg-default: var(--bc-slate-900);
+    --bc-fg-strong: var(--bc-slate-1000);
+    --bc-fg-muted: var(--bc-slate-600);
+    --bc-fg-subtle: var(--bc-slate-500);
+    --bc-fg-disabled: var(--bc-slate-400);
+    --bc-fg-on-brand: var(--bc-slate-1000); /* 9.25:1 — required pairing */
+    --bc-fg-on-danger: var(--bc-slate-0);
+    --bc-fg-on-inverse: var(--bc-slate-50);
+    --bc-fg-brand: var(--bc-cyan-800); /* 7.03:1 on white */
+    --bc-fg-link: var(--bc-cyan-800);
+    --bc-fg-link-hover: var(--bc-cyan-900);
+    --bc-fg-success: var(--bc-green-700); /* 5.02:1 */
+    --bc-fg-warning: var(--bc-amber-700); /* 5.02:1 */
+    --bc-fg-danger: var(--bc-red-600); /* 4.83:1 */
+    --bc-fg-progress: var(--bc-violet-600); /* 5.70:1 */
+    --bc-fg-code: var(--bc-cyan-900);
+
+    --bc-border-subtle: var(--bc-slate-100);
+    --bc-border-default: var(--bc-slate-200);
+    --bc-border-strong: var(--bc-slate-300);
+    --bc-border-hover: var(--bc-slate-400);
+    --bc-border-brand: var(--bc-cyan-500);
+    --bc-border-focus: var(--bc-cyan-700); /* 5.13:1 */
+    --bc-border-success: var(--bc-green-600);
+    --bc-border-warning: var(--bc-amber-500);
+    --bc-border-danger: var(--bc-red-600);
+    --bc-border-input: var(--bc-slate-300);
+
+    --bc-shadow-xs: 0 1px 2px rgba(5, 19, 30, 0.06);
+    --bc-shadow-sm:
+        0 1px 3px rgba(5, 19, 30, 0.08), 0 1px 2px rgba(5, 19, 30, 0.04);
+    --bc-shadow-md:
+        0 4px 8px -2px rgba(5, 19, 30, 0.1), 0 2px 4px -2px rgba(5, 19, 30, 0.06);
+    --bc-shadow-lg:
+        0 12px 16px -4px rgba(5, 19, 30, 0.1),
+        0 4px 6px -2px rgba(5, 19, 30, 0.05);
+    --bc-shadow-xl:
+        0 20px 24px -4px rgba(5, 19, 30, 0.12),
+        0 8px 8px -4px rgba(5, 19, 30, 0.05);
+
+    /* Status — light theme. Colour is the third signal after icon and label. */
+    --bc-status-queued: var(--bc-slate-500);
+    --bc-status-building: var(--bc-violet-600);
+    --bc-status-deploying: var(--bc-cyan-800);
+    --bc-status-live: var(--bc-green-700);
+    --bc-status-degraded: var(--bc-amber-700);
+    --bc-status-failed: var(--bc-red-600);
+    --bc-status-stopped: var(--bc-slate-500);
+    --bc-status-sleeping: var(--bc-slate-500);
+    --bc-status-canceled: var(--bc-slate-500);
+}
+
+/* ============================================================================
+ * Semantic layer — DARK
+ * ==========================================================================*/
+.dark {
+    color-scheme: dark;
+
+    --bc-bg-canvas: var(--bc-slate-1000);
+    --bc-bg-canvas-alt: var(--bc-slate-950);
+    --bc-bg-surface: var(--bc-slate-900);
+    --bc-bg-surface-raised: var(--bc-slate-800);
+    --bc-bg-surface-sunken: var(--bc-slate-950);
+    --bc-bg-subtle: rgba(255, 255, 255, 0.04);
+    --bc-bg-hover: rgba(255, 255, 255, 0.08);
+    --bc-bg-active: rgba(255, 255, 255, 0.12);
+    --bc-bg-selected: rgba(6, 200, 224, 0.16);
+    --bc-bg-inverse: var(--bc-slate-50);
+    --bc-bg-overlay: rgba(5, 19, 30, 0.72);
+    --bc-bg-brand: var(--bc-cyan-500);
+    --bc-bg-brand-hover: var(--bc-cyan-400);
+    --bc-bg-brand-active: var(--bc-cyan-600);
+    --bc-bg-brand-subtle: rgba(6, 200, 224, 0.16);
+    --bc-bg-success: var(--bc-green-500);
+    --bc-bg-success-subtle: rgba(33, 197, 93, 0.16);
+    --bc-bg-warning: var(--bc-amber-500);
+    --bc-bg-warning-subtle: rgba(245, 158, 11, 0.16);
+    --bc-bg-danger: var(--bc-red-500);
+    --bc-bg-danger-hover: var(--bc-red-400);
+    --bc-bg-danger-subtle: rgba(239, 68, 68, 0.16);
+    --bc-bg-progress: var(--bc-violet-500);
+    --bc-bg-progress-subtle: rgba(139, 92, 246, 0.16);
+    --bc-bg-neutral-subtle: rgba(255, 255, 255, 0.08);
+    --bc-bg-skeleton: var(--bc-slate-800);
+    --bc-bg-terminal: var(--bc-slate-1000);
+
+    --bc-fg-default: var(--bc-slate-100); /* 16.06:1 */
+    --bc-fg-strong: var(--bc-slate-0);
+    --bc-fg-muted: var(--bc-slate-300); /* 9.87:1 */
+    --bc-fg-subtle: var(--bc-slate-400); /* 6.06:1 */
+    --bc-fg-disabled: var(--bc-slate-600);
+    --bc-fg-on-brand: var(--bc-slate-1000);
+    --bc-fg-on-danger: var(--bc-slate-0);
+    --bc-fg-on-inverse: var(--bc-slate-900);
+    --bc-fg-brand: var(--bc-cyan-400); /* 10.06:1 */
+    --bc-fg-link: var(--bc-cyan-400);
+    --bc-fg-link-hover: var(--bc-cyan-300);
+    --bc-fg-success: var(--bc-green-400); /* 10.78:1 */
+    --bc-fg-warning: var(--bc-amber-400);
+    --bc-fg-danger: var(--bc-red-400); /* 6.79:1 */
+    --bc-fg-progress: var(--bc-violet-400); /* 6.90:1 */
+    --bc-fg-code: var(--bc-cyan-200);
+
+    --bc-border-subtle: rgba(255, 255, 255, 0.08);
+    --bc-border-default: var(--bc-slate-800);
+    --bc-border-strong: var(--bc-slate-700);
+    --bc-border-hover: var(--bc-slate-600);
+    --bc-border-brand: var(--bc-cyan-500);
+    --bc-border-focus: var(--bc-cyan-400); /* 10.06:1 */
+    --bc-border-success: var(--bc-green-500);
+    --bc-border-warning: var(--bc-amber-500);
+    --bc-border-danger: var(--bc-red-500);
+    --bc-border-input: var(--bc-slate-700);
+
+    --bc-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.32);
+    --bc-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+    --bc-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.48);
+    --bc-shadow-lg: 0 12px 24px rgba(0, 0, 0, 0.56);
+    --bc-shadow-xl: 0 24px 48px rgba(0, 0, 0, 0.64);
+
+    --bc-status-queued: var(--bc-slate-400);
+    --bc-status-building: var(--bc-violet-400);
+    --bc-status-deploying: var(--bc-cyan-400);
+    --bc-status-live: var(--bc-green-400);
+    --bc-status-degraded: var(--bc-amber-400);
+    --bc-status-failed: var(--bc-red-400);
+    --bc-status-stopped: var(--bc-slate-500);
+    --bc-status-sleeping: var(--bc-slate-400);
+    --bc-status-canceled: var(--bc-slate-500);
+}

@@ -41,15 +41,73 @@ class SiteController extends Controller
             ->get()
             ->map(fn (Site $site): array => $this->siteSummary($site));
 
+        $server = Server::current();
+
+        // Only versions actually present on the host may be selected. Offering
+        // every *supported* version let an operator create a site pinned to a
+        // PHP-FPM pool that does not exist.
+        $installedPhp = PhpVersion::query()
+            ->where('server_id', $server->id)
+            ->where('status', 'installed')
+            ->orderByDesc('version')
+            ->get()
+            ->map(fn (PhpVersion $php): array => [
+                'value' => $php->version,
+                'label' => "PHP {$php->version}",
+                'is_default' => (bool) $php->is_default,
+            ])
+            ->values();
+
+        $installedNode = NodeVersion::query()
+            ->where('server_id', $server->id)
+            ->where('runtime', 'node')
+            ->orderByDesc('version')
+            ->get()
+            ->map(fn (NodeVersion $node): array => [
+                'value' => $node->version,
+                'label' => "Node {$node->version}",
+                'is_default' => (bool) $node->is_default,
+            ])
+            ->values();
+
         return Inertia::render('sites/index', [
             'sites' => $sites,
+            // Each type declares which runtime it actually needs, so the form
+            // can hide fields rather than asking for a PHP version on a static
+            // site and then ignoring the answer.
             'siteTypes' => [
-                ['value' => 'laravel', 'label' => 'Laravel'],
-                ['value' => 'nextjs', 'label' => 'Next.js'],
-                ['value' => 'nuxt', 'label' => 'Nuxt'],
-                ['value' => 'static', 'label' => 'Static'],
+                [
+                    'value' => 'laravel',
+                    'label' => 'Laravel',
+                    'description' => 'PHP-FPM, Composer, queues and the scheduler.',
+                    'runtime' => 'php',
+                    'web_directory' => '/public',
+                ],
+                [
+                    'value' => 'nextjs',
+                    'label' => 'Next.js',
+                    'description' => 'SSR behind an Nginx reverse proxy, managed by Supervisor.',
+                    'runtime' => 'node',
+                    'web_directory' => null,
+                ],
+                [
+                    'value' => 'nuxt',
+                    'label' => 'Nuxt',
+                    'description' => 'Nitro server behind an Nginx reverse proxy.',
+                    'runtime' => 'node',
+                    'web_directory' => null,
+                ],
+                [
+                    'value' => 'static',
+                    'label' => 'Static',
+                    'description' => 'React, Vue, Astro or plain HTML served straight from disk.',
+                    'runtime' => 'none',
+                    'web_directory' => '/dist',
+                ],
             ],
-            'phpVersions' => config('beacon.php_versions', []),
+            'phpVersions' => $installedPhp,
+            'nodeVersions' => $installedNode,
+            'packageManager' => $server->default_package_manager,
         ]);
     }
 

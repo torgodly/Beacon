@@ -32,6 +32,7 @@
         <env name="BEACON_COMMAND_LOGS" value="storage/framework/testing/commands"/>
         <env name="BEACON_DATABASE_BACKUPS" value="storage/framework/testing/backups"/>
         <env name="BEACON_PANEL_UPDATE_LOGS" value="storage/framework/testing/panel-updates"/>
+        <env name="BEACON_OPERATION_LOGS" value="storage/framework/testing/operations"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>

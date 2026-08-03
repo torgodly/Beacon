@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\ServerMetricsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Databases\DatabaseBackupController;
 use App\Http\Controllers\Databases\DatabaseController;
+use App\Http\Controllers\OperationController;
 use App\Http\Controllers\Php\PhpController;
 use App\Http\Controllers\Runtime\RuntimeController;
 use App\Http\Controllers\Services\ServiceController;
@@ -34,6 +35,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', DashboardController::class)->name('dashboard');
 
     Route::get('api/server/metrics', ServerMetricsController::class)->name('api.server.metrics');
+
+    // Global operations dock — polled from every page, so these stay JSON.
+    Route::get('api/operations', [OperationController::class, 'index'])->name('api.operations.index');
+    Route::get('api/operations/{operation}/log', [OperationController::class, 'log'])->name('api.operations.log');
 
     Route::get('sites', [SiteController::class, 'index'])->name('sites.index');
     Route::post('sites', [SiteController::class, 'store'])->name('sites.store');

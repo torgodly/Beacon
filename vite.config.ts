@@ -11,9 +11,16 @@ export default defineConfig({
         laravel({
             input: ['resources/css/app.css', 'resources/js/app.tsx'],
             refresh: true,
+            // Downloaded at build time and emitted into public/build/assets —
+            // a control panel must not depend on a third-party CDN to render
+            // its own text. Weights are limited to the four the system allows:
+            // 400 body, 500 labels, 600 headings, 700 heading-1 only.
             fonts: [
-                bunny('Instrument Sans', {
-                    weights: [400, 500, 600],
+                bunny('Inter', {
+                    weights: [400, 500, 600, 700],
+                }),
+                bunny('JetBrains Mono', {
+                    weights: [400, 500],
                 }),
             ],
         }),

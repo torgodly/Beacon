@@ -6,6 +6,7 @@ import {
     Pin,
     PinOff,
     Search,
+    TerminalIcon,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Status } from '@/components/status-badge';
@@ -14,23 +15,30 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
+/**
+ * ANSI SGR → Beacon log-level colours (PDF §02).
+ *
+ * The 8 log levels map onto the standard ANSI foreground codes a deploy
+ * script actually emits. There is deliberately no blue in the system, so
+ * ANSI 34/94 resolve to cyan rather than introducing a second accent.
+ */
 const ANSI_FOREGROUND_CLASSES: Record<number, string> = {
-    30: 'text-neutral-500',
-    31: 'text-red-400',
-    32: 'text-green-400',
-    33: 'text-yellow-400',
-    34: 'text-blue-400',
-    35: 'text-purple-400',
-    36: 'text-cyan-400',
-    37: 'text-neutral-200',
-    90: 'text-neutral-600',
-    91: 'text-red-300',
-    92: 'text-green-300',
-    93: 'text-yellow-300',
-    94: 'text-blue-300',
-    95: 'text-purple-300',
-    96: 'text-cyan-300',
-    97: 'text-white',
+    30: 'text-[var(--bc-log-trace)]',
+    31: 'text-[var(--bc-log-error)]',
+    32: 'text-[var(--bc-log-success)]',
+    33: 'text-[var(--bc-log-warn)]',
+    34: 'text-[var(--bc-log-notice)]', // no blue in this system
+    35: 'text-[var(--bc-violet-400)]',
+    36: 'text-[var(--bc-cyan-400)]',
+    37: 'text-[var(--bc-log-info)]',
+    90: 'text-[var(--bc-log-trace)]',
+    91: 'text-[var(--bc-log-fatal)]',
+    92: 'text-[var(--bc-green-300)]',
+    93: 'text-[var(--bc-amber-300)]',
+    94: 'text-[var(--bc-cyan-300)]',
+    95: 'text-[var(--bc-violet-300)]',
+    96: 'text-[var(--bc-cyan-200)]',
+    97: 'text-[var(--bc-slate-0)]',
 };
 
 function escapeHtml(value: string): string {
@@ -150,31 +158,34 @@ export function Terminal({
     return (
         <div
             className={cn(
-                'overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950 text-neutral-100',
-                fullscreen && 'fixed inset-4 z-50 flex flex-col shadow-2xl',
+                // bg/terminal is slate-1000 in BOTH themes. A light-theme log
+                // viewer breaks recognition of the level colours.
+                'overflow-hidden rounded-lg border border-[var(--bc-slate-800)] bg-terminal text-[var(--bc-log-info)]',
+                fullscreen &&
+                    'fixed inset-4 z-50 flex flex-col shadow-[var(--bc-shadow-xl)]',
                 className,
             )}
         >
-            <div className="flex flex-wrap items-center gap-2 border-b border-neutral-800 bg-neutral-900 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2 border-b border-[var(--bc-slate-800)] bg-[var(--bc-slate-950)] px-3 py-2">
                 <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <span className="flex gap-1.5">
-                        <span className="size-2.5 rounded-full bg-red-500/70" />
-                        <span className="size-2.5 rounded-full bg-yellow-500/70" />
-                        <span className="size-2.5 rounded-full bg-green-500/70" />
-                    </span>
-                    <span className="truncate text-xs font-medium text-neutral-400">
+                    <TerminalIcon
+                        aria-hidden="true"
+                        strokeWidth={1.5}
+                        className="size-4 shrink-0 text-[var(--bc-slate-500)]"
+                    />
+                    <span className="truncate font-mono text-[12px] leading-[18px] font-medium text-[var(--bc-slate-400)]">
                         {title}
                     </span>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-1.5">
                     <div className="relative">
-                        <Search className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-neutral-500" />
+                        <Search className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-[var(--bc-slate-500)]" />
                         <Input
                             value={query}
                             onChange={(event) => setQuery(event.target.value)}
                             placeholder="Filter logs…"
-                            className="h-7 w-36 border-neutral-700 bg-neutral-950 pl-7 text-xs text-neutral-100 placeholder:text-neutral-500"
+                            className="h-7 w-40 border-[var(--bc-slate-700)] bg-terminal pl-7 font-mono text-[12px] text-[var(--bc-log-info)] placeholder:text-[var(--bc-slate-500)]"
                         />
                     </div>
 
@@ -182,12 +193,12 @@ export function Terminal({
                         type="button"
                         size="sm"
                         variant="ghost"
-                        className="h-7 px-2 text-neutral-300 hover:bg-neutral-800 hover:text-white"
+                        className="h-7 px-2 text-[var(--bc-slate-300)] hover:bg-[var(--bc-slate-800)] hover:text-[var(--bc-slate-0)]"
                         onClick={() => void copyLogs()}
                         disabled={!content}
                     >
                         {copied ? (
-                            <Check className="size-3.5 text-emerald-400" />
+                            <Check className="size-3.5 text-[var(--bc-log-success)]" />
                         ) : (
                             <Copy className="size-3.5" />
                         )}
@@ -199,8 +210,8 @@ export function Terminal({
                         size="sm"
                         variant="ghost"
                         className={cn(
-                            'h-7 px-2 text-neutral-300 hover:bg-neutral-800 hover:text-white',
-                            autoScroll && 'text-emerald-300',
+                            'h-7 px-2 text-[var(--bc-slate-300)] hover:bg-[var(--bc-slate-800)] hover:text-[var(--bc-slate-0)]',
+                            autoScroll && 'text-[var(--bc-log-success)]',
                         )}
                         onClick={() => setAutoScroll((previous) => !previous)}
                     >
@@ -216,7 +227,7 @@ export function Terminal({
                         type="button"
                         size="sm"
                         variant="ghost"
-                        className="h-7 px-2 text-neutral-300 hover:bg-neutral-800 hover:text-white"
+                        className="h-7 px-2 text-[var(--bc-slate-300)] hover:bg-[var(--bc-slate-800)] hover:text-[var(--bc-slate-0)]"
                         onClick={() => setFullscreen((previous) => !previous)}
                     >
                         {fullscreen ? (
@@ -234,7 +245,7 @@ export function Terminal({
             <pre
                 ref={scrollRef}
                 className={cn(
-                    'overflow-auto p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap',
+                    'overflow-auto p-4 font-mono text-[13px] leading-5 whitespace-pre-wrap tabular-nums',
                     fullscreen ? 'max-h-none flex-1' : 'max-h-96',
                 )}
             >
@@ -245,7 +256,7 @@ export function Terminal({
                         }}
                     />
                 ) : (
-                    <span className="text-neutral-500">
+                    <span className="text-[var(--bc-slate-500)]">
                         {query ? 'No matching log lines.' : emptyMessage}
                     </span>
                 )}

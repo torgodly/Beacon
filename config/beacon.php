@@ -41,6 +41,7 @@ return [
         'log_root' => env('BEACON_LOG_ROOT', '/var/log/beacon'),
         'deployment_logs' => env('BEACON_DEPLOYMENT_LOGS', '/var/log/beacon/deployments'),
         'command_logs' => env('BEACON_COMMAND_LOGS', '/var/log/beacon/commands'),
+        'operation_logs' => env('BEACON_OPERATION_LOGS', '/var/log/beacon/operations'),
         'database_backups' => env('BEACON_DATABASE_BACKUPS', '/var/log/beacon/backups'),
         'panel_update_logs' => env('BEACON_PANEL_UPDATE_LOGS', '/var/log/beacon/panel-updates'),
         'site_logs' => env('BEACON_SITE_LOGS', '/var/log/beacon/sites'),

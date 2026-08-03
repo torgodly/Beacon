@@ -1,13 +1,19 @@
 import { Head, router } from '@inertiajs/react';
-import { RefreshCw, Wrench } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { ConfirmDialog } from '@/components/confirm-dialog';
-import Heading from '@/components/heading';
+import { PageHeader } from '@/components/console/page-header';
+import { Panel, StatCluster } from '@/components/console/panel';
 import { HealthBanner } from '@/components/health-banner';
-import { ServiceStatusDot } from '@/components/service-status-dot';
-import { StatusBadge } from '@/components/status-badge';
-import type { Status } from '@/components/status-badge';
+import { StatusPill, toStatus } from '@/components/status-pill';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import {
+    DataTable,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeaderCell,
+    TableRow,
+} from '@/components/ui/data-table';
 import {
     index as servicesIndex,
     restart as restartService,
@@ -27,74 +33,106 @@ export default function ServicesIndex({
 }: {
     services: ServiceRow[];
 }) {
+    const running = services.filter((service) => service.status === 'running')
+        .length;
+    const stopped = services.length - running;
+
     return (
         <>
             <Head title="Services" />
-            <div className="flex h-full flex-1 flex-col gap-4 p-4">
-                <HealthBanner />
-                <Heading
+
+            <div className="flex flex-col gap-8 px-6 py-6">
+                <PageHeader
+                    eyebrow="server // services"
                     title="Services"
-                    description="Monitor core stack services and restart them when needed"
+                    description="The systemd units Beacon is allowed to control. Reading status needs no privileges; restarting goes through a restricted sudo wrapper."
                 />
 
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {services.map((service) => (
-                        <Card key={service.unit} className="py-4">
-                            <CardContent className="flex flex-col gap-3 px-5">
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="flex items-center gap-2">
-                                        <Wrench className="size-4 text-muted-foreground" />
-                                        <div>
-                                            <p className="font-medium">
-                                                {service.label}
-                                            </p>
-                                            <p className="text-xs text-muted-foreground">
-                                                {service.unit}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <ServiceStatusDot
-                                            status={service.status}
-                                        />
-                                        <StatusBadge
-                                            status={service.status as Status}
+                <HealthBanner />
+
+                <StatCluster
+                    className="max-w-lg"
+                    stats={[
+                        { label: 'Units', value: services.length },
+                        { label: 'Running', value: running, tone: 'success' },
+                        {
+                            label: 'Stopped',
+                            value: stopped,
+                            tone: stopped > 0 ? 'warning' : 'default',
+                        },
+                    ]}
+                />
+
+                <Panel eyebrow="systemd // units" flush>
+                    <DataTable>
+                        <TableHead>
+                            <TableRow>
+                                <TableHeaderCell>Service</TableHeaderCell>
+                                <TableHeaderCell>Unit</TableHeaderCell>
+                                <TableHeaderCell>State</TableHeaderCell>
+                                <TableHeaderCell numeric>PID</TableHeaderCell>
+                                <TableHeaderCell>Status</TableHeaderCell>
+                                <TableHeaderCell />
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {services.map((service) => (
+                                <TableRow key={service.unit} interactive>
+                                    <TableCell>
+                                        <span className="font-medium text-fg">
+                                            {service.label}
+                                        </span>
+                                    </TableCell>
+                                    <TableCell>
+                                        <span className="font-mono text-[13px] text-fg-muted">
+                                            {service.unit}
+                                        </span>
+                                    </TableCell>
+                                    <TableCell>
+                                        <span className="font-mono text-[13px] text-fg-muted">
+                                            {service.active_state}/
+                                            {service.sub_state}
+                                        </span>
+                                    </TableCell>
+                                    <TableCell numeric>
+                                        {service.main_pid ?? '—'}
+                                    </TableCell>
+                                    <TableCell>
+                                        <StatusPill
+                                            status={toStatus(service.status)}
                                             label={service.status}
-                                        />
-                                    </div>
-                                </div>
-
-                                <p className="text-sm text-muted-foreground">
-                                    {service.active_state} / {service.sub_state}
-                                    {service.main_pid
-                                        ? ` · pid ${service.main_pid}`
-                                        : ''}
-                                </p>
-
-                                <ConfirmDialog
-                                    trigger={
-                                        <Button
-                                            variant="outline"
                                             size="sm"
-                                            className="w-fit"
-                                        >
-                                            <RefreshCw className="size-3.5" />
-                                            Restart
-                                        </Button>
-                                    }
-                                    title={`Restart ${service.label}?`}
-                                    description="Connections to this service will drop briefly during the restart."
-                                    confirmLabel="Restart"
-                                    onConfirm={() =>
-                                        router.post(
-                                            restartService.url(service.unit),
-                                        )
-                                    }
-                                />
-                            </CardContent>
-                        </Card>
-                    ))}
-                </div>
+                                        />
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        <ConfirmDialog
+                                            trigger={
+                                                <Button
+                                                    size="sm"
+                                                    variant="secondary"
+                                                    aria-label={`Restart ${service.label}`}
+                                                >
+                                                    <RefreshCw className="size-3.5" />
+                                                    Restart
+                                                </Button>
+                                            }
+                                            title={`Restart ${service.label}?`}
+                                            description="This briefly interrupts every connection the service is handling."
+                                            confirmLabel="Restart"
+                                            onConfirm={() =>
+                                                router.post(
+                                                    restartService.url(
+                                                        service.unit,
+                                                    ),
+                                                )
+                                            }
+                                        />
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </DataTable>
+                </Panel>
             </div>
         </>
     );

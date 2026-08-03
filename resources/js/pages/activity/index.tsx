@@ -1,9 +1,12 @@
 import { Head } from '@inertiajs/react';
 import { Activity } from 'lucide-react';
-import Heading from '@/components/heading';
-import { StatusBadge } from '@/components/status-badge';
-import type { Status } from '@/components/status-badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useMemo, useState } from 'react';
+import { EmptyState, PageHeader } from '@/components/console/page-header';
+import { Panel } from '@/components/console/panel';
+import { StatusPill  } from '@/components/status-pill';
+import type {BeaconStatus} from '@/components/status-pill';
+import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 import { index as activityIndex } from '@/routes/activity';
 
 type ActivityRow = {
@@ -19,85 +22,135 @@ type ActivityRow = {
     created_at: string | null;
 };
 
-function toneStatus(tone: string): Status {
-    return ({
-        success: 'success',
-        info: 'info',
-        warning: 'pending',
-        failed: 'failed',
-    }[tone] ?? 'info') as Status;
+function toneStatus(tone: string): BeaconStatus {
+    return (
+        {
+            success: 'live',
+            info: 'deploying',
+            warning: 'degraded',
+            failed: 'failed',
+        }[tone] ?? 'stopped'
+    ) as BeaconStatus;
+}
+
+function timestamp(iso: string | null): { time: string; date: string } {
+    if (iso === null) {
+        return { time: '--:--:--', date: '' };
+    }
+
+    const value = new Date(iso);
+
+    return {
+        time: value.toLocaleTimeString(undefined, { hour12: false }),
+        date: value.toLocaleDateString(),
+    };
 }
 
 export default function ActivityIndex({ logs }: { logs: ActivityRow[] }) {
+    const [query, setQuery] = useState('');
+
+    const filtered = useMemo(() => {
+        const needle = query.trim().toLowerCase();
+
+        if (needle === '') {
+            return logs;
+        }
+
+        return logs.filter((log) =>
+            [log.event, log.label, log.description, log.user?.name]
+                .filter(Boolean)
+                .some((value) => String(value).toLowerCase().includes(needle)),
+        );
+    }, [logs, query]);
+
     return (
         <>
             <Head title="Activity" />
-            <div className="flex h-full flex-1 flex-col gap-4 p-4">
-                <Heading
+
+            <div className="flex flex-col gap-8 px-6 py-6">
+                <PageHeader
+                    eyebrow="inspect // activity"
                     title="Activity"
-                    description="Audit trail of panel actions — deployments, configuration changes, and provisioning."
+                    description="Append-only audit trail of every panel action — deployments, configuration changes and provisioning."
+                    actions={
+                        <Input
+                            value={query}
+                            onChange={(event) => setQuery(event.target.value)}
+                            placeholder="Filter events…"
+                            aria-label="Filter activity"
+                            className="w-64"
+                        />
+                    }
                 />
 
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-base">
-                            <Activity className="size-4" />
-                            Recent events
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                        {logs.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">
-                                No activity recorded yet.
-                            </p>
-                        ) : (
-                            logs.map((log) => (
-                                <div
-                                    key={log.id}
-                                    className="flex flex-wrap items-start justify-between gap-3 rounded-lg border px-3 py-2 text-sm"
-                                >
-                                    <div className="flex min-w-0 flex-col gap-1">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <span className="font-medium">
-                                                {log.label}
-                                            </span>
-                                            <StatusBadge
-                                                status={toneStatus(log.tone)}
-                                                label={log.event}
-                                            />
-                                        </div>
-                                        {log.description && (
-                                            <span className="text-muted-foreground">
-                                                {log.description}
-                                            </span>
+                {filtered.length === 0 ? (
+                    <EmptyState
+                        icon={Activity}
+                        title={query ? 'No matching events' : 'No activity yet'}
+                        description={
+                            query
+                                ? 'Try a different search term.'
+                                : 'Actions taken in the panel will be recorded here.'
+                        }
+                    />
+                ) : (
+                    <Panel eyebrow="activity // stream" flush>
+                        <ol className="divide-y divide-[var(--bc-border-subtle)]">
+                            {filtered.map((log) => {
+                                const stamp = timestamp(log.created_at);
+
+                                return (
+                                    <li
+                                        key={log.id}
+                                        className={cn(
+                                            'flex flex-wrap items-start gap-x-4 gap-y-1.5 px-6 py-3.5',
+                                            'transition-colors duration-[--bc-duration-fast] hover:bg-[var(--bc-bg-hover)]',
                                         )}
-                                        {log.properties &&
-                                            Object.keys(log.properties).length >
-                                                0 && (
-                                                <span className="font-mono text-xs text-muted-foreground">
-                                                    {JSON.stringify(
-                                                        log.properties,
-                                                    )}
-                                                </span>
-                                            )}
-                                        <span className="text-xs text-muted-foreground">
-                                            {log.user
-                                                ? `${log.user.name} · ${log.user.email}`
-                                                : 'System'}
+                                    >
+                                        {/* Timestamps are mono and tabular so
+                                          * the column stays scannable. */}
+                                        <time
+                                            dateTime={log.created_at ?? undefined}
+                                            className="w-20 shrink-0 font-mono text-[13px] leading-5 tabular-nums text-fg-subtle"
+                                            title={stamp.date}
+                                        >
+                                            {stamp.time}
+                                        </time>
+
+                                        <StatusPill
+                                            status={toneStatus(log.tone)}
+                                            label={log.label}
+                                            size="sm"
+                                            className="shrink-0"
+                                        />
+
+                                        <span className="min-w-0 flex-1">
+                                            <span className="block text-[14px] leading-[22px] text-fg">
+                                                {log.description ?? log.event}
+                                            </span>
+                                            <span className="text-caption font-mono text-fg-disabled">
+                                                {log.event}
+                                                {log.subject_type && (
+                                                    <>
+                                                        {' · '}
+                                                        {log.subject_type
+                                                            .split('\\')
+                                                            .pop()}
+                                                        #{log.subject_id}
+                                                    </>
+                                                )}
+                                            </span>
                                         </span>
-                                    </div>
-                                    <span className="shrink-0 text-xs text-muted-foreground">
-                                        {log.created_at
-                                            ? new Date(
-                                                  log.created_at,
-                                              ).toLocaleString()
-                                            : 'Unknown time'}
-                                    </span>
-                                </div>
-                            ))
-                        )}
-                    </CardContent>
-                </Card>
+
+                                        <span className="shrink-0 text-[13px] leading-5 text-fg-muted">
+                                            {log.user?.name ?? 'system'}
+                                        </span>
+                                    </li>
+                                );
+                            })}
+                        </ol>
+                    </Panel>
+                )}
             </div>
         </>
     );

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Sites;
 
+use App\Models\PhpVersion;
 use App\Models\Server;
 use App\Models\Site;
 use App\Models\SiteDomain;
@@ -55,6 +56,7 @@ class SiteManagementTest extends TestCase
 
         $user = User::factory()->create();
         Server::factory()->create(['id' => 1]);
+        $this->installPhp('8.4');
 
         $response = $this->actingAs($user)->post(route('sites.store'), [
             'name' => 'app.example.com',
@@ -74,6 +76,67 @@ class SiteManagementTest extends TestCase
         $this->assertDatabaseHas('site_domains', [
             'domain' => 'app.example.com',
             'is_primary' => true,
+        ]);
+    }
+
+    public function test_a_php_version_that_is_not_installed_is_rejected(): void
+    {
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+        $this->installPhp('8.3');
+
+        $response = $this->actingAs($user)->post(route('sites.store'), [
+            'name' => 'app.example.com',
+            'type' => 'laravel',
+            'php_version' => '8.4', // supported, but not installed here
+        ]);
+
+        $response->assertSessionHasErrors('php_version');
+        $this->assertDatabaseMissing('sites', ['name' => 'app.example.com']);
+    }
+
+    public function test_static_sites_may_not_be_given_a_php_version(): void
+    {
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+        $this->installPhp('8.4');
+
+        // A static site has no FPM pool, so the field is prohibited rather
+        // than quietly accepted and discarded.
+        $response = $this->actingAs($user)->post(route('sites.store'), [
+            'name' => 'spa.example.com',
+            'type' => 'static',
+            'php_version' => '8.4',
+        ]);
+
+        $response->assertSessionHasErrors('php_version');
+        $this->assertDatabaseMissing('sites', ['name' => 'spa.example.com']);
+    }
+
+    public function test_index_only_offers_installed_runtimes(): void
+    {
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+        $this->installPhp('8.3');
+        $this->installPhp('8.4', status: 'installing');
+
+        $response = $this->actingAs($user)->get(route('sites.index'));
+
+        $response->assertInertia(fn ($page) => $page
+            ->component('sites/index')
+            // 8.4 is still installing, so it must not be selectable.
+            ->has('phpVersions', 1)
+            ->where('phpVersions.0.value', '8.3')
+            ->has('nodeVersions')
+        );
+    }
+
+    private function installPhp(string $version, string $status = 'installed'): void
+    {
+        PhpVersion::query()->create([
+            'server_id' => 1,
+            'version' => $version,
+            'status' => $status,
         ]);
     }
 
