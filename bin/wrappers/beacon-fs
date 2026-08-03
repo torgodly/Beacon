@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+# /opt/beacon/bin/beacon-fs — root:root 0755, invoked as: sudo -u beacon beacon-fs
+import json
+import os
+import stat
+import sys
+
+ALLOWED_ROOT = "/home/beacon"
+
+
+def fail(msg, code=64):
+    print(f"beacon-fs: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def canonical(path):
+    real = os.path.realpath(path)
+    if not real.startswith(ALLOWED_ROOT + os.sep) and real != ALLOWED_ROOT:
+        fail(f"path outside permitted root: {path}")
+    return real
+
+
+try:
+    spec = json.load(sys.stdin)
+except ValueError:
+    fail("malformed job spec")
+
+action = spec.get("action")
+path = canonical(spec.get("path", ""))
+
+if action == "read":
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        sys.stdout.write(fh.read())
+elif action == "write":
+    mode = int(spec.get("mode", 0o644))
+    contents = spec.get("contents", "")
+    if not isinstance(contents, str):
+        fail("contents must be a string")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(contents)
+    os.chmod(path, mode)
+elif action == "stat":
+    st = os.stat(path)
+    print(json.dumps({
+        "size": st.st_size,
+        "mode": stat.S_IMODE(st.st_mode),
+        "mtime": int(st.st_mtime),
+    }))
+elif action == "tail":
+    lines = int(spec.get("lines", 200))
+    if lines < 1 or lines > 10000:
+        fail("lines out of range")
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        content = fh.readlines()
+    sys.stdout.write("".join(content[-lines:]))
+else:
+    fail(f"unknown action: {action}")

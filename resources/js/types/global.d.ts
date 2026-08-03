@@ -1,3 +1,4 @@
+import type { CommandPalettePayload } from '@/components/command-palette';
 import type { Auth } from '@/types/auth';
 
 declare module 'react' {
@@ -13,6 +14,7 @@ declare module '@inertiajs/core' {
             name: string;
             auth: Auth;
             sidebarOpen: boolean;
+            commandPalette: CommandPalettePayload | null;
             [key: string]: unknown;
         };
     }

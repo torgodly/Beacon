@@ -6,8 +6,11 @@ import { Separator } from '@/components/ui/separator';
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import { cn, toUrl } from '@/lib/utils';
 import { edit as editAppearance } from '@/routes/appearance';
+import { edit as editGitHub } from '@/routes/github';
 import { edit } from '@/routes/profile';
 import { edit as editSecurity } from '@/routes/security';
+import { edit as editServer } from '@/routes/server';
+import { edit as editUpdates } from '@/routes/updates';
 import type { NavItem } from '@/types';
 
 const sidebarNavItems: NavItem[] = [
@@ -24,6 +27,21 @@ const sidebarNavItems: NavItem[] = [
     {
         title: 'Appearance',
         href: editAppearance(),
+        icon: null,
+    },
+    {
+        title: 'GitHub',
+        href: editGitHub(),
+        icon: null,
+    },
+    {
+        title: 'Server',
+        href: editServer(),
+        icon: null,
+    },
+    {
+        title: 'Panel updates',
+        href: editUpdates(),
         icon: null,
     },
 ];

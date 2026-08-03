@@ -2,7 +2,10 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\Server\HealthCheckService;
+use App\Support\CommandPaletteData;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -35,6 +38,10 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $health = $request->user()
+            ? Cache::remember('beacon:health', 30, fn (): array => app(HealthCheckService::class)->check())
+            : ['healthy' => true, 'issues' => []];
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),
@@ -42,6 +49,15 @@ class HandleInertiaRequests extends Middleware
                 'user' => $request->user(),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            'flash' => [
+                'database_user_password' => fn () => $request->session()->get('database_user_password'),
+            ],
+            'beacon' => [
+                'health' => $health,
+            ],
+            'commandPalette' => fn () => $request->user()
+                ? app(CommandPaletteData::class)->build()
+                : null,
         ];
     }
 }

@@ -1,0 +1,17 @@
+/var/log/beacon/*/*.log
+/var/log/beacon/*/*/*.log
+/var/log/beacon/deployments/*.log
+/var/log/beacon/commands/*.log
+/var/log/beacon/panel-updates/*.log
+{
+    daily
+    rotate 14
+    missingok
+    notifempty
+    compress
+    delaycompress
+    sharedscripts
+    postrotate
+        systemctl reload php8.4-fpm >/dev/null 2>&1 || true
+    endscript
+}

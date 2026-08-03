@@ -1,0 +1,5 @@
+# Managed by Beacon install.sh — MySQL hardening (audit §0.5).
+[mysqld]
+bind-address = 127.0.0.1
+secure_file_priv =
+local_infile = OFF

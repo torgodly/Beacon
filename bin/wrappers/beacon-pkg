@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# /opt/beacon/bin/beacon-pkg — root:root 0755
+set -euo pipefail
+
+APT=/usr/bin/apt-get
+VERSION_RE='^8\.[1-4]$'
+EXT_RE='^[a-z0-9_]{1,32}$'
+
+die() { printf 'beacon-pkg: %s\n' "$*" >&2; exit 64; }
+
+INSTALLABLE='redis|imagick|gd|bcmath|mysql|pgsql|intl|zip|swoole|mbstring|curl|xml|soap|sqlite3|apcu|memcached|igbinary|xdebug'
+
+action="${1:-}"; shift || true
+
+case "$action" in
+    php-install|php-remove)
+        ver="${1:-}"
+        [[ "$ver" =~ $VERSION_RE ]] || die "invalid PHP version"
+        pkg="php${ver}-fpm"
+        if [[ "$action" == "php-install" ]]; then
+            DEBIAN_FRONTEND=noninteractive "$APT" install -y "$pkg"
+        else
+            DEBIAN_FRONTEND=noninteractive "$APT" remove -y "$pkg"
+        fi
+        ;;
+    ext-install)
+        ver="${1:-}"; ext="${2:-}"
+        [[ "$ver" =~ $VERSION_RE ]] || die "invalid PHP version"
+        [[ "$ext" =~ $EXT_RE ]] || die "invalid extension"
+        [[ "$ext" =~ ^($INSTALLABLE)$ ]] || die "extension not installable: $ext"
+        DEBIAN_FRONTEND=noninteractive "$APT" install -y "php${ver}-${ext}"
+        ;;
+    *)
+        die "unknown action: ${action:-<none>}"
+        ;;
+esac

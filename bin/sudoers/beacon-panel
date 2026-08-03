@@ -1,0 +1,17 @@
+# /etc/sudoers.d/beacon-panel — installed by install.sh after visudo -cf validates it.
+Cmnd_Alias BEACON_NGINX  = /opt/beacon/bin/beacon-nginx
+Cmnd_Alias BEACON_PHP    = /opt/beacon/bin/beacon-php
+Cmnd_Alias BEACON_SUP    = /opt/beacon/bin/beacon-supervisor
+Cmnd_Alias BEACON_SSL    = /opt/beacon/bin/beacon-certbot
+Cmnd_Alias BEACON_SVC    = /opt/beacon/bin/beacon-service
+Cmnd_Alias BEACON_PKG    = /opt/beacon/bin/beacon-pkg
+Cmnd_Alias BEACON_CRON   = /opt/beacon/bin/beacon-cron
+Cmnd_Alias BEACON_UPDATE = /opt/beacon/bin/beacon-update
+
+Defaults!BEACON_NGINX,BEACON_PHP,BEACON_SUP,BEACON_SSL,BEACON_SVC,BEACON_PKG,BEACON_CRON,BEACON_UPDATE \
+    !requiretty, env_reset, secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+beacon-panel ALL=(root) NOPASSWD: BEACON_NGINX, BEACON_PHP, BEACON_SUP, BEACON_SSL, \
+                                  BEACON_SVC, BEACON_PKG, BEACON_CRON, BEACON_UPDATE
+
+beacon-panel ALL=(beacon) NOPASSWD: /opt/beacon/bin/beacon-run, /opt/beacon/bin/beacon-fs

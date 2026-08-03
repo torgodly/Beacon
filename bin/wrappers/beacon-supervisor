@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# /opt/beacon/bin/beacon-supervisor — root:root 0755
+set -euo pipefail
+
+SUPERVISORCTL=/usr/bin/supervisorctl
+CONF_DIR="${BEACON_SUPERVISOR_CONF_DIR:-/etc/supervisor/conf.d}"
+
+die() { printf 'beacon-supervisor: %s\n' "$*" >&2; exit 64; }
+
+valid_program() {
+    local prog="${1:-}"
+    [[ "$prog" =~ ^[a-z0-9][a-z0-9._-]{0,63}$ ]] || die "invalid program name"
+    [[ ! "$prog" =~ ^beacon-panel ]]             || die "reserved program name"
+}
+
+action="${1:-}"; shift || true
+
+case "$action" in
+    write)
+        prog="${1:-}"; valid_program "$prog"
+        tmp="$(mktemp "$CONF_DIR/.beacon-XXXXXX")"
+        trap 'rm -f "$tmp"' EXIT
+        cat > "$tmp"
+
+        grep -Eqi '^[[:space:]]*user[[:space:]]*=[[:space:]]*root' "$tmp" \
+            && die "supervisor unit may not run as root"
+        grep -Eq '^[[:space:]]*user[[:space:]]*=[[:space:]]*beacon[[:space:]]*$' "$tmp" \
+            || die "supervisor unit must declare user = beacon"
+        grep -Eq '^[[:space:]]*command[[:space:]]*=[[:space:]]*(/home/beacon/|/usr/bin/|/usr/local/)' "$tmp" \
+            || die "command must live under /home/beacon, /usr/bin or /usr/local"
+
+        chmod 0644 "$tmp"
+        mv -f "$tmp" "$CONF_DIR/${prog}.conf"; trap - EXIT
+        "$SUPERVISORCTL" reread >/dev/null && "$SUPERVISORCTL" update
+        ;;
+    delete)
+        prog="${1:-}"; valid_program "$prog"
+        rm -f "$CONF_DIR/${prog}.conf"
+        "$SUPERVISORCTL" reread >/dev/null && "$SUPERVISORCTL" update
+        ;;
+    reread-update)
+        "$SUPERVISORCTL" reread && "$SUPERVISORCTL" update
+        ;;
+    start|stop|restart)
+        prog="${1:-}"; valid_program "$prog"
+        "$SUPERVISORCTL" "$action" "$prog"
+        ;;
+    status)
+        "$SUPERVISORCTL" status "$@"
+        ;;
+    *)
+        die "unknown action: ${action:-<none>}"
+        ;;
+esac

@@ -1,0 +1,314 @@
+<?php
+
+namespace App\Http\Controllers\Sites;
+
+use App\Actions\Site\CreateSite;
+use App\Actions\Site\DeleteSite;
+use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreSiteRequest;
+use App\Http\Requests\UpdateSiteIsolationRequest;
+use App\Http\Requests\UpdateSiteNginxRequest;
+use App\Models\CronJob;
+use App\Models\Deployment;
+use App\Models\EnvSnapshot;
+use App\Models\GithubInstallation;
+use App\Models\NodeVersion;
+use App\Models\PhpVersion;
+use App\Models\Server;
+use App\Models\Site;
+use App\Models\SiteCommand;
+use App\Models\SiteDomain;
+use App\Models\SslCertificate;
+use App\Models\SupervisorProcess;
+use App\Services\Deployment\DeploymentService;
+use App\Services\Nginx\NginxService;
+use App\Services\Php\PhpPoolWriter;
+use App\Services\Sites\SiteEnvironmentService;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
+use Inertia\Inertia;
+use Inertia\Response;
+use RuntimeException;
+
+class SiteController extends Controller
+{
+    public function index(): Response
+    {
+        $sites = Site::query()
+            ->with('domains')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Site $site): array => $this->siteSummary($site));
+
+        return Inertia::render('sites/index', [
+            'sites' => $sites,
+            'siteTypes' => [
+                ['value' => 'laravel', 'label' => 'Laravel'],
+                ['value' => 'nextjs', 'label' => 'Next.js'],
+                ['value' => 'nuxt', 'label' => 'Nuxt'],
+                ['value' => 'static', 'label' => 'Static'],
+            ],
+            'phpVersions' => config('beacon.php_versions', []),
+        ]);
+    }
+
+    public function store(StoreSiteRequest $request, CreateSite $createSite): RedirectResponse
+    {
+        try {
+            $site = $createSite->handle($request->siteData());
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['name' => $e->getMessage()]);
+        }
+
+        return redirect()
+            ->route('sites.show', $site)
+            ->with('toast', ['type' => 'success', 'message' => "Site {$site->name} created."]);
+    }
+
+    public function show(Request $request, Site $site, NginxService $nginx): Response
+    {
+        $site->load(['domains', 'sslCertificates']);
+
+        $tab = $request->query('tab', 'overview');
+
+        $deployments = null;
+        $deployScript = null;
+        $activeDeployment = null;
+        $sslCertificate = null;
+        $siteSettings = null;
+        $runtimeOptions = null;
+        $deployEnvReference = null;
+        $supervisorProcesses = null;
+        $cronJobs = null;
+        $environment = null;
+        $consoleCommands = null;
+        $activeCommand = null;
+
+        if ($tab === 'deployments') {
+            $deployments = $site->deployments()
+                ->latest()
+                ->limit(20)
+                ->get()
+                ->map(fn (Deployment $deployment): array => DeploymentController::deploymentPayload($deployment));
+
+            $deployScript = $site->deploy_script;
+            $deployEnvReference = DeploymentService::deployEnvironmentReference();
+
+            if ($request->filled('deployment')) {
+                $selected = $site->deployments()
+                    ->where('uuid', $request->query('deployment'))
+                    ->first();
+
+                if ($selected !== null) {
+                    $activeDeployment = DeploymentController::deploymentPayload($selected);
+                }
+            }
+        }
+
+        if ($tab === 'ssl') {
+            $issued = $site->sslCertificates->first(
+                fn (SslCertificate $certificate): bool => $certificate->status === 'issued',
+            );
+            $sslCertificate = SslController::certificatePayload($issued);
+        }
+
+        if ($tab === 'settings') {
+            $installation = GithubInstallation::query()
+                ->where('user_id', $request->user()->id)
+                ->whereNotNull('installation_id')
+                ->first();
+
+            $siteSettings = [
+                'repository' => $site->repository,
+                'repository_branch' => $site->repository_branch ?? 'main',
+                'repository_provider' => $site->repository_provider ?? 'custom',
+                'auto_deploy' => $site->auto_deploy,
+                'deploy_trigger' => $site->deploy_trigger,
+                'deploy_key_public' => $site->deploy_key_public,
+                'github' => [
+                    'connected' => $installation !== null,
+                    'account_login' => $installation?->account_login,
+                    'selected_repo_id' => $site->github_repo_id,
+                    'selected_repository' => $site->repository_provider === 'github'
+                        ? $site->repository
+                        : null,
+                ],
+            ];
+
+            $server = Server::current();
+
+            $runtimeOptions = [
+                'php_versions' => PhpVersion::query()
+                    ->where('server_id', $server->id)
+                    ->where('status', 'installed')
+                    ->orderBy('version')
+                    ->pluck('version')
+                    ->values()
+                    ->all(),
+                'node_versions' => NodeVersion::query()
+                    ->where('server_id', $server->id)
+                    ->where('runtime', 'node')
+                    ->where('status', 'installed')
+                    ->orderBy('version')
+                    ->pluck('version')
+                    ->values()
+                    ->all(),
+            ];
+        }
+
+        if ($tab === 'supervisor') {
+            $supervisorProcesses = $site->supervisorProcesses()
+                ->orderBy('name')
+                ->get()
+                ->map(fn (SupervisorProcess $process): array => SupervisorController::processPayload($process));
+        }
+
+        if ($tab === 'cron') {
+            $cronJobs = $site->cronJobs()
+                ->orderBy('name')
+                ->get()
+                ->map(fn (CronJob $job): array => CronController::jobPayload($job));
+        }
+
+        if ($tab === 'environment') {
+            $environment = [
+                'contents' => app(SiteEnvironmentService::class)->read($site),
+                'snapshots' => $site->envSnapshots()
+                    ->latest('id')
+                    ->limit(10)
+                    ->get()
+                    ->map(fn (EnvSnapshot $snapshot): array => EnvironmentController::snapshotPayload($snapshot)),
+            ];
+        }
+
+        if ($tab === 'console') {
+            $consoleCommands = $site->commands()
+                ->latest('id')
+                ->limit(20)
+                ->get()
+                ->map(fn (SiteCommand $command): array => ConsoleController::commandPayload($command));
+
+            if ($request->filled('command')) {
+                $selected = $site->commands()
+                    ->where('uuid', $request->query('command'))
+                    ->first();
+
+                if ($selected !== null) {
+                    $activeCommand = ConsoleController::commandPayload($selected);
+                }
+            }
+        }
+
+        return Inertia::render('sites/show', [
+            'site' => $this->siteDetail($site),
+            'tab' => $tab,
+            'nginx' => $tab === 'nginx' ? [
+                'contents' => $nginx->read($site),
+                'generated' => $nginx->previewGenerated($site),
+                'customized' => $site->nginx_customized,
+            ] : null,
+            'deployments' => $deployments,
+            'deployScript' => $deployScript,
+            'activeDeployment' => $activeDeployment,
+            'sslCertificate' => $sslCertificate,
+            'siteSettings' => $siteSettings,
+            'runtimeOptions' => $runtimeOptions,
+            'deployEnvReference' => $deployEnvReference,
+            'supervisorProcesses' => $supervisorProcesses,
+            'cronJobs' => $cronJobs,
+            'environment' => $environment,
+            'consoleCommands' => $consoleCommands,
+            'activeCommand' => $activeCommand,
+        ]);
+    }
+
+    public function updateNginx(UpdateSiteNginxRequest $request, Site $site, NginxService $nginx): RedirectResponse
+    {
+        try {
+            $nginx->saveRaw($site, $request->validated('contents'));
+        } catch (ValidationException $e) {
+            throw $e;
+        }
+
+        return back()->with('toast', ['type' => 'success', 'message' => 'Nginx configuration saved.']);
+    }
+
+    public function resetNginx(Site $site, NginxService $nginx): RedirectResponse
+    {
+        $nginx->resetToGenerated($site);
+
+        return back()->with('toast', ['type' => 'success', 'message' => 'Nginx configuration reset to generated template.']);
+    }
+
+    public function updateIsolation(UpdateSiteIsolationRequest $request, Site $site, PhpPoolWriter $pools): RedirectResponse
+    {
+        $site->update($request->validated());
+        $pools->write($site->fresh());
+        $site->activity()->log('site.isolation_updated');
+
+        return back()->with('toast', ['type' => 'success', 'message' => 'Isolation settings updated.']);
+    }
+
+    public function destroy(Request $request, Site $site, DeleteSite $deleteSite): RedirectResponse
+    {
+        $request->validate([
+            'confirmation' => ['required', 'string'],
+        ]);
+
+        try {
+            $deleteSite->handle($site, $request->input('confirmation'));
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['confirmation' => $e->getMessage()]);
+        }
+
+        return redirect()
+            ->route('sites.index')
+            ->with('toast', ['type' => 'success', 'message' => "Site {$site->name} deleted."]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function siteSummary(Site $site): array
+    {
+        return [
+            'id' => $site->name,
+            'name' => $site->name,
+            'type' => $site->type,
+            'status' => $site->status,
+            'ssl_status' => $site->ssl_status,
+            'deployment_status' => $site->deployment_status,
+            'primary_domain' => ($primary = $site->domains->firstWhere('is_primary', true)) !== null
+                ? $primary->domain
+                : $site->name,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function siteDetail(Site $site): array
+    {
+        return [
+            ...$this->siteSummary($site),
+            'path' => $site->path,
+            'web_directory' => $site->web_directory,
+            'php_version' => $site->php_version,
+            'node_version' => $site->node_version,
+            'proxy_port' => $site->proxy_port,
+            'nginx_customized' => $site->nginx_customized,
+            'open_basedir' => $site->open_basedir,
+            'strict_functions' => $site->strict_functions,
+            'open_basedir_extra_paths' => $site->open_basedir_extra_paths ?? [],
+            'domains' => $site->domains->map(fn (SiteDomain $domain): array => [
+                'id' => $domain->id,
+                'domain' => $domain->domain,
+                'is_primary' => $domain->is_primary,
+                'redirect_to' => $domain->redirect_to,
+                'redirect_status_code' => $domain->redirect_status_code,
+            ])->values()->all(),
+            'ssl_status' => $site->ssl_status,
+        ];
+    }
+}

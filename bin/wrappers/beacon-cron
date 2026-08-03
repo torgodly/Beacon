@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# /opt/beacon/bin/beacon-cron — root:root 0755
+set -euo pipefail
+
+CRONTAB=/usr/bin/crontab
+SITE_USER=beacon
+
+die() { printf 'beacon-cron: %s\n' "$*" >&2; exit 64; }
+
+action="${1:-}"; shift || true
+
+case "$action" in
+    write)
+        cat | "$CRONTAB" -u "$SITE_USER" -
+        ;;
+    read)
+        "$CRONTAB" -u "$SITE_USER" -l
+        ;;
+    *)
+        die "unknown action: ${action:-<none>}"
+        ;;
+esac

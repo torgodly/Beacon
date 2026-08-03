@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# /opt/beacon/bin/beacon-certbot — root:root 0755
+set -euo pipefail
+
+CERTBOT=/usr/bin/certbot
+WEBROOT=/var/www/beacon-acme
+DOMAIN_RE='^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$'
+
+die() { printf 'beacon-certbot: %s\n' "$*" >&2; exit 64; }
+
+action="${1:-}"; shift || true
+
+case "$action" in
+    issue)
+        email="${1:-}"; shift || true
+        [[ "$email" =~ ^[^@]+@[^@]+\.[^@]+$ ]] || die "invalid email"
+        domains=()
+        count=0
+        for d in "$@"; do
+            [[ "$d" =~ $DOMAIN_RE ]] || die "invalid domain: $d"
+            domains+=(-d "$d")
+            count=$((count + 1))
+            [[ $count -le 100 ]] || die "too many domains"
+        done
+        [[ $count -gt 0 ]] || die "at least one domain required"
+        "$CERTBOT" certonly --webroot -w "$WEBROOT" --agree-tos -n -m "$email" \
+            --cert-name "${!#}" "${domains[@]}"
+        ;;
+    renew)
+        "$CERTBOT" renew --quiet
+        ;;
+    delete)
+        lineage="${1:-}"
+        [[ -n "$lineage" ]] || die "missing lineage"
+        "$CERTBOT" delete --cert-name "$lineage" -n
+        ;;
+    certificates)
+        "$CERTBOT" certificates
+        ;;
+    *)
+        die "unknown action: ${action:-<none>}"
+        ;;
+esac

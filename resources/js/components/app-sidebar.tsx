@@ -1,7 +1,15 @@
 import { Link } from '@inertiajs/react';
-import { BookOpen, FolderGit2, LayoutGrid } from 'lucide-react';
+import {
+    Activity,
+    Boxes,
+    Code2,
+    Database,
+    Globe,
+    LayoutGrid,
+    Settings as SettingsIcon,
+    Wrench,
+} from 'lucide-react';
 import AppLogo from '@/components/app-logo';
-import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
 import {
@@ -14,6 +22,13 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
+import { index as activityIndex } from '@/routes/activity';
+import { index as databasesIndex } from '@/routes/databases';
+import { index as phpIndex } from '@/routes/php';
+import { edit as editProfile } from '@/routes/profile';
+import { index as runtimesIndex } from '@/routes/runtimes';
+import { index as servicesIndex } from '@/routes/services';
+import { index as sitesIndex } from '@/routes/sites';
 import type { NavItem } from '@/types';
 
 const mainNavItems: NavItem[] = [
@@ -22,18 +37,40 @@ const mainNavItems: NavItem[] = [
         href: dashboard(),
         icon: LayoutGrid,
     },
-];
-
-const footerNavItems: NavItem[] = [
     {
-        title: 'Repository',
-        href: 'https://github.com/laravel/react-starter-kit',
-        icon: FolderGit2,
+        title: 'Sites',
+        href: sitesIndex(),
+        icon: Globe,
     },
     {
-        title: 'Documentation',
-        href: 'https://laravel.com/docs/starter-kits#react',
-        icon: BookOpen,
+        title: 'Databases',
+        href: databasesIndex(),
+        icon: Database,
+    },
+    {
+        title: 'PHP',
+        href: phpIndex(),
+        icon: Code2,
+    },
+    {
+        title: 'Runtimes',
+        href: runtimesIndex(),
+        icon: Boxes,
+    },
+    {
+        title: 'Services',
+        href: servicesIndex(),
+        icon: Wrench,
+    },
+    {
+        title: 'Activity',
+        href: activityIndex(),
+        icon: Activity,
+    },
+    {
+        title: 'Settings',
+        href: editProfile(),
+        icon: SettingsIcon,
     },
 ];
 
@@ -57,7 +94,6 @@ export function AppSidebar() {
             </SidebarContent>
 
             <SidebarFooter>
-                <NavFooter items={footerNavItems} className="mt-auto" />
                 <NavUser />
             </SidebarFooter>
         </Sidebar>

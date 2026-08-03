@@ -1,0 +1,67 @@
+# Managed by Beacon — panel vhost with TLS.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name {{ $domain }};
+
+    location ^~ /.well-known/acme-challenge/ {
+        root {{ $acmeWebroot }};
+        default_type "text/plain";
+        allow all;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+@if($http2Inline)
+    http2 on;
+@endif
+    server_name {{ $domain }};
+
+    ssl_certificate     /etc/letsencrypt/live/{{ $domain }}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{{ $domain }}/privkey.pem;
+    ssl_trusted_certificate /etc/letsencrypt/live/{{ $domain }}/chain.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    root {{ $panelRoot }}/public;
+    index index.php index.html;
+    charset utf-8;
+
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location = /favicon.ico { access_log off; log_not_found off; }
+    location = /robots.txt  { access_log off; log_not_found off; }
+    error_page 404 /index.php;
+
+    location ~ \.php$ {
+        fastcgi_pass unix:/run/php/php{{ $panelPhp }}-fpm-beacon-panel.sock;
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        fastcgi_param DOCUMENT_ROOT $realpath_root;
+        fastcgi_hide_header X-Powered-By;
+        fastcgi_read_timeout 120;
+        fastcgi_buffers 16 16k;
+        fastcgi_buffer_size 32k;
+    }
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+
+    access_log /var/log/nginx/beacon-panel-access.log;
+    error_log  /var/log/nginx/beacon-panel-error.log error;
+}

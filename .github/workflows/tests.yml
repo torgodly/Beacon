@@ -34,5 +34,14 @@ jobs:
       - name: Setup Application
         run: composer setup
 
+      - name: Install shellcheck
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+
+      - name: Shellcheck install script and wrappers
+        run: shellcheck install.sh bin/wrappers/*
+
+      - name: Validate sudoers file
+        run: visudo -cf bin/sudoers/beacon-panel
+
       - name: Run CI Checks
         run: composer ci:check

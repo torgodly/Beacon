@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# /opt/beacon/bin/beacon-service — root:root 0755
+set -euo pipefail
+
+SYSTEMCTL=/usr/bin/systemctl
+ALLOWED='^(nginx|mysql|redis-server|supervisor|php8\.[1-4]-fpm)$'
+
+die() { printf 'beacon-service: %s\n' "$*" >&2; exit 64; }
+
+valid_unit() {
+    local unit="${1:-}"
+    [[ -n "$unit" ]] || die "missing unit name"
+    [[ "$unit" =~ $ALLOWED ]] || die "unit not allowed: $unit"
+}
+
+action="${1:-}"; shift || true
+unit="${1:-}"
+
+case "$action" in
+    status)
+        valid_unit "$unit"
+        "$SYSTEMCTL" show -p ActiveState,SubState,MainPID --value "$unit" 2>/dev/null | paste -sd ' ' -
+        ;;
+    restart|start|stop)
+        valid_unit "$unit"
+        "$SYSTEMCTL" "$action" "$unit"
+        ;;
+    *)
+        die "unknown action: ${action:-<none>}"
+        ;;
+esac

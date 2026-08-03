@@ -64,6 +64,25 @@ return [
             ]) : [],
         ],
 
+        'mysql_admin' => [
+            'driver' => 'mysql',
+            'host' => env('BEACON_MYSQL_HOST', '127.0.0.1'),
+            'port' => env('BEACON_MYSQL_PORT', '3306'),
+            'database' => env('BEACON_MYSQL_DATABASE', 'mysql'),
+            'username' => env('BEACON_MYSQL_USERNAME', 'beacon_admin'),
+            'password' => env('BEACON_MYSQL_PASSWORD', ''),
+            'unix_socket' => env('BEACON_MYSQL_SOCKET', '/var/run/mysqld/mysqld.sock'),
+            'charset' => env('BEACON_MYSQL_CHARSET', 'utf8mb4'),
+            'collation' => env('BEACON_MYSQL_COLLATION', 'utf8mb4_unicode_ci'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+            ]) : [],
+        ],
+
         'mariadb' => [
             'driver' => 'mariadb',
             'url' => env('DB_URL'),

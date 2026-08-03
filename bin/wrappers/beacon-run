@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+# /opt/beacon/bin/beacon-run — root:root 0755, invoked as: sudo -u beacon beacon-run
+import json
+import os
+import sys
+
+ALLOWED_ROOTS = ("/home/beacon/",)
+ENV_ALLOW_PREFIX = (
+    "BEACON_", "NODE_", "NPM_", "npm_", "COMPOSER_", "GIT_", "CI",
+    "PATH", "HOME", "USER", "LANG", "LC_ALL", "PORT", "HOST",
+)
+
+
+def fail(msg, code=64):
+    print(f"beacon-run: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+try:
+    spec = json.load(sys.stdin)
+except ValueError:
+    fail("malformed job spec")
+
+cwd = os.path.realpath(spec.get("cwd", ""))
+if not any(cwd.startswith(r) for r in ALLOWED_ROOTS) or not os.path.isdir(cwd):
+    fail(f"cwd outside permitted roots: {cwd}")
+
+argv = spec.get("argv") or []
+if not isinstance(argv, list) or not all(isinstance(a, str) for a in argv) or not argv:
+    fail("argv must be a non-empty list of strings")
+
+env = {
+    k: str(v)
+    for k, v in (spec.get("env") or {}).items()
+    if isinstance(k, str) and k.startswith(ENV_ALLOW_PREFIX)
+}
+env.setdefault("HOME", "/home/beacon")
+env.setdefault("USER", "beacon")
+env.setdefault("PATH", "/usr/local/bin:/usr/bin:/bin")
+
+os.chdir(cwd)
+os.umask(0o002)
+
+if spec.get("oom_expendable"):
+    try:
+        with open("/proc/self/oom_score_adj", "w") as fh:
+            fh.write("750")
+    except OSError:
+        pass
+
+os.execvpe(argv[0], argv, env)

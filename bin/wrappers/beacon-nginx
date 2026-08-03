@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# /opt/beacon/bin/beacon-nginx — root:root 0755
+# Exit codes: 0 ok | 64 bad usage/argument | 65 nginx config rejected | 66 not found
+set -euo pipefail
+umask 022
+
+SITES_AVAILABLE=/etc/nginx/sites-available
+SITES_ENABLED=/etc/nginx/sites-enabled
+NGINX=/usr/sbin/nginx
+SYSTEMCTL=/usr/bin/systemctl
+RESERVED='^beacon-panel$'
+
+die() { printf 'beacon-nginx: %s\n' "$*" >&2; exit 64; }
+
+valid_name() {
+    local n="${1:-}"
+    [[ -n "$n" ]]                                        || die "missing site name"
+    [[ "$n" =~ ^[a-z0-9]([a-z0-9.-]{0,61}[a-z0-9])?$ ]]  || die "invalid site name: $n"
+    [[ "$n" != *".."* ]]                                 || die "invalid site name: $n"
+}
+guard_reserved() { [[ ! "$1" =~ $RESERVED ]] || die "refusing to modify reserved vhost: $1"; }
+
+action="${1:-}"; shift || true
+
+case "$action" in
+    write)
+        name="${1:-}"; valid_name "$name"; guard_reserved "$name"
+        target="$SITES_AVAILABLE/$name"
+        tmp="$(mktemp "$SITES_AVAILABLE/.beacon-XXXXXX")"
+        trap 'rm -f "$tmp"' EXIT
+        cat > "$tmp"
+        [[ -s "$tmp" ]] || die "empty configuration"
+        chmod 0644 "$tmp"
+
+        backup=""
+        if [[ -f "$target" ]]; then backup="$(mktemp)"; cp -a "$target" "$backup"; fi
+        mv -f "$tmp" "$target"; trap - EXIT
+
+        if ! out="$("$NGINX" -t 2>&1)"; then
+            if [[ -n "$backup" ]]; then mv -f "$backup" "$target"; else rm -f "$target"; fi
+            printf '%s\n' "$out" >&2
+            exit 65
+        fi
+        [[ -n "$backup" ]] && rm -f "$backup"
+        printf '%s\n' "$out" ;;
+
+    enable)
+        name="${1:-}"; valid_name "$name"
+        [[ -f "$SITES_AVAILABLE/$name" ]] || exit 66
+        ln -sfn "$SITES_AVAILABLE/$name" "$SITES_ENABLED/$name"
+        if ! out="$("$NGINX" -t 2>&1)"; then
+            rm -f "$SITES_ENABLED/$name"; printf '%s\n' "$out" >&2; exit 65
+        fi ;;
+
+    disable) name="${1:-}"; valid_name "$name"; guard_reserved "$name"; rm -f "$SITES_ENABLED/$name" ;;
+    delete)  name="${1:-}"; valid_name "$name"; guard_reserved "$name"
+             rm -f "$SITES_ENABLED/$name" "$SITES_AVAILABLE/$name" ;;
+    read)    name="${1:-}"; valid_name "$name"
+             [[ -f "$SITES_AVAILABLE/$name" ]] || exit 66; cat "$SITES_AVAILABLE/$name" ;;
+    test)    "$NGINX" -t 2>&1 || exit 65 ;;
+    reload)  "$NGINX" -t 2>&1 || exit 65; "$SYSTEMCTL" reload nginx ;;
+    panel-write)
+        target="$SITES_AVAILABLE/beacon-panel"
+        tmp="$(mktemp "$SITES_AVAILABLE/.beacon-panel-XXXXXX")"
+        trap 'rm -f "$tmp"' EXIT
+        cat > "$tmp"
+        [[ -s "$tmp" ]] || die "empty configuration"
+        chmod 0644 "$tmp"
+
+        backup=""
+        if [[ -f "$target" ]]; then backup="$(mktemp)"; cp -a "$target" "$backup"; fi
+        mv -f "$tmp" "$target"; trap - EXIT
+        ln -sfn "$target" "$SITES_ENABLED/beacon-panel"
+
+        if ! out="$("$NGINX" -t 2>&1)"; then
+            if [[ -n "$backup" ]]; then mv -f "$backup" "$target"; else rm -f "$target"; fi
+            printf '%s\n' "$out" >&2
+            exit 65
+        fi
+        [[ -n "$backup" ]] && rm -f "$backup"
+        printf '%s\n' "$out" ;;
+    *)       die "unknown action: ${action:-<none>}" ;;
+esac

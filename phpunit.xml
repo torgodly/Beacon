@@ -28,6 +28,10 @@
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="BEACON_DEPLOYMENT_LOGS" value="storage/framework/testing/deployments"/>
+        <env name="BEACON_COMMAND_LOGS" value="storage/framework/testing/commands"/>
+        <env name="BEACON_DATABASE_BACKUPS" value="storage/framework/testing/backups"/>
+        <env name="BEACON_PANEL_UPDATE_LOGS" value="storage/framework/testing/panel-updates"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>

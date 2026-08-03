@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+# /opt/beacon/bin/beacon-update — root:root 0755
+# Panel self-update: build unprivileged, promote as root, health-gate, auto-rollback.
+# Exit codes: 0 ok | 64 bad usage | 66 not found | 70 health check failed
+set -euo pipefail
+
+ROOT="${BEACON_PANEL_ROOT:-/opt/beacon/panel}"
+SHARED="${BEACON_PANEL_SHARED:-${ROOT}/shared}"
+REPO="${BEACON_PANEL_REPO:-https://github.com/beacon-org/beacon.git}"
+KEEP="${BEACON_PANEL_KEEP_RELEASES:-3}"
+PANEL_USER="${BEACON_PANEL_USER:-beacon-panel}"
+PHP_VERSION="${BEACON_PANEL_PHP_VERSION:-8.4}"
+PHP_FPM="php${PHP_VERSION}-fpm"
+HEALTH_URL="${BEACON_PANEL_HEALTH_URL:-http://127.0.0.1/up}"
+SUPERVISORCTL="${SUPERVISORCTL:-/usr/bin/supervisorctl}"
+SYSTEMCTL="${SYSTEMCTL:-/usr/bin/systemctl}"
+CURL="${CURL:-/usr/bin/curl}"
+
+die() { printf 'beacon-update: %s\n' "$*" >&2; exit 64; }
+
+restart_runtime() {
+    if "$SYSTEMCTL" is-active --quiet "$PHP_FPM" 2>/dev/null; then
+        "$SYSTEMCTL" restart "$PHP_FPM"
+    fi
+
+    if "$SUPERVISORCTL" status beacon-panel-worker >/dev/null 2>&1; then
+        "$SUPERVISORCTL" restart beacon-panel-worker
+    fi
+}
+
+promote_release() {
+    local target="$1"
+    ln -sfn "$target" "${ROOT}/current.new"
+    mv -Tf "${ROOT}/current.new" "${ROOT}/current"
+}
+
+prune_releases() {
+    local count=0
+    local dir
+
+    while IFS= read -r dir; do
+        count=$((count + 1))
+        if (( count > KEEP )); then
+            rm -rf "$dir"
+        fi
+    done < <(ls -1dt "${ROOT}"/releases/*/ 2>/dev/null || true)
+}
+
+action="${1:-deploy}"; shift || true
+
+case "$action" in
+    deploy)
+        ref="${1:-}"
+        [[ "$ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "bad tag: ${ref:-<none>}"
+
+        rel="${ROOT}/releases/$(date -u +%Y%m%d%H%M%S)"
+        prev=""
+        if [[ -L "${ROOT}/current" ]]; then
+            prev="$(readlink -f "${ROOT}/current" || true)"
+        fi
+
+        install -d -o "$PANEL_USER" -g "$PANEL_USER" -m 0755 "$rel"
+        runuser -u "$PANEL_USER" -- git clone --depth 1 --branch "$ref" "$REPO" "$rel"
+        runuser -u "$PANEL_USER" -- git -C "$rel" verify-tag "$ref" 2>/dev/null \
+            || printf 'beacon-update: WARN: unsigned tag %s\n' "$ref" >&2
+        runuser -u "$PANEL_USER" -- composer install -d "$rel" --no-dev --no-interaction \
+            --prefer-dist --optimize-autoloader
+        runuser -u "$PANEL_USER" -- npm --prefix "$rel" ci
+        runuser -u "$PANEL_USER" -- npm --prefix "$rel" run build
+
+        rm -rf "$rel/storage" "$rel/bootstrap/cache"
+        ln -sfn "${SHARED}/.env" "${rel}/.env"
+        ln -sfn "${SHARED}/storage" "${rel}/storage"
+        ln -sfn "${SHARED}/bootstrap-cache" "${rel}/bootstrap/cache"
+
+        runuser -u "$PANEL_USER" -- php "$rel/artisan" migrate --force
+        runuser -u "$PANEL_USER" -- php "$rel/artisan" optimize
+
+        chown -R root:"$PANEL_USER" "$rel"
+        chmod -R go-w "$rel"
+
+        promote_release "$rel"
+        restart_runtime
+
+        ok=0
+        for _ in $(seq 1 15); do
+            sleep 1
+            if "$CURL" -fsS --max-time 3 "$HEALTH_URL" >/dev/null 2>&1; then
+                ok=1
+                break
+            fi
+        done
+
+        if [[ "$ok" != 1 && -n "$prev" ]]; then
+            printf 'beacon-update: health check failed — rolling back to %s\n' "$prev" >&2
+            promote_release "$prev"
+            restart_runtime
+            rm -rf "$rel"
+            exit 70
+        fi
+
+        if [[ "$ok" != 1 ]]; then
+            die "health check failed and no previous release to roll back to"
+        fi
+
+        prune_releases
+        ;;
+
+    rollback)
+        target=""
+        count=0
+
+        while IFS= read -r dir; do
+            count=$((count + 1))
+            if (( count == 2 )); then
+                target="${dir%/}"
+                break
+            fi
+        done < <(ls -1dt "${ROOT}"/releases/*/ 2>/dev/null || true)
+
+        if [[ -z "$target" ]]; then
+            printf 'beacon-update: no previous release to roll back to\n' >&2
+            exit 66
+        fi
+
+        promote_release "$target"
+        restart_runtime
+        ;;
+
+    *)
+        die "unknown action: ${action:-<none>}"
+        ;;
+esac
