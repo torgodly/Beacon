@@ -331,9 +331,95 @@ valid_node_major() {
     [[ " ${BEACON_NODE_MAJORS[*]} " == *" $1 "* ]]
 }
 
+# Read a single value from the panel's SQLite database.
+#
+# sqlite3 is installed by this script, so it is missing on a first run — but so
+# is the database, so there is nothing to ask. On every re-run both sqlite3 and
+# php exist, and that is exactly when these answers matter. php is tried as a
+# fallback because a first run installs it before sqlite3 is available.
+panel_db_query() {
+    local sql="$1"
+    local db="${PANEL_SHARED}/beacon.sqlite"
+
+    [[ -s "$db" ]] || return 1
+
+    if command -v sqlite3 >/dev/null 2>&1; then
+        sqlite3 "$db" "$sql" 2>/dev/null && return 0
+    fi
+
+    local php_bin
+    for php_bin in "/usr/bin/php${PANEL_PHP}" /usr/bin/php; do
+        [[ -x "$php_bin" ]] || continue
+
+        "$php_bin" -r '
+            try {
+                $pdo = new PDO("sqlite:".$argv[1]);
+                $value = $pdo->query($argv[2])->fetchColumn();
+                echo $value === false ? "" : $value;
+            } catch (Throwable $e) {
+                exit(1);
+            }
+        ' "$db" "$sql" 2>/dev/null && return 0
+    done
+
+    return 1
+}
+
+# Statement variant, for keeping the stored panel URL in step with reality.
+panel_db_exec() {
+    local sql="$1"
+    local db="${PANEL_SHARED}/beacon.sqlite"
+
+    [[ -s "$db" ]] || return 1
+
+    if command -v sqlite3 >/dev/null 2>&1; then
+        sqlite3 "$db" "$sql" >/dev/null 2>&1 && return 0
+    fi
+
+    local php_bin
+    for php_bin in "/usr/bin/php${PANEL_PHP}" /usr/bin/php; do
+        [[ -x "$php_bin" ]] || continue
+
+        "$php_bin" -r '
+            try {
+                (new PDO("sqlite:".$argv[1]))->exec($argv[2]);
+            } catch (Throwable $e) {
+                exit(1);
+            }
+        ' "$db" "$sql" 2>/dev/null && return 0
+    done
+
+    return 1
+}
+
+# The hostname the panel is currently configured to serve, if any.
+existing_panel_domain() {
+    local domain
+    domain="$(panel_db_query 'SELECT COALESCE(panel_domain, "") FROM servers WHERE id = 1;')" || return 1
+    domain="${domain//[[:space:]]/}"
+
+    [[ -n "$domain" ]] || return 1
+    printf '%s' "$domain"
+}
+
+# Does the panel database already contain a user?
+#
+# Without this the wizard asks for a name, an email and a password on every
+# re-run, generates a password it then cannot apply, and prints it in the
+# closing summary as though it were live — which is worse than not asking,
+# because it looks like the credentials changed.
+panel_has_admin() {
+    local count
+    count="$(panel_db_query 'SELECT COUNT(*) FROM users;')" || return 1
+    count="${count//[[:space:]]/}"
+
+    [[ "$count" =~ ^[0-9]+$ ]] && (( count > 0 ))
+}
+
 # ── The questionnaire ────────────────────────────────────────────────
 GENERATED_PASSWORD=0
 ADMIN_EXISTS=0
+REVERT_TO_IP=0
 
 banner
 
@@ -353,6 +439,32 @@ fi
 section "1 · How will you reach the panel?" \
     "A real hostname gets a free Let's Encrypt certificate and lets GitHub deliver webhooks. Without one, Beacon serves on https://IP:8443 with a self-signed certificate and falls back to polling for deploys — you can attach a domain later from Settings."
 
+# A re-run must never silently undo a working configuration.
+#
+# Previously the wizard just asked "do you have a domain?", and answering no —
+# the habitual answer from the first install — tore down the vhost for an
+# already-attached hostname, leaving the panel on :8443 while the database
+# still advertised the domain. Through Cloudflare that surfaces as a 525 SSL
+# handshake failure, with the UI insisting the domain is configured.
+CURRENT_PANEL_DOMAIN=""
+if [[ "$DOMAIN_ANSWERED" -eq 0 && -z "$DOMAIN" ]]; then
+    CURRENT_PANEL_DOMAIN="$(existing_panel_domain || true)"
+fi
+
+if [[ -n "$CURRENT_PANEL_DOMAIN" ]]; then
+    hint "This panel is already served at https://${CURRENT_PANEL_DOMAIN}"
+
+    if confirm "Keep serving it at ${CURRENT_PANEL_DOMAIN}?" y; then
+        DOMAIN="$CURRENT_PANEL_DOMAIN"
+        DOMAIN_ANSWERED=1
+    else
+        tty_out "  ${C_YELLOW}⚠${C_OFF} ${CURRENT_PANEL_DOMAIN} will stop working; the panel"
+        tty_out " reverts to https://$(primary_ip):8443\n"
+        DOMAIN_ANSWERED=1
+        REVERT_TO_IP=1
+    fi
+fi
+
 if [[ "$DOMAIN_ANSWERED" -eq 0 && -z "$DOMAIN" ]]; then
     if confirm "Do you have a domain pointed at this server?" y; then
         ask DOMAIN "Panel hostname:" "" valid_domain \
@@ -362,28 +474,13 @@ if [[ "$DOMAIN_ANSWERED" -eq 0 && -z "$DOMAIN" ]]; then
     fi
 fi
 
-if [[ -n "$DOMAIN" ]]; then
+# Only needed when a certificate actually has to be issued. Keeping an
+# already-attached domain reuses the certificate on disk, so asking again
+# would be a question with no consequence.
+if [[ -n "$DOMAIN" && ! -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
     ask EMAIL "Email for the TLS certificate:" "" valid_email \
         "Let's Encrypt needs a valid address for expiry notices."
 fi
-
-# Does the panel database already contain a user?
-#
-# Without this the wizard asks for a name, an email and a password on every
-# re-run, generates a password it then cannot apply, and prints it in the
-# closing summary as though it were live — which is worse than not asking,
-# because it looks like the credentials changed.
-panel_has_admin() {
-    local db="${PANEL_SHARED}/beacon.sqlite"
-
-    [[ -s "$db" ]] || return 1
-    command -v sqlite3 >/dev/null 2>&1 || return 1
-
-    local count
-    count="$(sqlite3 "$db" 'SELECT COUNT(*) FROM users;' 2>/dev/null || echo 0)"
-
-    [[ "${count:-0}" =~ ^[0-9]+$ ]] && (( count > 0 ))
-}
 
 if panel_has_admin; then
     section "2 · Administrator account" \
@@ -1083,14 +1180,52 @@ configure_panel_runtime() {
         | crontab -u "$PANEL_USER" -
 }
 
+# Keep the stored panel URL in step with what nginx actually serves.
+#
+# The UI reads panel_domain / panel_port / panel_url_public from the database.
+# When the installer changed the vhost without updating them, Settings kept
+# advertising a domain that no longer had a vhost — the panel insisted it was
+# on https://beacon.example.com while only :8443 answered.
+sync_panel_url_state() {
+    local domain="$1" port="$2" public="$3"
+    local app_url
+
+    if [[ -n "$domain" ]]; then
+        panel_db_exec "UPDATE servers SET panel_domain = '${domain}', panel_port = ${port}, panel_url_public = ${public} WHERE id = 1;" || true
+        app_url="https://${domain}"
+    else
+        panel_db_exec "UPDATE servers SET panel_domain = NULL, panel_port = ${port}, panel_url_public = ${public} WHERE id = 1;" || true
+        app_url="https://$(primary_ip):${port}"
+    fi
+
+    if [[ -f "${PANEL_SHARED}/.env" ]]; then
+        sed -i "s|^APP_URL=.*|APP_URL=${app_url}|" "${PANEL_SHARED}/.env"
+    fi
+
+    # Cached config would otherwise keep serving the old APP_URL.
+    if [[ -f "${PANEL_CURRENT}/artisan" ]]; then
+        panel_run "$PANEL_CURRENT" php "${PANEL_CURRENT}/artisan" config:clear >/dev/null 2>&1 || true
+        panel_run "$PANEL_CURRENT" php "${PANEL_CURRENT}/artisan" optimize >/dev/null 2>&1 || true
+    fi
+}
+
 maybe_issue_panel_certificate() {
-    [[ -n "$DOMAIN" && -n "$EMAIL" ]] || return 0
+    [[ -n "$DOMAIN" ]] || return 0
     [[ -f "${PANEL_CURRENT}/artisan" ]] || return 0
 
-    echo "==> Requesting Let's Encrypt certificate for ${DOMAIN}"
-    certbot certonly --webroot -w /var/www/beacon-acme \
-        -d "$DOMAIN" --email "$EMAIL" --agree-tos --non-interactive --keep-until-expiring \
-        || { echo "WARN: certbot failed — panel remains on HTTP" >&2; return 0; }
+    # Keeping an already-attached domain must not require re-entering the ACME
+    # email: the certificate is already on disk, so there is nothing to issue.
+    if [[ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
+        echo "==> Reusing the existing certificate for ${DOMAIN}"
+    elif [[ -n "$EMAIL" ]]; then
+        echo "==> Requesting Let's Encrypt certificate for ${DOMAIN}"
+        certbot certonly --webroot -w /var/www/beacon-acme \
+            -d "$DOMAIN" --email "$EMAIL" --agree-tos --non-interactive --keep-until-expiring \
+            || { echo "WARN: certbot failed — panel remains on HTTP" >&2; return 0; }
+    else
+        echo "WARN: no certificate for ${DOMAIN} and no email supplied — skipping TLS" >&2
+        return 0
+    fi
 
     local deploy_dir="${SCRIPT_DIR}/deploy"
     [[ -d "$deploy_dir" ]] || deploy_dir="$(pwd)/deploy"
@@ -1115,8 +1250,9 @@ server {
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
     ssl_trusted_certificate /etc/letsencrypt/live/${DOMAIN}/chain.pem;
-    include /etc/letsencrypt/options-ssl-nginx.conf;
-    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+    # TLS policy is set once at http level in conf.d/beacon-global.conf.
+    # options-ssl-nginx.conf and ssl-dhparams.pem belong to
+    # python3-certbot-nginx, which Beacon does not install.
     add_header Strict-Transport-Security "max-age=31536000" always;
 
     root ${PANEL_CURRENT}/public;
@@ -1146,6 +1282,8 @@ server {
 EOF
 
     nginx -t && systemctl reload nginx
+
+    sync_panel_url_state "$DOMAIN" 443 1
 }
 
 configure_panel_self_signed_tls() {
@@ -1175,13 +1313,9 @@ configure_panel_self_signed_tls() {
         > /etc/nginx/sites-available/beacon-panel
     ln -sfn /etc/nginx/sites-available/beacon-panel /etc/nginx/sites-enabled/beacon-panel
 
-    local ip
-    ip="$(panel_primary_ip)"
-    if [[ -n "$ip" && -f "${PANEL_SHARED}/.env" ]]; then
-        sed -i "s|^APP_URL=.*|APP_URL=https://${ip}:8443|" "${PANEL_SHARED}/.env"
-    fi
-
     nginx -t && systemctl reload nginx
+
+    sync_panel_url_state "" 8443 0
 }
 
 configure_ufw() {
