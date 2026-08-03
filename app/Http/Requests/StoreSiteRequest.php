@@ -48,6 +48,12 @@ class StoreSiteRequest extends FormRequest
                 Rule::exists('node_versions', 'version')->where('runtime', 'node'),
             ],
             'spa_fallback' => ['sometimes', 'boolean'],
+
+            // Advanced overrides. Each falls back to a per-type default in
+            // CreateSite when omitted, so the simple path stays one field.
+            'web_directory' => UpdateSiteServingRequest::WEB_DIRECTORY_RULES,
+            'client_max_body_size' => UpdateSiteServingRequest::BODY_SIZE_RULES,
+            'package_manager' => ['nullable', Rule::in(['npm', 'bun'])],
         ];
     }
 
@@ -71,7 +77,7 @@ class StoreSiteRequest extends FormRequest
     }
 
     /**
-     * @return array{name: string, type: string, php_version?: string|null, node_version?: string|null, spa_fallback?: bool}
+     * @return array{name: string, type: string, php_version?: string|null, node_version?: string|null, spa_fallback?: bool, web_directory?: string|null, client_max_body_size?: string|null, package_manager?: string|null}
      */
     public function siteData(): array
     {
@@ -81,6 +87,9 @@ class StoreSiteRequest extends FormRequest
             'php_version' => $this->validated('php_version'),
             'node_version' => $this->validated('node_version'),
             'spa_fallback' => $this->boolean('spa_fallback'),
+            'web_directory' => $this->validated('web_directory'),
+            'client_max_body_size' => $this->validated('client_max_body_size'),
+            'package_manager' => $this->validated('package_manager'),
         ];
     }
 }

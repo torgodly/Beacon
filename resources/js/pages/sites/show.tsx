@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CodeDiffViewer } from '@/components/code-diff-viewer';
 import { CodeEditor } from '@/components/code-editor';
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import { Panel } from '@/components/console/panel';
 import { DeployScriptEnvReference } from '@/components/deploy-script-env-reference';
 import InputError from '@/components/input-error';
 import { StatusBadge } from '@/components/status-badge';
@@ -22,7 +23,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
+import { Field, Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
     Select,
@@ -32,6 +33,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import type { SiteSummary } from '@/layouts/site/layout';
+import { cn } from '@/lib/utils';
 import { destroy, index as sitesIndex, show } from '@/routes/sites';
 import {
     store as storeSiteCommand,
@@ -65,6 +67,7 @@ import {
     update as updateNginx,
 } from '@/routes/sites/nginx';
 import { update as updateSiteRuntime } from '@/routes/sites/runtime';
+import { update as updateServing } from '@/routes/sites/serving';
 import { update as updateSiteSettings } from '@/routes/sites/settings';
 import { destroy as destroySsl, issue as issueSsl } from '@/routes/sites/ssl';
 import {
@@ -112,7 +115,7 @@ type GitHubRepositoryOption = {
     default_branch: string | null;
 };
 
-type SiteDetail = SiteSummary & {
+type SiteDetail = SiteSummary & ServingFields & {
     path: string;
     web_directory: string;
     php_version: string | null;
@@ -128,6 +131,13 @@ type SiteDetail = SiteSummary & {
     type: string;
     deployment_status: string;
     primary_domain: string;
+};
+
+type ServingFields = {
+    spa_fallback: boolean;
+    client_max_body_size: string | null;
+    package_manager: string | null;
+    serves_from_disk: boolean;
 };
 
 type NginxPayload = {
@@ -1427,6 +1437,137 @@ function NginxTab({ site, nginx }: { site: SiteDetail; nginx: NginxPayload }) {
     );
 }
 
+/**
+ * Document root, SPA fallback and upload ceiling.
+ *
+ * Editable after creation because the right answer depends on the framework's
+ * build output — Vite writes dist/, Next's export writes out/, CRA writes
+ * build/ — and guessing wrong otherwise means recreating the site.
+ */
+function ServingPanel({ site }: { site: SiteDetail }) {
+    const presets =
+        site.type === 'laravel'
+            ? ['/public']
+            : ['/dist', '/build', '/out', '/public', '/'];
+
+    const [webDirectory, setWebDirectory] = useState(site.web_directory);
+    const [spaFallback, setSpaFallback] = useState(site.spa_fallback);
+
+    return (
+        <Panel
+            eyebrow="site // serving"
+            title="How Nginx serves this site"
+            description={
+                site.serves_from_disk
+                    ? 'Files are served straight from disk. The document root is created if it does not exist yet.'
+                    : 'This site is reverse-proxied to a local port, so it has no document root.'
+            }
+        >
+            <Form
+                action={updateServing(site.id)}
+                options={{ preserveScroll: true }}
+            >
+                {({ processing, errors }) => (
+                    <div className="space-y-5">
+                        {site.serves_from_disk && (
+                            <>
+                                <Field
+                                    htmlFor="web_directory"
+                                    label="Document root"
+                                    error={errors.web_directory}
+                                    help={`Relative to ${site.path}`}
+                                >
+                                    <Input
+                                        id="web_directory"
+                                        name="web_directory"
+                                        mono
+                                        spellCheck={false}
+                                        value={webDirectory}
+                                        onChange={(event) =>
+                                            setWebDirectory(event.target.value)
+                                        }
+                                    />
+                                </Field>
+
+                                <div className="flex flex-wrap gap-1.5">
+                                    {presets.map((preset) => (
+                                        <button
+                                            key={preset}
+                                            type="button"
+                                            onClick={() => setWebDirectory(preset)}
+                                            className={cn(
+                                                'rounded-sm border px-2 py-1 font-mono text-[12px] leading-[18px] transition-colors',
+                                                webDirectory === preset
+                                                    ? 'border-border-brand bg-brand-subtle text-fg-brand'
+                                                    : 'border-[var(--bc-border-default)] text-fg-muted hover:border-border-hover',
+                                            )}
+                                        >
+                                            {preset}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <label className="flex items-start gap-2.5">
+                                    <input
+                                        type="checkbox"
+                                        name="spa_fallback"
+                                        value="1"
+                                        checked={spaFallback}
+                                        onChange={(event) =>
+                                            setSpaFallback(event.target.checked)
+                                        }
+                                        className="mt-1 size-3.5 accent-[var(--bc-bg-brand)]"
+                                    />
+                                    <span>
+                                        <span className="block text-[14px] leading-5 font-medium text-fg">
+                                            SPA fallback
+                                        </span>
+                                        <span className="block text-[13px] leading-5 text-fg-muted">
+                                            Serve index.html for unknown paths, so
+                                            client-side routes survive a refresh.
+                                        </span>
+                                    </span>
+                                </label>
+                            </>
+                        )}
+
+                        <Field
+                            htmlFor="client_max_body_size"
+                            label="Max upload size"
+                            error={errors.client_max_body_size}
+                            help="nginx client_max_body_size — e.g. 100M, 512k, 1G."
+                        >
+                            <Input
+                                id="client_max_body_size"
+                                name="client_max_body_size"
+                                mono
+                                defaultValue={site.client_max_body_size ?? '100M'}
+                            />
+                        </Field>
+
+                        <div className="flex items-center gap-3">
+                            <Button
+                                type="submit"
+                                variant="primary"
+                                size="sm"
+                                disabled={processing}
+                            >
+                                {processing ? 'Saving…' : 'Save serving settings'}
+                            </Button>
+                            {site.nginx_customized && (
+                                <p className="text-[13px] leading-5 text-fg-warning">
+                                    This vhost is hand-edited — Beacon will not
+                                    regenerate it.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </Form>
+        </Panel>
+    );
+}
+
 function IsolationTab({ site }: { site: SiteDetail }) {
     const [openBasedir, setOpenBasedir] = useState(site.open_basedir);
     const [strictFunctions, setStrictFunctions] = useState(
@@ -2347,6 +2488,7 @@ export default function SiteShow({
         return (
             <>
                 <Head title={`${site.name} — Isolation`} />
+                <ServingPanel site={site} />
                 <IsolationTab site={site} />
             </>
         );

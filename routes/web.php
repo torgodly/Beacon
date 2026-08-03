@@ -50,6 +50,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware(RequirePassword::class)
         ->name('sites.nginx.reset');
     Route::patch('sites/{site:name}/isolation', [SiteController::class, 'updateIsolation'])->name('sites.isolation.update');
+    Route::patch('sites/{site:name}/serving', [SiteController::class, 'updateServing'])->name('sites.serving.update');
     Route::post('sites/{site:name}/deployments', [DeploymentController::class, 'store'])
         ->middleware('throttle:deploy')
         ->name('sites.deployments.store');

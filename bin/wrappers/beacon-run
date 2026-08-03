@@ -4,7 +4,11 @@ import json
 import os
 import sys
 
-ALLOWED_ROOTS = ("/home/beacon/",)
+# Roots the panel may run work inside. The root ITSELF counts, not just its
+# children: site provisioning legitimately runs `mkdir /home/beacon/<site>`
+# with /home/beacon as the working directory, and a trailing-slash prefix
+# match rejected it with "cwd outside permitted roots: /home/beacon".
+ALLOWED_ROOTS = ("/home/beacon",)
 ENV_ALLOW_PREFIX = (
     "BEACON_", "NODE_", "NPM_", "npm_", "COMPOSER_", "GIT_", "CI",
     "PATH", "HOME", "USER", "LANG", "LC_ALL", "PORT", "HOST",
@@ -22,7 +26,13 @@ except ValueError:
     fail("malformed job spec")
 
 cwd = os.path.realpath(spec.get("cwd", ""))
-if not any(cwd.startswith(r) for r in ALLOWED_ROOTS) or not os.path.isdir(cwd):
+def within_allowed(path):
+    # Compare against root + os.sep so /home/beacon-panel can never satisfy a
+    # /home/beacon prefix, while /home/beacon itself still does.
+    return any(path == root or path.startswith(root + os.sep) for root in ALLOWED_ROOTS)
+
+
+if not within_allowed(cwd) or not os.path.isdir(cwd):
     fail(f"cwd outside permitted roots: {cwd}")
 
 argv = spec.get("argv") or []

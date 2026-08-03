@@ -9,16 +9,15 @@ use App\Services\Deployment\DeployScriptFactory;
 use App\Services\Nginx\NginxService;
 use App\Services\Nginx\PortAllocator;
 use App\Services\Php\PhpPoolWriter;
+use App\Services\Sites\SiteDirectory;
 use App\Services\Supervisor\SupervisorService;
-use App\Services\System\ProcessRunner;
 use App\Services\System\SiteFilesystem;
 use Illuminate\Support\Facades\DB;
-use RuntimeException;
 
 class CreateSite
 {
     public function __construct(
-        private readonly ProcessRunner $runner,
+        private readonly SiteDirectory $directories,
         private readonly SiteFilesystem $filesystem,
         private readonly PortAllocator $ports,
         private readonly PhpPoolWriter $pools,
@@ -28,7 +27,7 @@ class CreateSite
     ) {}
 
     /**
-     * @param  array{name: string, type: string, php_version?: string|null, node_version?: string|null, spa_fallback?: bool}  $data
+     * @param  array{name: string, type: string, php_version?: string|null, node_version?: string|null, spa_fallback?: bool, web_directory?: string|null, package_manager?: string|null, client_max_body_size?: string|null}  $data
      */
     public function handle(array $data): Site
     {
@@ -40,12 +39,13 @@ class CreateSite
                 'name' => $data['name'],
                 'type' => $data['type'],
                 'path' => rtrim((string) config('beacon.paths.sites_home'), '/').'/'.$data['name'],
-                'web_directory' => $this->webDirectory($data['type']),
+                'web_directory' => $data['web_directory'] ?? $this->webDirectory($data['type']),
                 'php_version' => $data['php_version'] ?? null,
                 'node_version' => $data['node_version'] ?? null,
-                'package_manager' => $server->default_package_manager,
+                'package_manager' => $data['package_manager'] ?? $server->default_package_manager,
                 'proxy_port' => $this->needsProxyPort($data['type']) ? $this->ports->allocate() : null,
-                'spa_fallback' => $data['spa_fallback'] ?? false,
+                'spa_fallback' => $data['spa_fallback'] ?? ($data['type'] === 'static'),
+                'client_max_body_size' => $data['client_max_body_size'] ?? '100M',
                 'deploy_script' => null,
                 'status' => 'provisioning',
             ]);
@@ -56,7 +56,7 @@ class CreateSite
                 'is_primary' => true,
             ]);
 
-            $this->provisionFilesystem($site);
+            $this->directories->provision($site);
             $this->pools->write($site);
 
             $script = $this->deployScripts->forSite($site);
@@ -77,11 +77,22 @@ class CreateSite
         });
     }
 
+    /**
+     * The directory Nginx serves, relative to the site root.
+     *
+     * Static sites resolve to /dist because that is what the default deploy
+     * script builds and what the create form tells the operator. Returning "/"
+     * here while the UI promised "/dist" meant the vhost pointed at the
+     * repository root and served nothing after a successful build.
+     *
+     * SSR types are proxied to a local port and have no document root, so the
+     * value is unused for them.
+     */
     private function webDirectory(string $type): string
     {
         return match ($type) {
             'laravel' => '/public',
-            'static' => '/',
+            'static' => '/dist',
             default => '/',
         };
     }
@@ -89,35 +100,5 @@ class CreateSite
     private function needsProxyPort(string $type): bool
     {
         return in_array($type, ['nextjs', 'nuxt'], true);
-    }
-
-    private function provisionFilesystem(Site $site): void
-    {
-        $path = $site->path;
-
-        $this->mkdir($path, '0750');
-        $this->mkdir("{$path}/storage/tmp", '0700');
-        $this->mkdir("{$path}/storage/sessions", '0700');
-
-        if ($site->type === 'laravel') {
-            $this->mkdir("{$path}/public", '0750');
-        }
-    }
-
-    private function mkdir(string $path, string $mode): void
-    {
-        $result = $this->runner->asSite(
-            argv: ['/bin/mkdir', '-p', $path],
-            cwd: rtrim((string) config('beacon.paths.sites_home'), '/'),
-        );
-
-        if ($result->failed()) {
-            throw new RuntimeException("Could not create directory {$path}: {$result->errorOutput()}");
-        }
-
-        $this->runner->asSite(
-            argv: ['/bin/chmod', $mode, $path],
-            cwd: rtrim((string) config('beacon.paths.sites_home'), '/'),
-        );
     }
 }

@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Sites;
 
 use App\Actions\Site\CreateSite;
 use App\Actions\Site\DeleteSite;
+use App\Actions\Site\UpdateSiteServing;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreSiteRequest;
 use App\Http\Requests\UpdateSiteIsolationRequest;
 use App\Http\Requests\UpdateSiteNginxRequest;
+use App\Http\Requests\UpdateSiteServingRequest;
 use App\Models\CronJob;
 use App\Models\Deployment;
 use App\Models\EnvSnapshot;
@@ -308,6 +310,30 @@ class SiteController extends Controller
         return back()->with('toast', ['type' => 'success', 'message' => 'Isolation settings updated.']);
     }
 
+    /**
+     * Document root, SPA fallback and upload ceiling.
+     *
+     * The document root has to exist before nginx is pointed at it, otherwise
+     * the site answers 404 against a missing directory — so it is created (and
+     * made readable by www-data) as part of the change.
+     */
+    public function updateServing(
+        UpdateSiteServingRequest $request,
+        Site $site,
+        UpdateSiteServing $updateServing,
+    ): RedirectResponse {
+        try {
+            $updateServing->handle($site, $request->validated());
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['web_directory' => $e->getMessage()]);
+        }
+
+        return back()->with('toast', [
+            'type' => 'success',
+            'message' => 'Serving settings updated.',
+        ]);
+    }
+
     public function destroy(Request $request, Site $site, DeleteSite $deleteSite): RedirectResponse
     {
         $request->validate([
@@ -352,9 +378,16 @@ class SiteController extends Controller
             ...$this->siteSummary($site),
             'path' => $site->path,
             'web_directory' => $site->web_directory,
+            'spa_fallback' => (bool) $site->spa_fallback,
+            'client_max_body_size' => $site->client_max_body_size,
+            'package_manager' => $site->package_manager,
             'php_version' => $site->php_version,
             'node_version' => $site->node_version,
             'proxy_port' => $site->proxy_port,
+            // SSR types are reverse-proxied and have no document root, so the
+            // serving panel hides those controls rather than offering settings
+            // that would be ignored.
+            'serves_from_disk' => in_array($site->type, ['laravel', 'static'], true),
             'nginx_customized' => $site->nginx_customized,
             'open_basedir' => $site->open_basedir,
             'strict_functions' => $site->strict_functions,

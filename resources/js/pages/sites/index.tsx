@@ -1,5 +1,5 @@
 import { Form, Head, Link } from '@inertiajs/react';
-import { Globe, Plus, ShieldCheck, Zap } from 'lucide-react';
+import { ChevronRight, Globe, Plus, ShieldCheck, Zap } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { EmptyState, PageHeader } from '@/components/console/page-header';
 import { Panel, StatCluster } from '@/components/console/panel';
@@ -54,6 +54,14 @@ type SiteTypeOption = {
 
 type RuntimeOption = { value: string; label: string; is_default: boolean };
 
+/** Sensible document roots per type, offered as one-click presets. */
+const WEB_DIRECTORY_PRESETS: Record<string, string[]> = {
+    laravel: ['/public'],
+    static: ['/dist', '/build', '/out', '/public', '/'],
+    nextjs: [],
+    nuxt: [],
+};
+
 const TYPE_LABELS: Record<string, string> = {
     laravel: 'Laravel',
     nextjs: 'Next.js',
@@ -66,11 +74,13 @@ export default function SitesIndex({
     siteTypes,
     phpVersions,
     nodeVersions,
+    packageManager,
 }: {
     sites: SiteRow[];
     siteTypes: SiteTypeOption[];
     phpVersions: RuntimeOption[];
     nodeVersions: RuntimeOption[];
+    packageManager: string;
 }) {
     const [createOpen, setCreateOpen] = useState(false);
     const [siteType, setSiteType] = useState('laravel');
@@ -89,6 +99,14 @@ export default function SitesIndex({
 
     const [phpVersion, setPhpVersion] = useState(defaultPhp);
     const [nodeVersion, setNodeVersion] = useState(defaultNode);
+    const [advancedOpen, setAdvancedOpen] = useState(false);
+    const [webDirectory, setWebDirectory] = useState('');
+    const [spaFallback, setSpaFallback] = useState(true);
+
+    // Reset the document root whenever the type changes so the placeholder
+    // always reflects the default that type will actually get.
+    const typeDefaultRoot = selected?.web_directory ?? '';
+    const servesFromDisk = runtime === 'php' || runtime === 'none';
 
     // A runtime the site needs but the server does not have is a hard block,
     // not a validation error to discover after filling the whole form.
@@ -305,6 +323,169 @@ export default function SitesIndex({
                                                     — no runtime required.
                                                 </p>
                                             )}
+
+                                            {/* Advanced settings stay collapsed:
+                                              * the common path is one field and
+                                              * a type, and burying the defaults
+                                              * behind a toggle keeps it that
+                                              * way without hiding them. */}
+                                            <div className="rounded-md border border-[var(--bc-border-default)]">
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setAdvancedOpen(!advancedOpen)
+                                                    }
+                                                    aria-expanded={advancedOpen}
+                                                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+                                                >
+                                                    <ChevronRight
+                                                        aria-hidden="true"
+                                                        strokeWidth={1.5}
+                                                        className={cn(
+                                                            'size-4 text-fg-disabled transition-transform duration-[--bc-duration-base]',
+                                                            advancedOpen && 'rotate-90',
+                                                        )}
+                                                    />
+                                                    <span className="text-[14px] leading-5 font-medium text-fg">
+                                                        Advanced
+                                                    </span>
+                                                    <span className="text-caption ms-auto text-fg-subtle">
+                                                        {servesFromDisk
+                                                            ? `document root ${webDirectory || typeDefaultRoot}`
+                                                            : 'upload limit, package manager'}
+                                                    </span>
+                                                </button>
+
+                                                {advancedOpen && (
+                                                    <div className="space-y-4 border-t border-[var(--bc-border-subtle)] px-3 py-4">
+                                                        {servesFromDisk && (
+                                                            <Field
+                                                                htmlFor="web_directory"
+                                                                label="Document root"
+                                                                error={errors.web_directory}
+                                                                help={`Relative to ${'/home/beacon/<domain>'}. Leave blank for ${typeDefaultRoot}.`}
+                                                            >
+                                                                <Input
+                                                                    id="web_directory"
+                                                                    name="web_directory"
+                                                                    mono
+                                                                    autoComplete="off"
+                                                                    spellCheck={false}
+                                                                    placeholder={typeDefaultRoot}
+                                                                    value={webDirectory}
+                                                                    onChange={(event) =>
+                                                                        setWebDirectory(
+                                                                            event.target.value,
+                                                                        )
+                                                                    }
+                                                                />
+                                                            </Field>
+                                                        )}
+
+                                                        {servesFromDisk &&
+                                                            (WEB_DIRECTORY_PRESETS[siteType] ?? [])
+                                                                .length > 1 && (
+                                                                <div className="flex flex-wrap gap-1.5">
+                                                                    {(
+                                                                        WEB_DIRECTORY_PRESETS[
+                                                                            siteType
+                                                                        ] ?? []
+                                                                    ).map((preset) => (
+                                                                        <button
+                                                                            key={preset}
+                                                                            type="button"
+                                                                            onClick={() =>
+                                                                                setWebDirectory(
+                                                                                    preset,
+                                                                                )
+                                                                            }
+                                                                            className={cn(
+                                                                                'rounded-sm border px-2 py-1 font-mono text-[12px] leading-[18px] transition-colors',
+                                                                                (webDirectory ||
+                                                                                    typeDefaultRoot) ===
+                                                                                    preset
+                                                                                    ? 'border-border-brand bg-brand-subtle text-fg-brand'
+                                                                                    : 'border-[var(--bc-border-default)] text-fg-muted hover:border-border-hover',
+                                                                            )}
+                                                                        >
+                                                                            {preset}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+
+                                                        {siteType === 'static' && (
+                                                            <label className="flex items-start gap-2.5">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    name="spa_fallback"
+                                                                    value="1"
+                                                                    checked={spaFallback}
+                                                                    onChange={(event) =>
+                                                                        setSpaFallback(
+                                                                            event.target.checked,
+                                                                        )
+                                                                    }
+                                                                    className="mt-1 size-3.5 accent-[var(--bc-bg-brand)]"
+                                                                />
+                                                                <span>
+                                                                    <span className="block text-[14px] leading-5 font-medium text-fg">
+                                                                        SPA fallback
+                                                                    </span>
+                                                                    <span className="block text-[13px] leading-5 text-fg-muted">
+                                                                        Serve index.html for unknown
+                                                                        paths. Required for React
+                                                                        Router, Vue Router and
+                                                                        similar.
+                                                                    </span>
+                                                                </span>
+                                                            </label>
+                                                        )}
+
+                                                        <Field
+                                                            htmlFor="client_max_body_size"
+                                                            label="Max upload size"
+                                                            error={errors.client_max_body_size}
+                                                            help="nginx client_max_body_size — e.g. 100M, 512k, 1G."
+                                                        >
+                                                            <Input
+                                                                id="client_max_body_size"
+                                                                name="client_max_body_size"
+                                                                mono
+                                                                autoComplete="off"
+                                                                placeholder="100M"
+                                                            />
+                                                        </Field>
+
+                                                        {runtime !== 'php' && (
+                                                            <div className="flex flex-col gap-1.5">
+                                                                <label
+                                                                    htmlFor="package_manager"
+                                                                    className="text-[14px] leading-5 font-medium text-fg"
+                                                                >
+                                                                    Package manager
+                                                                </label>
+                                                                <Select
+                                                                    name="package_manager"
+                                                                    defaultValue={packageManager}
+                                                                >
+                                                                    <SelectTrigger id="package_manager">
+                                                                        <SelectValue />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        <SelectItem value="npm">
+                                                                            npm
+                                                                        </SelectItem>
+                                                                        <SelectItem value="bun">
+                                                                            bun
+                                                                        </SelectItem>
+                                                                    </SelectContent>
+                                                                </Select>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
 
                                             {missingRuntime && (
                                                 <p
