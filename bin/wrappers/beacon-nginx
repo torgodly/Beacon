@@ -37,6 +37,7 @@ case "$action" in
         mv -f "$tmp" "$target"; trap - EXIT
 
         if ! out="$("$NGINX" -t 2>&1)"; then
+            # `write` never enables anything, so only the staged file is undone.
             if [[ -n "$backup" ]]; then mv -f "$backup" "$target"; else rm -f "$target"; fi
             printf '%s\n' "$out" >&2
             exit 65
@@ -70,10 +71,22 @@ case "$action" in
         backup=""
         if [[ -f "$target" ]]; then backup="$(mktemp)"; cp -a "$target" "$backup"; fi
         mv -f "$tmp" "$target"; trap - EXIT
+
+        # Track whether the symlink is ours to remove on rollback.
+        had_link=0
+        [[ -e "$SITES_ENABLED/beacon-panel" ]] && had_link=1
         ln -sfn "$target" "$SITES_ENABLED/beacon-panel"
 
         if ! out="$("$NGINX" -t 2>&1)"; then
-            if [[ -n "$backup" ]]; then mv -f "$backup" "$target"; else rm -f "$target"; fi
+            if [[ -n "$backup" ]]; then
+                mv -f "$backup" "$target"
+            else
+                # Nothing to restore. Remove the symlink too, or sites-enabled
+                # is left pointing at a file that no longer exists and every
+                # later `nginx -t` fails on the dangling link.
+                rm -f "$target"
+                [[ "$had_link" -eq 0 ]] && rm -f "$SITES_ENABLED/beacon-panel"
+            fi
             printf '%s\n' "$out" >&2
             exit 65
         fi

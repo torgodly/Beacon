@@ -737,12 +737,34 @@ bootstrap_panel() {
 
     ensure_panel_env
 
+    # Rebuild when the fetched source differs from what is deployed.
+    #
+    # Skipping purely because `current` exists means a re-run silently keeps
+    # serving old code, so a fix that was just pushed appears not to work —
+    # and the operator has to know to `rm -f current` first. The deployed
+    # commit is recorded in the release, so this can be decided automatically.
+    local source_sha=""
+    if [[ -n "$SCRIPT_DIR" && -d "${SCRIPT_DIR}/.git" ]]; then
+        source_sha="$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || true)"
+    fi
+
     if [[ -L "$PANEL_CURRENT" && -f "${PANEL_CURRENT}/artisan" ]]; then
-        echo "    Panel release already present at ${PANEL_CURRENT} — skipping build"
-        # Still re-apply permissions: an existing release may predate the fix
-        # below, and the build is skipped so nothing else would repair it.
-        harden_release "$(readlink -f "$PANEL_CURRENT")"
-        return 0
+        local deployed_sha=""
+        if [[ -f "${PANEL_CURRENT}/.beacon-source-sha" ]]; then
+            deployed_sha="$(tr -d '[:space:]' < "${PANEL_CURRENT}/.beacon-source-sha")"
+        fi
+
+        if [[ -n "$source_sha" && "$source_sha" != "$deployed_sha" ]]; then
+            echo "    Source is newer than the deployed release — rebuilding"
+            echo "      deployed: ${deployed_sha:-unknown}"
+            echo "      source:   ${source_sha}"
+        else
+            echo "    Panel release already present at ${PANEL_CURRENT} — skipping build"
+            # Still re-apply permissions: an existing release may predate the
+            # hardening fix, and the build is skipped so nothing else repairs it.
+            harden_release "$(readlink -f "$PANEL_CURRENT")"
+            return 0
+        fi
     fi
 
     rel="${PANEL_ROOT}/releases/$(date -u +%Y%m%d%H%M%S)"
@@ -796,6 +818,11 @@ bootstrap_panel() {
 
     panel_run "$rel" php "$rel/artisan" migrate --force --no-interaction
     panel_run "$rel" php "$rel/artisan" optimize
+
+    # Stamp the release so a later run can tell whether it is current.
+    if [[ -n "$source_sha" ]]; then
+        printf '%s\n' "$source_sha" > "${rel}/.beacon-source-sha"
+    fi
 
     harden_release "$rel"
 
