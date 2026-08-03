@@ -10,6 +10,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Services\Github\DeploymentStatusReporter;
 use App\Services\Runtime\MemoryBudget;
+use App\Services\Supervisor\SsrLauncher;
 use App\Services\Supervisor\SupervisorService;
 use App\Services\System\ProcessResult;
 use App\Services\System\ProcessRunner;
@@ -227,7 +228,17 @@ BASH;
 
     private function restartProcesses(Site $site, OutputStream $stream): void
     {
-        app(SupervisorService::class)->restartAllForSite($site, $stream);
+        $supervisor = app(SupervisorService::class);
+
+        // The build just produced the SSR bundle, so the Node server can now
+        // actually start. Re-render the launcher too — the site's Node version
+        // or proxy port may have changed since it was last written.
+        if (SsrLauncher::supports($site->type)) {
+            $stream->append("Registering SSR server…\n");
+            $supervisor->syncSsrProcess($site, autostart: true);
+        }
+
+        $supervisor->restartAllForSite($site, $stream);
     }
 
     private function finish(

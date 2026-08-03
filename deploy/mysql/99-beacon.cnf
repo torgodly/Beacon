@@ -1,5 +1,8 @@
 # Managed by Beacon install.sh — MySQL hardening (audit §0.5).
 [mysqld]
 bind-address = 127.0.0.1
-secure_file_priv =
+# NULL disables LOAD DATA INFILE / SELECT ... INTO OUTFILE outright.
+# An EMPTY value means "no restriction" — the opposite of what we want, and
+# weaker than Ubuntu's packaged default of /var/lib/mysql-files/.
+secure_file_priv = NULL
 local_infile = OFF

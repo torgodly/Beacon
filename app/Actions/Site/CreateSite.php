@@ -9,6 +9,7 @@ use App\Services\Deployment\DeployScriptFactory;
 use App\Services\Nginx\NginxService;
 use App\Services\Nginx\PortAllocator;
 use App\Services\Php\PhpPoolWriter;
+use App\Services\Supervisor\SupervisorService;
 use App\Services\System\ProcessRunner;
 use App\Services\System\SiteFilesystem;
 use Illuminate\Support\Facades\DB;
@@ -23,6 +24,7 @@ class CreateSite
         private readonly PhpPoolWriter $pools,
         private readonly NginxService $nginx,
         private readonly DeployScriptFactory $deployScripts,
+        private readonly SupervisorService $supervisor,
     ) {}
 
     /**
@@ -62,6 +64,11 @@ class CreateSite
             $this->filesystem->write($site->deployScriptPath(), $script, 0700);
 
             $this->nginx->generateAndApply($site->fresh(['domains', 'sslCertificates']));
+
+            // Next.js / Nuxt sites need a Node process behind the reverse proxy.
+            // Registered here (stopped) so the UI can show it; started by the
+            // first successful deployment, once dependencies actually exist.
+            $this->supervisor->syncSsrProcess($site);
 
             $site->update(['status' => 'active']);
             $site->activity()->log('site.created');

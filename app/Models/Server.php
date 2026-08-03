@@ -126,9 +126,18 @@ class Server extends Model
      */
     public static function current(): self
     {
-        return static::query()->firstOrCreate(
-            ['id' => 1],
+        $server = static::query()->find(1);
+
+        if ($server !== null) {
+            return $server;
+        }
+
+        // forceCreate() bypasses mass assignment: `id` is deliberately not
+        // fillable, and Model::shouldBeStrict() turns firstOrCreate(['id' => 1])
+        // into a MassAssignmentException on a fresh database.
+        return static::query()->forceCreate(
             [
+                'id' => 1,
                 'hostname' => gethostname() ?: 'localhost',
                 'public_ip' => '127.0.0.1',
                 'os_release' => PHP_OS,

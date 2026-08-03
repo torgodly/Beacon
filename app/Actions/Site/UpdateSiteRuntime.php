@@ -68,6 +68,10 @@ class UpdateSiteRuntime
                 SiteNginxSync::refresh($site, $this->nginx);
             }
 
+            // The launcher hard-codes the Node bin directory and port, so it has
+            // to be re-rendered before anything is restarted.
+            $this->supervisor->syncSsrProcess($site);
+
             $this->supervisor->restartAllForSite($site);
 
             $site->activity()->with([

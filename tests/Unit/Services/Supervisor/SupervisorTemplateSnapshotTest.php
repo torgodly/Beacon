@@ -66,6 +66,12 @@ class SupervisorTemplateSnapshotTest extends TestCase
             'kind' => 'ssr',
             'command' => '/home/beacon/.beacon/bin/spa.example.com-ssr.sh',
             'log_path' => '/var/log/beacon/sites/spa.example.com-ssr.log',
+            // The values SupervisorService::syncSsrProcess() actually writes:
+            // a Node server should shut down in seconds, not hold a queue
+            // worker's hour-long grace period.
+            'autostart' => true,
+            'autorestart' => true,
+            'stop_wait_secs' => 20,
         ]);
 
         $output = app(SupervisorTemplateRenderer::class)->render($site, $process);

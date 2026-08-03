@@ -16,6 +16,7 @@ class SupervisorService
         private readonly ProcessRunner $runner,
         private readonly SupervisorTemplateRenderer $templates,
         private readonly SupervisorStatusParser $statusParser,
+        private readonly SsrLauncher $ssrLauncher,
     ) {}
 
     public function programName(Site $site, string $name): string
@@ -70,6 +71,54 @@ class SupervisorService
         }
 
         return $fresh;
+    }
+
+    /**
+     * Create or refresh the Node server that backs a Next.js / Nuxt site.
+     *
+     * Without this the site has an Nginx reverse proxy pointing at a port with
+     * nothing listening on it, so every request 502s. Called on site creation
+     * and whenever the runtime (Node version, port, package manager) changes.
+     *
+     * `$autostart` is null by default, meaning "keep whatever the process
+     * already had, and start life disabled". A brand new site has nothing to
+     * launch until `npm install` has run, and letting Supervisor retry-loop
+     * into FATAL is just noise; the first successful deployment passes true.
+     */
+    public function syncSsrProcess(Site $site, ?bool $autostart = null): ?SupervisorProcess
+    {
+        if (! SsrLauncher::supports($site->type)) {
+            return null;
+        }
+
+        $existing = $site->supervisorProcesses()->where('kind', 'ssr')->first();
+        $autostart ??= (bool) ($existing->autostart ?? false);
+
+        $command = $this->ssrLauncher->sync($site);
+        $programName = $this->programName($site, 'ssr');
+
+        $process = $site->supervisorProcesses()->updateOrCreate(
+            ['kind' => 'ssr'],
+            [
+                'name' => 'ssr',
+                'program_name' => $programName,
+                'command' => $command,
+                'directory' => $site->path,
+                'run_as' => 'beacon',
+                'numprocs' => 1,
+                'autostart' => $autostart,
+                'autorestart' => $autostart,
+                'stop_wait_secs' => 20,
+                'stop_signal' => 'TERM',
+                'config_path' => "/etc/supervisor/conf.d/{$programName}.conf",
+                'log_path' => $this->logPath($site, 'ssr'),
+                'is_system' => true,
+            ],
+        );
+
+        $this->sync($process);
+
+        return $process->fresh();
     }
 
     public function sync(SupervisorProcess $process): void
