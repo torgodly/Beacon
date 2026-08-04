@@ -100,6 +100,9 @@ case "$action" in
         trap 'rm -f "$tmp"' EXIT
         cat > "$tmp"
         [[ -s "$tmp" ]] || die "empty pool configuration"
+        if grep -Eq '^user[[:space:]]*=[[:space:]]*(root)?[[:space:]]*$' "$tmp"; then
+            die "pool user must not be root or empty"
+        fi
         mv -f "$tmp" "$target"; trap - EXIT
         ensure_site_log_file "$site"
         ;;

@@ -224,6 +224,23 @@ class Site extends Model
     }
 
     /**
+     * OS user the site's FPM pool and workers run as.
+     *
+     * Eloquent does not hydrate DB defaults onto the model until refresh, so a
+     * site created without an explicit system_user would otherwise render an
+     * empty `user =` line in the pool — which php-fpm treats as root and
+     * refuses to start.
+     */
+    public function runAsUser(): string
+    {
+        $user = filled($this->system_user)
+            ? $this->system_user
+            : (string) config('beacon.site_user', 'beacon');
+
+        return $user === 'root' ? (string) config('beacon.site_user', 'beacon') : $user;
+    }
+
+    /**
      * Nginx upstream identifier — must be a valid nginx variable suffix.
      */
     public function upstreamName(): string

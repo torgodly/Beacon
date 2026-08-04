@@ -19,9 +19,11 @@ class PhpPoolWriter
         }
 
         $extraPaths = $this->extraOpenBasedirPaths($site);
+        $runAsUser = $site->runAsUser();
 
         $contents = View::make('php.pool', [
             'site' => $site,
+            'runAsUser' => $runAsUser,
             'ini' => [
                 'memory_limit' => '256M',
                 'upload_max_filesize' => '100M',
@@ -30,6 +32,8 @@ class PhpPoolWriter
             ],
             'extraPaths' => $extraPaths,
         ])->render();
+
+        $this->guardPoolContents($contents);
 
         $result = $this->runner->sudoRoot(
             SudoWrapper::Php,
@@ -66,5 +70,12 @@ class PhpPoolWriter
             ->implode('');
 
         return $paths;
+    }
+
+    private function guardPoolContents(string $contents): void
+    {
+        if (preg_match('/^user\s*=\s*(?:root\s*)?$/mi', $contents) === 1) {
+            throw new RuntimeException('Refusing to write FPM pool with a missing or root user.');
+        }
     }
 }

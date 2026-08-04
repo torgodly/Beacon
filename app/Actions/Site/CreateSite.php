@@ -63,6 +63,7 @@ class CreateSite
                     : null,
                 'deploy_script' => null,
                 'status' => 'provisioning',
+                'system_user' => (string) config('beacon.site_user', 'beacon'),
             ]);
 
             SiteDomain::query()->create([

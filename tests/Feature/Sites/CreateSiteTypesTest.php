@@ -78,6 +78,14 @@ class CreateSiteTypesTest extends TestCase
         $this->assertCommandRun(['/bin/mkdir', '-p', '/home/beacon/app.example.com/public']);
         $this->assertCommandRun(['/bin/mkdir', '-p', '/home/beacon/app.example.com/storage/sessions']);
 
+        // Pool-write stdin must never emit an empty user line — php-fpm treats
+        // that as root and refuses to start, taking down the panel pool too.
+        $poolWrite = collect($this->processFactory->calls)->first(
+            fn (array $call): bool => str_contains(implode(' ', $call['command']), 'pool-write'),
+        );
+        $this->assertNotNull($poolWrite);
+        $this->assertStringContainsString('user  = beacon', (string) $poolWrite['input']);
+
         // Session storage is created after the group sweep and stays 0700.
         $this->assertCommandRun(['/bin/chmod', '0700', '/home/beacon/app.example.com/storage/sessions']);
     }

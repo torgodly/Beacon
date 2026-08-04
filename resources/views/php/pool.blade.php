@@ -1,7 +1,7 @@
 {{-- resources/views/php/pool.blade.php --}}
 ; Managed by Beacon — regenerated on save. Manual edits will be overwritten.
 [{{ $site->poolName() }}]
-user  = {{ $site->system_user }}
+user  = {{ $runAsUser }}
 group = www-data
 
 listen       = /run/php/php{{ $site->php_version }}-fpm-{{ $site->poolName() }}.sock
