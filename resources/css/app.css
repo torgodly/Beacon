@@ -291,6 +291,63 @@
         }
     }
 
+    .bc-toast-enter {
+        animation: toast-enter 220ms var(--bc-ease-decelerate) both;
+    }
+
+    .bc-toast-exit {
+        animation: toast-exit 180ms var(--bc-ease-accelerate) both;
+    }
+
+    .bc-toast-progress {
+        transform-origin: left center;
+        animation-name: toast-progress;
+        animation-timing-function: linear;
+        animation-fill-mode: forwards;
+    }
+
+    @keyframes toast-enter {
+        from {
+            opacity: 0;
+            transform: translateX(1rem) scale(0.98);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateX(0) scale(1);
+        }
+    }
+
+    @keyframes toast-exit {
+        from {
+            opacity: 1;
+            transform: translateX(0) scale(1);
+        }
+
+        to {
+            opacity: 0;
+            transform: translateX(1rem) scale(0.98);
+        }
+    }
+
+    @keyframes toast-progress {
+        from {
+            transform: scaleX(1);
+        }
+
+        to {
+            transform: scaleX(0);
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .bc-toast-enter,
+        .bc-toast-exit,
+        .bc-toast-progress {
+            animation: none !important;
+        }
+    }
+
     /* ---- Elevation recipes ------------------------------------------------
      * Dark interfaces get depth from a background step plus a border, not
      * from shadows: canvas→surface is only a 1.34:1 step, so the 1px border

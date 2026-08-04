@@ -6,6 +6,7 @@ use App\Models\PhpExtension;
 use App\Models\PhpVersion;
 use App\Services\System\ProcessRunner;
 use App\Services\System\SudoWrapper;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\File;
 use RuntimeException;
 
@@ -45,14 +46,8 @@ class PhpExtensionService
 
     public function sync(PhpVersion $version): void
     {
-        $available = collect(File::glob("/etc/php/{$version->version}/mods-available/*.ini"))
-            ->map(fn (string $path): string => basename($path, '.ini'))
-            ->values();
-
-        $enabled = collect(File::glob("/etc/php/{$version->version}/fpm/conf.d/*.ini"))
-            ->map(fn (string $path): string => (string) preg_replace('/^\d+-/', '', basename($path, '.ini')))
-            ->filter()
-            ->flip();
+        $available = $this->availableModules($version);
+        $enabled = $this->enabledModules($version);
 
         foreach ($available->merge(array_keys(self::INSTALLABLE))->unique() as $name) {
             $version->extensions()->updateOrCreate(['name' => $name], [
@@ -61,7 +56,7 @@ class PhpExtensionService
                     ? "php{$version->version}-".self::INSTALLABLE[$name]
                     : null,
                 'is_installed' => $available->contains($name),
-                'is_enabled' => $enabled->has($name),
+                'is_enabled' => $enabled->contains($name),
                 'is_core' => in_array($name, self::LOCKED, true),
                 'last_synced_at' => now(),
             ]);
@@ -78,7 +73,7 @@ class PhpExtensionService
 
         $this->activate($extension);
 
-        $extension->update(['is_installed' => true, 'is_enabled' => true]);
+        $this->sync($version);
         $this->markDirty($version);
     }
 
@@ -97,7 +92,7 @@ class PhpExtensionService
             throw new RuntimeException("Could not disable {$extension->name}: {$result->errorOutput()}");
         }
 
-        $extension->update(['is_enabled' => false]);
+        $this->sync($extension->phpVersion);
         $this->markDirty($extension->phpVersion);
     }
 
@@ -173,5 +168,57 @@ class PhpExtensionService
             );
             unset($this->dirty[$version->version]);
         });
+    }
+
+    /** @return Collection<int, string> */
+    private function availableModules(PhpVersion $version): Collection
+    {
+        return collect(File::glob("/etc/php/{$version->version}/mods-available/*.ini"))
+            ->map(fn (string $path): string => basename($path, '.ini'))
+            ->values();
+    }
+
+    /** @return Collection<int, string> */
+    private function enabledModules(PhpVersion $version): Collection
+    {
+        $fromPhp = $this->modulesFromPhpBinary($version);
+
+        if ($fromPhp->isNotEmpty()) {
+            return $fromPhp;
+        }
+
+        return collect(['cli', 'fpm'])
+            ->flatMap(fn (string $sapi): array => File::glob("/etc/php/{$version->version}/{$sapi}/conf.d/*.ini") ?: [])
+            ->map(fn (string $path): string => (string) preg_replace('/^\d+-/', '', basename($path, '.ini')))
+            ->filter()
+            ->unique()
+            ->values();
+    }
+
+    /** @return Collection<int, string> */
+    private function modulesFromPhpBinary(PhpVersion $version): Collection
+    {
+        $binary = $this->phpBinary($version);
+
+        $result = $this->runner->run([$binary, '-m'], timeout: 30);
+
+        if ($result->failed()) {
+            return collect();
+        }
+
+        return collect(preg_split('/\r\n|\r|\n/', $result->output()) ?: [])
+            ->map(fn (string $line): string => trim($line))
+            ->filter(
+                fn (string $line): bool => $line !== '' && ! str_starts_with($line, '['),
+            )
+            ->values();
+    }
+
+    private function phpBinary(PhpVersion $version): string
+    {
+        /** @var array<string, string> $overrides */
+        $overrides = config('beacon.php.binaries', []);
+
+        return $overrides[$version->version] ?? "/usr/bin/php{$version->version}";
     }
 }

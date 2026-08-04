@@ -84,13 +84,20 @@ class PhpController extends Controller
         try {
             $extensions->enable($extension);
         } catch (RuntimeException $e) {
-            return back()->withErrors(['extension' => $e->getMessage()]);
+            Inertia::flash('toast', [
+                'type' => 'error',
+                'message' => $e->getMessage(),
+            ]);
+
+            return to_route('php.index')->withErrors(['extension' => $e->getMessage()]);
         }
 
-        return back()->with('toast', [
+        Inertia::flash('toast', [
             'type' => 'success',
             'message' => "{$extension->name} enabled.",
         ]);
+
+        return to_route('php.index');
     }
 
     public function disableExtension(
@@ -104,13 +111,20 @@ class PhpController extends Controller
         try {
             $extensions->disable($extension);
         } catch (RuntimeException $e) {
-            return back()->withErrors(['extension' => $e->getMessage()]);
+            Inertia::flash('toast', [
+                'type' => 'error',
+                'message' => $e->getMessage(),
+            ]);
+
+            return to_route('php.index')->withErrors(['extension' => $e->getMessage()]);
         }
 
-        return back()->with('toast', [
+        Inertia::flash('toast', [
             'type' => 'success',
             'message' => "{$extension->name} disabled.",
         ]);
+
+        return to_route('php.index');
     }
 
     public function updateIni(

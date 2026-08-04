@@ -95,6 +95,11 @@ return [
 
     'php_versions' => ['8.1', '8.2', '8.3', '8.4'],
 
+    /** @var array<string, string> Override CLI binary paths per version (mainly for tests). */
+    'php' => [
+        'binaries' => [],
+    ],
+
     'node_versions' => ['20', '22', '24'],
 
     'php_ini' => [

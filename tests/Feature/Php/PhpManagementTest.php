@@ -21,6 +21,8 @@ class PhpManagementTest extends TestCase
     {
         parent::setUp();
 
+        config(['beacon.php.binaries' => ['8.4' => PHP_BINARY]]);
+
         $this->processFactory = new FakeProcessFactory;
         $this->app->instance(ProcessFactory::class, $this->processFactory);
     }
@@ -45,7 +47,7 @@ class PhpManagementTest extends TestCase
 
     public function test_extension_can_be_enabled(): void
     {
-        $this->processFactory->willReturn(0);
+        $this->processFactory->willReturnSequence([0, 0], "redis\n");
 
         $user = User::factory()->create();
         Server::factory()->create(['id' => 1]);
@@ -71,7 +73,7 @@ class PhpManagementTest extends TestCase
             'extension' => $extension,
         ]));
 
-        $response->assertRedirect();
+        $response->assertRedirect(route('php.index'));
         $this->assertTrue($extension->fresh()->is_enabled);
         $this->assertSame(
             ['ext-enable', '8.4', 'redis'],
@@ -81,7 +83,7 @@ class PhpManagementTest extends TestCase
 
     public function test_extension_install_also_enables_via_phpenmod(): void
     {
-        $this->processFactory->willReturnSequence([0, 0]);
+        $this->processFactory->willReturnSequence([0, 0, 0], "pdo_mysql\n");
 
         $user = User::factory()->create();
         Server::factory()->create(['id' => 1]);
@@ -107,7 +109,7 @@ class PhpManagementTest extends TestCase
             'extension' => $extension,
         ]));
 
-        $response->assertRedirect();
+        $response->assertRedirect(route('php.index'));
         $this->assertTrue($extension->fresh()->is_enabled);
 
         $this->assertSame(
@@ -122,7 +124,7 @@ class PhpManagementTest extends TestCase
 
     public function test_extension_can_be_disabled(): void
     {
-        $this->processFactory->willReturn(0);
+        $this->processFactory->willReturnSequence([0, 0], '');
 
         $user = User::factory()->create();
         Server::factory()->create(['id' => 1]);
@@ -148,7 +150,7 @@ class PhpManagementTest extends TestCase
             'extension' => $extension,
         ]));
 
-        $response->assertRedirect();
+        $response->assertRedirect(route('php.index'));
         $this->assertFalse($extension->fresh()->is_enabled);
         $this->assertSame(
             ['ext-disable', '8.4', 'redis'],
@@ -181,7 +183,7 @@ class PhpManagementTest extends TestCase
             'extension' => $extension,
         ]));
 
-        $response->assertRedirect();
+        $response->assertRedirect(route('php.index'));
         $response->assertSessionHasErrors('extension');
         $this->assertTrue($extension->fresh()->is_enabled);
     }

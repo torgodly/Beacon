@@ -1,4 +1,4 @@
-import { Form, Head, router } from '@inertiajs/react';
+import { Form, Head, router, usePage } from '@inertiajs/react';
 import {
     Check,
     ChevronRight,
@@ -9,7 +9,7 @@ import {
     Star,
     Trash2,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import {
     ForgeDividedCard,
@@ -24,6 +24,7 @@ import { ForgeStatusBadge } from '@/components/forge/forge-badge';
 import { HealthBanner } from '@/components/health-banner';
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/input';
+import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import {
     destroy as destroyPhp,
@@ -66,12 +67,14 @@ type PhpVersionRow = {
  */
 function ExtensionChip({
     extension,
-    version,
+    pending,
     disabled,
+    onToggle,
 }: {
     extension: PhpExtensionRow;
-    version: PhpVersionRow;
+    pending: boolean;
     disabled: boolean;
+    onToggle: (extension: PhpExtensionRow) => void;
 }) {
     const state: 'enabled' | 'available' | 'missing' = extension.is_enabled
         ? 'enabled'
@@ -79,42 +82,44 @@ function ExtensionChip({
           ? 'available'
           : 'missing';
 
-    const canToggle = !extension.is_core && !disabled;
+    const canToggle = !extension.is_core && !disabled && !pending;
 
     return (
         <button
             type="button"
             disabled={!canToggle}
+            aria-busy={pending}
             title={
-                extension.is_core
-                    ? `${extension.name} is required by Beacon`
-                    : state === 'missing'
-                      ? `Install ${extension.name}`
-                      : state === 'enabled'
-                        ? `Disable ${extension.name}`
-                        : `Enable ${extension.name}`
+                pending
+                    ? `Working on ${extension.name}…`
+                    : extension.is_core
+                      ? `${extension.name} is required by Beacon`
+                      : state === 'missing'
+                        ? `Install ${extension.name}`
+                        : state === 'enabled'
+                          ? `Disable ${extension.name}`
+                          : `Enable ${extension.name}`
             }
-            onClick={() =>
-                router.post(
-                    state === 'enabled'
-                        ? disableExtension.url([version.id, extension.id])
-                        : enableExtension.url([version.id, extension.id]),
-                    {},
-                    { preserveScroll: true },
-                )
-            }
+            onClick={() => onToggle(extension)}
             className={cn(
                 'group inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 font-mono text-[12px] leading-[18px] transition-colors duration-[--bc-duration-fast]',
-                state === 'enabled' &&
+                pending && 'border-primary/30 bg-primary/5 text-primary',
+                !pending &&
+                    state === 'enabled' &&
                     'border-[var(--bc-border-success)]/40 bg-success-subtle text-fg-success',
-                state === 'available' &&
+                !pending &&
+                    state === 'available' &&
                     'border-[var(--bc-border-default)] bg-[var(--bc-bg-subtle)] text-fg-muted hover:border-border-hover',
-                state === 'missing' &&
+                !pending &&
+                    state === 'missing' &&
                     'border-dashed border-[var(--bc-border-default)] text-fg-disabled hover:border-border-hover hover:text-fg-muted',
-                !canToggle && 'cursor-not-allowed opacity-70',
+                !canToggle && !pending && 'cursor-not-allowed opacity-70',
+                pending && 'cursor-wait',
             )}
         >
-            {state === 'enabled' ? (
+            {pending ? (
+                <Spinner tone="brand" className="size-3" />
+            ) : state === 'enabled' ? (
                 <Check aria-hidden="true" className="size-3" />
             ) : state === 'missing' ? (
                 <Download aria-hidden="true" className="size-3" />
@@ -132,6 +137,103 @@ function ExtensionChip({
     );
 }
 
+function PhpVersionExtensions({
+    version,
+    filter,
+    disabled,
+    errorMessage,
+}: {
+    version: PhpVersionRow;
+    filter: string;
+    disabled: boolean;
+    errorMessage?: string;
+}) {
+    const [extensions, setExtensions] = useState(version.extensions);
+    const [pendingIds, setPendingIds] = useState<Set<number>>(() => new Set());
+
+    useEffect(() => {
+        setExtensions(version.extensions);
+    }, [version.extensions]);
+
+    const toggleExtension = useCallback(
+        (extension: PhpExtensionRow) => {
+            const enabling = !extension.is_enabled;
+            const url = enabling
+                ? enableExtension.url([version.id, extension.id])
+                : disableExtension.url([version.id, extension.id]);
+
+            setPendingIds((current) => new Set(current).add(extension.id));
+            setExtensions((current) =>
+                current.map((row) =>
+                    row.id === extension.id
+                        ? {
+                              ...row,
+                              is_installed: true,
+                              is_enabled: enabling,
+                          }
+                        : row,
+                ),
+            );
+
+            router.post(
+                url,
+                {},
+                {
+                    preserveScroll: true,
+                    onError: () => {
+                        setExtensions(version.extensions);
+                    },
+                    onFinish: () => {
+                        setPendingIds((current) => {
+                            const next = new Set(current);
+                            next.delete(extension.id);
+
+                            return next;
+                        });
+                    },
+                },
+            );
+        },
+        [version.extensions, version.id],
+    );
+
+    const visibleExtensions = extensions.filter((extension) =>
+        extension.name.includes(filter.trim().toLowerCase()),
+    );
+
+    return (
+        <section className="space-y-3">
+            {errorMessage ? (
+                <p
+                    role="alert"
+                    className="rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400"
+                >
+                    {errorMessage}
+                </p>
+            ) : null}
+
+            <div className="flex flex-wrap gap-1.5">
+                {visibleExtensions.map((extension) => (
+                    <ExtensionChip
+                        key={extension.id}
+                        extension={extension}
+                        pending={pendingIds.has(extension.id)}
+                        disabled={disabled}
+                        onToggle={toggleExtension}
+                    />
+                ))}
+            </div>
+
+            <p className="text-caption text-fg-subtle">
+                Click an extension to install, enable, or disable it. A spinner
+                shows while apt/phpenmod runs; the chip updates when the server
+                confirms the change. Core extensions marked locked cannot be
+                turned off.
+            </p>
+        </section>
+    );
+}
+
 export default function PhpIndex({
     versions,
     supported,
@@ -144,6 +246,9 @@ export default function PhpIndex({
     iniDefaults: Record<string, string>;
     defaultPhpVersion: string;
 }) {
+    const { errors } = usePage<{ errors?: { extension?: string } }>().props;
+    const extensionError = errors?.extension;
+
     const [expanded, setExpanded] = useState<string | null>(
         versions.find((version) => version.status === 'installed')?.version ??
             null,
@@ -347,33 +452,12 @@ export default function PhpIndex({
                                                     </div>
                                                 </div>
 
-                                                <div className="flex flex-wrap gap-1.5">
-                                                    {record.extensions
-                                                        .filter((extension) =>
-                                                            extension.name.includes(
-                                                                filter
-                                                                    .trim()
-                                                                    .toLowerCase(),
-                                                            ),
-                                                        )
-                                                        .map((extension) => (
-                                                            <ExtensionChip
-                                                                key={extension.id}
-                                                                extension={extension}
-                                                                version={record}
-                                                                disabled={isBusy}
-                                                            />
-                                                        ))}
-                                                </div>
-
-                                                <p className="text-caption text-fg-subtle">
-                                                    Click an extension to install,
-                                                    enable, or disable it. Core
-                                                    extensions marked locked cannot
-                                                    be turned off. PHP-FPM restarts
-                                                    once after your changes are
-                                                    saved.
-                                                </p>
+                                                <PhpVersionExtensions
+                                                    version={record}
+                                                    filter={filter}
+                                                    disabled={isBusy}
+                                                    errorMessage={extensionError}
+                                                />
                                             </section>
 
                                             <section className="space-y-3">
