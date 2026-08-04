@@ -132,10 +132,28 @@ class PhpExtensionService
         );
 
         if ($result->failed()) {
-            throw new RuntimeException(
-                "apt failed installing {$extension->apt_package}: {$result->combinedOutput()}",
-            );
+            throw new RuntimeException($this->formatInstallFailure(
+                (string) $extension->apt_package,
+                $result->combinedOutput(),
+            ));
         }
+    }
+
+    private function formatInstallFailure(string $package, string $output): string
+    {
+        if (str_contains($output, 'Read-only file system')) {
+            return "Could not install {$package}: the panel PHP sandbox blocks apt from writing "
+                .'extension files under /usr/lib/php. Re-run install.sh or deploy the latest panel '
+                .'release (which refreshes the systemd drop-in), then try again.';
+        }
+
+        $detail = trim($output);
+
+        if (mb_strlen($detail) > 500) {
+            $detail = mb_substr($detail, 0, 500).'…';
+        }
+
+        return "apt failed installing {$package}: {$detail}";
     }
 
     private function activate(PhpExtension $extension): void

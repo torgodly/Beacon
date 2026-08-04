@@ -679,30 +679,20 @@ done
 # units. Beacon manages exactly these paths, so they are re-opened for write.
 #
 # ReadWritePaths is a narrow exemption: everything else stays read-only, which
-# keeps most of the sandbox's value.
-# Each path is prefixed with `-`: systemd refuses to start a unit whose
-# ReadWritePaths references a directory that does not exist, and /etc/letsencrypt
-# is not created until certbot first runs.
-BEACON_RW_PATHS="-/etc/nginx -/etc/letsencrypt -/etc/php -/etc/supervisor -/var/www -/var/log/beacon -/opt/beacon -/home/beacon"
-
-write_sandbox_dropin() {
-    local unit="$1"
-    install -d "/etc/systemd/system/${unit}.service.d"
-    cat > "/etc/systemd/system/${unit}.service.d/99-beacon-paths.conf" <<EOF
-[Service]
-# Beacon writes these through its restricted sudo wrappers; see install.sh.
-ReadWritePaths=${BEACON_RW_PATHS}
-EOF
-}
+# keeps most of the sandbox's value. apt extension installs write .so files to
+# /usr/lib/php (and sometimes pull libs into /usr/lib/<arch>-linux-gnu).
+SANDBOX_PATHS_SRC="${SCRIPT_DIR}/bin/lib/beacon-sandbox-paths.sh"
+if [[ -z "$SCRIPT_DIR" || ! -f "$SANDBOX_PATHS_SRC" ]]; then
+    SANDBOX_PATHS_SRC="$(pwd)/bin/lib/beacon-sandbox-paths.sh"
+fi
+# shellcheck source=bin/lib/beacon-sandbox-paths.sh
+source "$SANDBOX_PATHS_SRC"
 
 # The panel's own pool is what serves the UI, and supervisord runs the queue
 # worker that performs the same privileged actions asynchronously.
 install -d -m 0755 /etc/letsencrypt
 
-write_sandbox_dropin "php${PANEL_PHP}-fpm"
-write_sandbox_dropin supervisor
-
-systemctl daemon-reload 2>/dev/null || true
+beacon_sync_sandbox_dropins "$PANEL_PHP"
 
 # ── Wrappers + sudoers ──────────────────────────────────────────────
 install -d -m 0755 "$BEACON_BIN"
