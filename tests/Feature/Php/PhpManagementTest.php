@@ -188,6 +188,37 @@ class PhpManagementTest extends TestCase
         $this->assertTrue($extension->fresh()->is_enabled);
     }
 
+    public function test_extension_enable_syncs_uppercase_php_module_names(): void
+    {
+        $this->processFactory->willReturnSequence([0, 0, 0], "PDO\n");
+
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+
+        $phpVersion = PhpVersion::factory()->create([
+            'server_id' => 1,
+            'version' => '8.4',
+            'status' => 'installed',
+        ]);
+
+        $extension = PhpExtension::query()->create([
+            'php_version_id' => $phpVersion->id,
+            'name' => 'pdo',
+            'label' => 'pdo',
+            'is_installed' => true,
+            'is_enabled' => false,
+            'is_core' => false,
+        ]);
+
+        $response = $this->actingAs($user)->post(route('php.extensions.enable', [
+            'phpVersion' => $phpVersion,
+            'extension' => $extension,
+        ]));
+
+        $response->assertRedirect(route('php.index'));
+        $this->assertTrue($extension->fresh()->is_enabled);
+    }
+
     public function test_php_ini_can_be_saved(): void
     {
         $this->processFactory->willReturn(0);

@@ -49,13 +49,20 @@ class PhpExtensionService
         $available = $this->availableModules($version);
         $enabled = $this->enabledModules($version);
 
-        foreach ($available->merge(array_keys(self::INSTALLABLE))->unique() as $name) {
+        $names = $available
+            ->merge(array_keys(self::INSTALLABLE))
+            ->merge($enabled)
+            ->map(fn (string $name): string => $this->normalizeModuleName($name))
+            ->unique()
+            ->values();
+
+        foreach ($names as $name) {
             $version->extensions()->updateOrCreate(['name' => $name], [
                 'label' => $name,
                 'apt_package' => isset(self::INSTALLABLE[$name])
                     ? "php{$version->version}-".self::INSTALLABLE[$name]
                     : null,
-                'is_installed' => $available->contains($name),
+                'is_installed' => $available->contains($name) || $enabled->contains($name),
                 'is_enabled' => $enabled->contains($name),
                 'is_core' => in_array($name, self::LOCKED, true),
                 'last_synced_at' => now(),
@@ -72,6 +79,11 @@ class PhpExtensionService
         }
 
         $this->activate($extension);
+
+        $extension->update([
+            'is_installed' => true,
+            'is_enabled' => true,
+        ]);
 
         $this->sync($version);
         $this->markDirty($version);
@@ -91,6 +103,8 @@ class PhpExtensionService
         if ($result->failed()) {
             throw new RuntimeException("Could not disable {$extension->name}: {$result->errorOutput()}");
         }
+
+        $extension->update(['is_enabled' => false]);
 
         $this->sync($extension->phpVersion);
         $this->markDirty($extension->phpVersion);
@@ -191,9 +205,10 @@ class PhpExtensionService
     /** @return Collection<int, string> */
     private function availableModules(PhpVersion $version): Collection
     {
-        return collect(File::glob("/etc/php/{$version->version}/mods-available/*.ini"))
-            ->map(fn (string $path): string => basename($path, '.ini'))
-            ->values();
+        return $this->normalizeModules(
+            collect(File::glob("/etc/php/{$version->version}/mods-available/*.ini"))
+                ->map(fn (string $path): string => basename($path, '.ini')),
+        );
     }
 
     /** @return Collection<int, string> */
@@ -205,12 +220,11 @@ class PhpExtensionService
             return $fromPhp;
         }
 
-        return collect(['cli', 'fpm'])
-            ->flatMap(fn (string $sapi): array => File::glob("/etc/php/{$version->version}/{$sapi}/conf.d/*.ini") ?: [])
-            ->map(fn (string $path): string => (string) preg_replace('/^\d+-/', '', basename($path, '.ini')))
-            ->filter()
-            ->unique()
-            ->values();
+        return $this->normalizeModules(
+            collect(['cli', 'fpm'])
+                ->flatMap(fn (string $sapi): array => File::glob("/etc/php/{$version->version}/{$sapi}/conf.d/*.ini") ?: [])
+                ->map(fn (string $path): string => (string) preg_replace('/^\d+-/', '', basename($path, '.ini'))),
+        );
     }
 
     /** @return Collection<int, string> */
@@ -224,12 +238,28 @@ class PhpExtensionService
             return collect();
         }
 
-        return collect(preg_split('/\r\n|\r|\n/', $result->output()) ?: [])
-            ->map(fn (string $line): string => trim($line))
-            ->filter(
-                fn (string $line): bool => $line !== '' && ! str_starts_with($line, '['),
-            )
+        return $this->normalizeModules(
+            collect(preg_split('/\r\n|\r|\n/', $result->output()) ?: [])
+                ->map(fn (string $line): string => trim($line))
+                ->filter(
+                    fn (string $line): bool => $line !== '' && ! str_starts_with($line, '['),
+                ),
+        );
+    }
+
+    /** @param  Collection<int, string>  $modules */
+    private function normalizeModules(Collection $modules): Collection
+    {
+        return $modules
+            ->map(fn (string $name): string => $this->normalizeModuleName($name))
+            ->filter()
+            ->unique()
             ->values();
+    }
+
+    private function normalizeModuleName(string $name): string
+    {
+        return strtolower(trim($name));
     }
 
     private function phpBinary(PhpVersion $version): string
