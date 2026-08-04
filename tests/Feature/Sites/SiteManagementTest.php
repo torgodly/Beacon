@@ -79,6 +79,32 @@ class SiteManagementTest extends TestCase
         ]);
     }
 
+    public function test_store_persists_an_optional_repository(): void
+    {
+        $this->processFactory->willReturn(0, "server { listen 80; }\n");
+
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+        $this->installPhp('8.4');
+
+        $response = $this->actingAs($user)->post(route('sites.store'), [
+            'name' => 'app.example.com',
+            'type' => 'laravel',
+            'php_version' => '8.4',
+            'repository' => 'git@github.com:org/app.git',
+            'repository_branch' => 'main',
+        ]);
+
+        $response->assertRedirect(route('sites.show', 'app.example.com').'?tab=overview');
+
+        $this->assertDatabaseHas('sites', [
+            'name' => 'app.example.com',
+            'repository' => 'git@github.com:org/app.git',
+            'repository_branch' => 'main',
+            'repository_provider' => 'custom',
+        ]);
+    }
+
     public function test_a_php_version_that_is_not_installed_is_rejected(): void
     {
         $user = User::factory()->create();

@@ -1,24 +1,33 @@
 import { Link, usePage } from '@inertiajs/react';
 import { motion, useReducedMotion } from 'framer-motion';
+import { GitBranch } from 'lucide-react';
 import type { PropsWithChildren } from 'react';
 import { PageHeader } from '@/components/console/page-header';
+import { DeployButton } from '@/components/sites/deploy-button';
+import { StatusPill, toStatus } from '@/components/status-pill';
 import { cn } from '@/lib/utils';
 import { show } from '@/routes/sites';
 
 export type SiteSummary = {
     id: string;
     name: string;
+    repository?: string | null;
+    repository_branch?: string;
+    repository_connected?: boolean;
+    deployment_status?: string;
+    status?: string;
+    type?: string;
     [key: string]: unknown;
 };
 
 const SITE_TABS = [
     { key: 'overview', title: 'Overview' },
     { key: 'domains', title: 'Domains' },
-    { key: 'ssl', title: 'SSL' },
+    { key: 'ssl', title: 'TLS' },
     { key: 'nginx', title: 'Nginx' },
-    { key: 'deployments', title: 'Deployments' },
-    { key: 'environment', title: 'Environment' },
-    { key: 'supervisor', title: 'Supervisor' },
+    { key: 'deployments', title: 'Deploy' },
+    { key: 'environment', title: 'Env' },
+    { key: 'supervisor', title: 'Workers' },
     { key: 'cron', title: 'Cron' },
     { key: 'console', title: 'Console' },
     { key: 'isolation', title: 'Isolation' },
@@ -39,9 +48,56 @@ export default function SiteLayout({
                 eyebrow={`sites // ${site?.name ?? 'select'}`}
                 title={site?.name ?? 'Sites'}
                 description={
-                    site
-                        ? 'Domains, deployments, runtime and configuration for this site.'
-                        : 'Select a site to view its configuration.'
+                    site ? (
+                        <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <span>
+                                {site.type} · runtime, TLS, deploy pipeline
+                            </span>
+                            {site.repository_connected && site.repository && (
+                                <Link
+                                    href={show.url(site.id, {
+                                        query: { tab: 'settings' },
+                                    })}
+                                    className="inline-flex items-center gap-1.5 font-mono text-[13px] text-fg-link hover:underline"
+                                >
+                                    <GitBranch
+                                        aria-hidden="true"
+                                        strokeWidth={1.5}
+                                        className="size-3.5"
+                                    />
+                                    {site.repository}
+                                    {site.repository_branch
+                                        ? `@${site.repository_branch}`
+                                        : ''}
+                                </Link>
+                            )}
+                        </span>
+                    ) : (
+                        'Select a site to manage its configuration.'
+                    )
+                }
+                actions={
+                    site ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                            <StatusPill
+                                status={toStatus(site.status ?? 'active')}
+                                label={site.status ?? 'active'}
+                                size="sm"
+                            />
+                            <StatusPill
+                                status={toStatus(
+                                    site.deployment_status ?? 'idle',
+                                )}
+                                label={site.deployment_status ?? 'idle'}
+                                size="sm"
+                            />
+                            <DeployButton
+                                siteId={site.id}
+                                repository={site.repository ?? null}
+                                deploymentStatus={site.deployment_status}
+                            />
+                        </div>
+                    ) : undefined
                 }
             />
 
@@ -53,7 +109,7 @@ export default function SiteLayout({
                     const isActive = site !== undefined && tab === item.key;
 
                     const classes = cn(
-                        'relative shrink-0 whitespace-nowrap px-3 py-2.5 text-[14px] leading-5 font-medium',
+                        'relative shrink-0 px-3 py-2.5 text-[14px] leading-5 font-medium whitespace-nowrap',
                         'transition-colors duration-[--bc-duration-fast]',
                         isActive
                             ? 'text-fg-strong'
@@ -79,8 +135,6 @@ export default function SiteLayout({
                             className={classes}
                         >
                             {item.title}
-                            {/* A 2px cyan underline, so the current tab stays
-                              * legible without relying on colour alone. */}
                             {isActive &&
                                 (reduceMotion ? (
                                     <span className="absolute inset-x-0 -bottom-px h-0.5 bg-[var(--bc-bg-brand)]" />

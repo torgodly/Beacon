@@ -1,6 +1,7 @@
 import {
     Form,
     Head,
+    Link,
     router,
     setLayoutProps,
     useForm,
@@ -11,9 +12,11 @@ import { useEffect, useRef, useState } from 'react';
 import { CodeDiffViewer } from '@/components/code-diff-viewer';
 import { CodeEditor } from '@/components/code-editor';
 import { ConfirmDialog } from '@/components/confirm-dialog';
-import { Panel } from '@/components/console/panel';
+import { Panel, SpecList, StatCluster } from '@/components/console/panel';
 import { DeployScriptEnvReference } from '@/components/deploy-script-env-reference';
 import InputError from '@/components/input-error';
+import { DeployButton } from '@/components/sites/deploy-button';
+import { DeploymentStream } from '@/components/sites/deployment-stream';
 import { StatusBadge } from '@/components/status-badge';
 import type { Status } from '@/components/status-badge';
 import { Terminal } from '@/components/terminal';
@@ -53,8 +56,6 @@ import {
 } from '@/routes/sites/cron';
 import { store as generateDeployKey } from '@/routes/sites/deploy-key';
 import { update as updateDeployScript } from '@/routes/sites/deploy-script';
-import { store as storeDeployment } from '@/routes/sites/deployments';
-import { log as deploymentLog } from '@/routes/sites/deployments';
 import {
     destroy as destroyDomain,
     primary as makePrimaryDomain,
@@ -139,6 +140,9 @@ type SiteDetail = SiteSummary &
         type: string;
         deployment_status: string;
         primary_domain: string;
+        repository: string | null;
+        repository_branch: string;
+        repository_connected: boolean;
     };
 
 type ServingFields = {
@@ -233,6 +237,7 @@ type Props = {
     deployScript: string | null;
     deployEnvReference: EnvReferenceRow[] | null;
     activeDeployment: DeploymentRow | null;
+    latestDeployment: DeploymentRow | null;
     sslCertificate: SslCertificatePayload | null;
     siteSettings: SiteSettingsPayload | null;
     runtimeOptions: RuntimeOptionsPayload | null;
@@ -253,22 +258,6 @@ function deploymentStatus(status: string): Status {
     }[status] ?? 'info') as Status;
 }
 
-function deploymentTerminalStatus(status: string): TerminalStatus {
-    if (status === 'running' || status === 'queued') {
-        return 'running';
-    }
-
-    if (status === 'success') {
-        return 'success';
-    }
-
-    if (status === 'failed') {
-        return 'failed';
-    }
-
-    return 'idle';
-}
-
 function formatDuration(ms: number | null): string {
     if (ms === null) {
         return '—';
@@ -281,86 +270,6 @@ function formatDuration(ms: number | null): string {
     return `${(ms / 1000).toFixed(1)}s`;
 }
 
-function DeploymentLogViewer({
-    siteId,
-    deployment,
-}: {
-    siteId: string;
-    deployment: DeploymentRow;
-}) {
-    return (
-        <DeploymentLogViewerContent
-            key={deployment.uuid}
-            siteId={siteId}
-            deployment={deployment}
-        />
-    );
-}
-
-function DeploymentLogViewerContent({
-    siteId,
-    deployment,
-}: {
-    siteId: string;
-    deployment: DeploymentRow;
-}) {
-    const [chunks, setChunks] = useState<string[]>([]);
-    const [status, setStatus] = useState(deployment.status);
-    const offsetRef = useRef(0);
-
-    useEffect(() => {
-        let cancelled = false;
-
-        async function poll() {
-            const response = await fetch(
-                deploymentLog.url(
-                    { site: siteId, deployment: deployment.uuid },
-                    { query: { offset: offsetRef.current } },
-                ),
-                { headers: { Accept: 'application/json' } },
-            );
-
-            if (!response.ok || cancelled) {
-                return;
-            }
-
-            const data = (await response.json()) as {
-                offset: number;
-                chunk: string;
-                status: string;
-            };
-
-            if (data.chunk) {
-                setChunks((previous) => [...previous, data.chunk]);
-            }
-
-            offsetRef.current = data.offset;
-            setStatus(data.status);
-        }
-
-        void poll();
-
-        const interval = setInterval(() => {
-            if (status === 'queued' || status === 'running') {
-                void poll();
-            }
-        }, 1000);
-
-        return () => {
-            cancelled = true;
-            clearInterval(interval);
-        };
-    }, [deployment.uuid, siteId, status]);
-
-    return (
-        <Terminal
-            chunks={chunks}
-            status={deploymentTerminalStatus(status)}
-            title={`Deployment ${deployment.uuid.slice(0, 8)}`}
-        />
-    );
-}
-
 function sslStatus(status: string): Status {
     return ({
         issued: 'success',
@@ -370,120 +279,209 @@ function sslStatus(status: string): Status {
     }[status] ?? 'info') as Status;
 }
 
-function siteStatus(status: string): Status {
-    return status === 'active' ? 'success' : 'pending';
-}
-
-function OverviewTab({ site }: { site: SiteDetail }) {
+function OverviewTab({
+    site,
+    activeDeployment,
+    latestDeployment,
+}: {
+    site: SiteDetail;
+    activeDeployment: DeploymentRow | null;
+    latestDeployment: DeploymentRow | null;
+}) {
     return (
-        <div className="flex flex-col gap-4">
-            <div className="grid gap-4 lg:grid-cols-2">
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="text-base">
-                            Site details
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3 text-sm">
-                        <div className="flex justify-between gap-4">
-                            <span className="text-muted-foreground">
-                                Status
-                            </span>
-                            <StatusBadge
-                                status={siteStatus(site.status)}
-                                label={site.status}
-                            />
-                        </div>
-                        <div className="flex justify-between gap-4">
-                            <span className="text-muted-foreground">Type</span>
-                            <span className="capitalize">{site.type}</span>
-                        </div>
-                        <div className="flex justify-between gap-4">
-                            <span className="text-muted-foreground">Path</span>
-                            <span className="font-mono text-xs">
-                                {site.path}
-                            </span>
-                        </div>
-                        <div className="flex justify-between gap-4">
-                            <span className="text-muted-foreground">
-                                Web directory
-                            </span>
-                            <span className="font-mono text-xs">
-                                {site.web_directory}
-                            </span>
-                        </div>
-                        {site.php_version && (
-                            <div className="flex justify-between gap-4">
-                                <span className="text-muted-foreground">
-                                    PHP
-                                </span>
-                                <span>{site.php_version}</span>
-                            </div>
-                        )}
-                        {site.node_version && (
-                            <div className="flex justify-between gap-4">
-                                <span className="text-muted-foreground">
-                                    Node
-                                </span>
-                                <span>{site.node_version}</span>
-                            </div>
-                        )}
-                        {site.proxy_port && (
-                            <div className="flex justify-between gap-4">
-                                <span className="text-muted-foreground">
-                                    Proxy port
-                                </span>
-                                <span>{site.proxy_port}</span>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+        <div className="flex flex-col gap-6">
+            {activeDeployment && (
+                <DeploymentStream
+                    siteId={site.id}
+                    deployment={activeDeployment}
+                />
+            )}
 
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="text-base">Deployment</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3 text-sm">
-                        <div className="flex justify-between gap-4">
-                            <span className="text-muted-foreground">
-                                Status
-                            </span>
-                            <span>{site.deployment_status}</span>
+            <StatCluster
+                className="max-w-3xl rounded-lg border border-[var(--bc-border-default)] bg-surface px-2 py-4"
+                stats={[
+                    {
+                        label: 'Deploy',
+                        value: site.deployment_status,
+                        tone:
+                            site.deployment_status === 'success'
+                                ? 'success'
+                                : site.deployment_status === 'failed'
+                                  ? 'danger'
+                                  : 'default',
+                    },
+                    {
+                        label: 'TLS',
+                        value: site.ssl_status,
+                        tone:
+                            site.ssl_status === 'issued' ||
+                            site.ssl_status === 'active'
+                                ? 'brand'
+                                : 'default',
+                    },
+                    {
+                        label: 'Runtime',
+                        value:
+                            site.php_version ?? site.node_version ?? 'static',
+                    },
+                    {
+                        label: 'Repository',
+                        value: site.repository_connected ? 'connected' : 'none',
+                        tone: site.repository_connected ? 'success' : 'warning',
+                    },
+                ]}
+            />
+
+            <div className="grid gap-6 lg:grid-cols-2">
+                <Panel eyebrow="site // spec" title="Infrastructure">
+                    <SpecList
+                        columns={1}
+                        items={[
+                            {
+                                label: 'Status',
+                                value: site.status,
+                                mono: false,
+                            },
+                            { label: 'Type', value: site.type, mono: false },
+                            { label: 'Path', value: site.path },
+                            { label: 'Web root', value: site.web_directory },
+                            ...(site.php_version
+                                ? [{ label: 'PHP', value: site.php_version }]
+                                : []),
+                            ...(site.node_version
+                                ? [{ label: 'Node', value: site.node_version }]
+                                : []),
+                            ...(site.proxy_port
+                                ? [
+                                      {
+                                          label: 'Proxy port',
+                                          value: String(site.proxy_port),
+                                      },
+                                  ]
+                                : []),
+                        ]}
+                    />
+                </Panel>
+
+                <Panel
+                    eyebrow="deploy // source"
+                    title="Repository"
+                    description={
+                        site.repository_connected
+                            ? 'Git remote Beacon clones on each deploy.'
+                            : 'Connect a repository to enable deployments.'
+                    }
+                    actions={
+                        <DeployButton
+                            siteId={site.id}
+                            repository={site.repository}
+                            deploymentStatus={site.deployment_status}
+                            size="sm"
+                        />
+                    }
+                >
+                    {site.repository_connected ? (
+                        <SpecList
+                            columns={1}
+                            items={[
+                                {
+                                    label: 'Remote',
+                                    value: site.repository ?? '—',
+                                },
+                                {
+                                    label: 'Branch',
+                                    value: site.repository_branch,
+                                },
+                                {
+                                    label: 'Nginx',
+                                    value: site.nginx_customized
+                                        ? 'Custom config'
+                                        : 'Generated',
+                                    mono: false,
+                                },
+                            ]}
+                        />
+                    ) : (
+                        <div className="flex flex-col gap-3">
+                            <p className="text-[14px] leading-[22px] text-fg-muted">
+                                Add a Git URL in Settings, or paste one when
+                                creating the next site.
+                            </p>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-fit"
+                                asChild
+                            >
+                                <Link
+                                    href={show.url(site.id, {
+                                        query: { tab: 'settings' },
+                                    })}
+                                >
+                                    Connect repository
+                                </Link>
+                            </Button>
                         </div>
-                        <div className="flex justify-between gap-4">
-                            <span className="text-muted-foreground">SSL</span>
-                            <span>{site.ssl_status}</span>
+                    )}
+
+                    {latestDeployment && !activeDeployment && (
+                        <div className="mt-5 border-t border-[var(--bc-border-subtle)] pt-4">
+                            <p className="text-overline font-mono text-fg-subtle">
+                                Last deployment
+                            </p>
+                            <button
+                                type="button"
+                                className="mt-2 text-left text-[14px] font-medium text-fg-link hover:underline"
+                                onClick={() =>
+                                    router.get(
+                                        show.url(site.id, {
+                                            query: {
+                                                tab: 'deployments',
+                                                deployment:
+                                                    latestDeployment.uuid,
+                                            },
+                                        }),
+                                    )
+                                }
+                            >
+                                {latestDeployment.status} ·{' '}
+                                {latestDeployment.created_at
+                                    ? new Date(
+                                          latestDeployment.created_at,
+                                      ).toLocaleString()
+                                    : 'Unknown time'}
+                            </button>
                         </div>
-                        <div className="flex justify-between gap-4">
-                            <span className="text-muted-foreground">Nginx</span>
-                            <span>
-                                {site.nginx_customized
-                                    ? 'Customized'
-                                    : 'Generated'}
-                            </span>
-                        </div>
-                    </CardContent>
-                </Card>
+                    )}
+                </Panel>
             </div>
 
-            <ConfirmDialog
-                trigger={
-                    <Button variant="destructive" size="sm" className="w-fit">
-                        <Trash2 className="size-3.5" />
-                        Delete site
-                    </Button>
-                }
-                title={`Delete ${site.name}?`}
-                description="This removes the Nginx config, PHP pool, site directory, and database record. This cannot be undone."
-                confirmLabel="Delete site"
-                destructive
-                confirmationValue={site.name}
-                onConfirm={() =>
-                    router.delete(destroy.url(site.id), {
-                        data: { confirmation: site.name },
-                    })
-                }
-            />
+            <Panel eyebrow="danger zone" title="Delete site">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                    <p className="max-w-prose text-[14px] leading-[22px] text-fg-muted">
+                        Removes the Nginx vhost, runtime pool, site directory,
+                        and database record. This cannot be undone.
+                    </p>
+                    <ConfirmDialog
+                        trigger={
+                            <Button variant="destructive" size="sm">
+                                <Trash2 className="size-3.5" />
+                                Delete site
+                            </Button>
+                        }
+                        title={`Delete ${site.name}?`}
+                        description="This removes the Nginx config, PHP pool, site directory, and database record. This cannot be undone."
+                        confirmLabel="Delete site"
+                        destructive
+                        confirmationValue={site.name}
+                        onConfirm={() =>
+                            router.delete(destroy.url(site.id), {
+                                data: { confirmation: site.name },
+                            })
+                        }
+                    />
+                </div>
+            </Panel>
         </div>
     );
 }
@@ -1685,96 +1683,72 @@ function DeploymentsTab({
     });
 
     return (
-        <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-muted-foreground">
-                    Run the deploy script as the site user with Beacon
-                    environment variables injected.
-                </p>
-                <Button
-                    onClick={() =>
-                        router.post(
-                            storeDeployment.url(site.id),
-                            {},
-                            {
-                                preserveScroll: true,
-                            },
-                        )
-                    }
-                >
-                    <Play className="size-3.5" />
-                    Deploy now
-                </Button>
-            </div>
+        <div className="flex flex-col gap-6">
+            <Panel
+                eyebrow="deploy // pipeline"
+                title="Run deployment"
+                description="Clone the repository, execute the deploy script as the site user, and restart workers."
+                actions={
+                    <DeployButton
+                        siteId={site.id}
+                        repository={site.repository}
+                        deploymentStatus={site.deployment_status}
+                    />
+                }
+            />
 
             {activeDeployment && (
-                <DeploymentLogViewer
+                <DeploymentStream
                     siteId={site.id}
                     deployment={activeDeployment}
                 />
             )}
 
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-base">Deploy script</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-                        <form
-                            onSubmit={(event) => {
-                                event.preventDefault();
-                                scriptForm.patch(
-                                    updateDeployScript.url(site.id),
-                                    {
-                                        preserveScroll: true,
-                                    },
-                                );
-                            }}
-                            className="flex min-w-0 flex-col gap-3"
-                        >
-                            <CodeEditor
-                                value={scriptForm.data.deploy_script}
-                                onChange={(value) =>
-                                    scriptForm.setData('deploy_script', value)
-                                }
-                                language="bash"
-                                rows={14}
-                            />
-                            <InputError
-                                message={scriptForm.errors.deploy_script}
-                            />
-                            <Button
-                                type="submit"
-                                disabled={scriptForm.processing}
-                                className="w-fit"
-                            >
-                                <Save className="size-3.5" />
-                                Save script
-                            </Button>
-                        </form>
-                        <DeployScriptEnvReference
-                            variables={deployEnvReference}
+            <Panel eyebrow="deploy // script" title="Deploy script">
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+                    <form
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            scriptForm.patch(updateDeployScript.url(site.id), {
+                                preserveScroll: true,
+                            });
+                        }}
+                        className="flex min-w-0 flex-col gap-3"
+                    >
+                        <CodeEditor
+                            value={scriptForm.data.deploy_script}
+                            onChange={(value) =>
+                                scriptForm.setData('deploy_script', value)
+                            }
+                            language="bash"
+                            rows={14}
                         />
-                    </div>
-                </CardContent>
-            </Card>
+                        <InputError message={scriptForm.errors.deploy_script} />
+                        <Button
+                            type="submit"
+                            disabled={scriptForm.processing}
+                            className="w-fit"
+                        >
+                            <Save className="size-3.5" />
+                            Save script
+                        </Button>
+                    </form>
+                    <DeployScriptEnvReference variables={deployEnvReference} />
+                </div>
+            </Panel>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-base">
-                        Recent deployments
-                    </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                    {deployments.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">
-                            No deployments yet.
-                        </p>
-                    ) : (
-                        deployments.map((deployment) => (
-                            <div
+            <Panel eyebrow="deploy // history" title="Recent deployments" flush>
+                {deployments.length === 0 ? (
+                    <p className="px-6 py-5 text-[14px] text-fg-muted">
+                        No deployments yet. Connect a repository and press
+                        Deploy.
+                    </p>
+                ) : (
+                    <ul className="divide-y divide-[var(--bc-border-subtle)]">
+                        {deployments.map((deployment) => (
+                            <li
                                 key={deployment.uuid}
-                                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm"
+                                className="flex flex-wrap items-center justify-between gap-3 px-6 py-3 text-sm"
                             >
                                 <div className="flex flex-col gap-1">
                                     <button
@@ -1817,11 +1791,11 @@ function DeploymentsTab({
                                         label={deployment.status}
                                     />
                                 </div>
-                            </div>
-                        ))
-                    )}
-                </CardContent>
-            </Card>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </Panel>
         </div>
     );
 }
@@ -2463,6 +2437,7 @@ export default function SiteShow({
     deployScript,
     deployEnvReference,
     activeDeployment,
+    latestDeployment,
     sslCertificate,
     siteSettings,
     runtimeOptions,
@@ -2473,6 +2448,8 @@ export default function SiteShow({
     activeCommand,
 }: Props) {
     setLayoutProps({
+        site,
+        tab,
         breadcrumbs: [
             { title: 'Sites', href: sitesIndex() },
             {
@@ -2486,7 +2463,11 @@ export default function SiteShow({
         return (
             <>
                 <Head title={`${site.name} — Overview`} />
-                <OverviewTab site={site} />
+                <OverviewTab
+                    site={site}
+                    activeDeployment={activeDeployment}
+                    latestDeployment={latestDeployment}
+                />
             </>
         );
     }

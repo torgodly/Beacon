@@ -121,9 +121,18 @@ class SiteController extends Controller
             return back()->withErrors(['name' => $e->getMessage()]);
         }
 
+        $query = filled($site->repository)
+            ? ['tab' => 'overview']
+            : [];
+
         return redirect()
-            ->route('sites.show', $site)
-            ->with('toast', ['type' => 'success', 'message' => "Site {$site->name} created."]);
+            ->to(route('sites.show', $site).($query !== [] ? '?'.http_build_query($query) : ''))
+            ->with('toast', [
+                'type' => 'success',
+                'message' => filled($site->repository)
+                    ? "Site {$site->name} created with repository connected. Deploy when ready."
+                    : "Site {$site->name} created.",
+            ]);
     }
 
     public function show(Request $request, Site $site, NginxService $nginx): Response
@@ -135,6 +144,7 @@ class SiteController extends Controller
         $deployments = null;
         $deployScript = null;
         $activeDeployment = null;
+        $latestDeployment = null;
         $sslCertificate = null;
         $siteSettings = null;
         $runtimeOptions = null;
@@ -154,16 +164,30 @@ class SiteController extends Controller
 
             $deployScript = $site->deploy_script;
             $deployEnvReference = DeploymentService::deployEnvironmentReference();
+        }
 
-            if ($request->filled('deployment')) {
-                $selected = $site->deployments()
-                    ->where('uuid', $request->query('deployment'))
-                    ->first();
+        if ($request->filled('deployment')) {
+            $selected = $site->deployments()
+                ->where('uuid', $request->query('deployment'))
+                ->first();
 
-                if ($selected !== null) {
-                    $activeDeployment = DeploymentController::deploymentPayload($selected);
-                }
+            if ($selected !== null) {
+                $activeDeployment = DeploymentController::deploymentPayload($selected);
             }
+        } elseif ($activeDeployment === null) {
+            $inFlight = $site->deployments()
+                ->whereIn('status', ['queued', 'running'])
+                ->latest()
+                ->first();
+
+            if ($inFlight !== null) {
+                $activeDeployment = DeploymentController::deploymentPayload($inFlight);
+            }
+        }
+
+        $latest = $site->deployments()->latest()->first();
+        if ($latest !== null) {
+            $latestDeployment = DeploymentController::deploymentPayload($latest);
         }
 
         if ($tab === 'ssl') {
@@ -271,6 +295,7 @@ class SiteController extends Controller
             'deployments' => $deployments,
             'deployScript' => $deployScript,
             'activeDeployment' => $activeDeployment,
+            'latestDeployment' => $latestDeployment,
             'sslCertificate' => $sslCertificate,
             'siteSettings' => $siteSettings,
             'runtimeOptions' => $runtimeOptions,
@@ -363,6 +388,9 @@ class SiteController extends Controller
             'status' => $site->status,
             'ssl_status' => $site->ssl_status,
             'deployment_status' => $site->deployment_status,
+            'repository' => $site->repository,
+            'repository_branch' => $site->repository_branch ?? 'main',
+            'repository_connected' => filled($site->repository),
             'primary_domain' => ($primary = $site->domains->firstWhere('is_primary', true)) !== null
                 ? $primary->domain
                 : $site->name,
@@ -400,6 +428,10 @@ class SiteController extends Controller
                 'redirect_status_code' => $domain->redirect_status_code,
             ])->values()->all(),
             'ssl_status' => $site->ssl_status,
+            'deployment_status' => $site->deployment_status,
+            'repository' => $site->repository,
+            'repository_branch' => $site->repository_branch ?? 'main',
+            'repository_connected' => filled($site->repository),
         ];
     }
 }

@@ -54,6 +54,13 @@ class StoreSiteRequest extends FormRequest
             'web_directory' => UpdateSiteServingRequest::WEB_DIRECTORY_RULES,
             'client_max_body_size' => UpdateSiteServingRequest::BODY_SIZE_RULES,
             'package_manager' => ['nullable', Rule::in(['npm', 'bun'])],
+            'repository' => ['nullable', 'string', 'max:500'],
+            'repository_branch' => [
+                'nullable',
+                'string',
+                'max:255',
+                'required_with:repository',
+            ],
         ];
     }
 
@@ -77,7 +84,7 @@ class StoreSiteRequest extends FormRequest
     }
 
     /**
-     * @return array{name: string, type: string, php_version?: string|null, node_version?: string|null, spa_fallback?: bool, web_directory?: string|null, client_max_body_size?: string|null, package_manager?: string|null}
+     * @return array{name: string, type: string, php_version?: string|null, node_version?: string|null, spa_fallback?: bool, web_directory?: string|null, client_max_body_size?: string|null, package_manager?: string|null, repository?: string|null, repository_branch?: string|null}
      */
     public function siteData(): array
     {
@@ -90,6 +97,8 @@ class StoreSiteRequest extends FormRequest
             'web_directory' => $this->validated('web_directory'),
             'client_max_body_size' => $this->validated('client_max_body_size'),
             'package_manager' => $this->validated('package_manager'),
+            'repository' => $this->validated('repository'),
+            'repository_branch' => $this->validated('repository_branch'),
         ];
     }
 }

@@ -1,5 +1,12 @@
 import { Form, Head, Link } from '@inertiajs/react';
-import { ChevronRight, Globe, Plus, ShieldCheck, Zap } from 'lucide-react';
+import {
+    ChevronRight,
+    GitBranch,
+    Globe,
+    Plus,
+    ShieldCheck,
+    Zap,
+} from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { EmptyState, PageHeader } from '@/components/console/page-header';
 import { Panel, StatCluster } from '@/components/console/panel';
@@ -40,6 +47,9 @@ type SiteRow = {
     status: string;
     ssl_status: string;
     deployment_status: string;
+    repository: string | null;
+    repository_branch: string;
+    repository_connected: boolean;
     primary_domain: string;
 };
 
@@ -102,6 +112,8 @@ export default function SitesIndex({
     const [advancedOpen, setAdvancedOpen] = useState(false);
     const [webDirectory, setWebDirectory] = useState('');
     const [spaFallback, setSpaFallback] = useState(true);
+    const [repository, setRepository] = useState('');
+    const [repositoryBranch, setRepositoryBranch] = useState('main');
 
     // Reset the document root whenever the type changes so the placeholder
     // always reflects the default that type will actually get.
@@ -117,7 +129,8 @@ export default function SitesIndex({
     const stats = useMemo(() => {
         const live = sites.filter((site) => site.status === 'active').length;
         const secured = sites.filter(
-            (site) => site.ssl_status === 'active' || site.ssl_status === 'issued',
+            (site) =>
+                site.ssl_status === 'active' || site.ssl_status === 'issued',
         ).length;
         const failed = sites.filter(
             (site) => site.deployment_status === 'failed',
@@ -157,9 +170,10 @@ export default function SitesIndex({
                                 <DialogHeader>
                                     <DialogTitle>Create a site</DialogTitle>
                                     <DialogDescription>
-                                        Beacon provisions the directory, the
-                                        Nginx vhost and the runtime. Nothing is
-                                        deployed until you connect a repository.
+                                        Beacon provisions the directory, Nginx
+                                        vhost, and runtime. Connect a Git
+                                        repository now to deploy immediately
+                                        after creation.
                                     </DialogDescription>
                                 </DialogHeader>
 
@@ -209,7 +223,9 @@ export default function SitesIndex({
                                                                 <input
                                                                     type="radio"
                                                                     name="type"
-                                                                    value={type.value}
+                                                                    value={
+                                                                        type.value
+                                                                    }
                                                                     checked={
                                                                         siteType ===
                                                                         type.value
@@ -226,17 +242,73 @@ export default function SitesIndex({
                                                                 </span>
                                                             </span>
                                                             <span className="text-[13px] leading-5 text-fg-muted">
-                                                                {type.description}
+                                                                {
+                                                                    type.description
+                                                                }
                                                             </span>
                                                         </label>
                                                     ))}
                                                 </div>
-                                                <InputError message={errors.type} />
+                                                <InputError
+                                                    message={errors.type}
+                                                />
                                             </fieldset>
 
+                                            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
+                                                <Field
+                                                    htmlFor="repository"
+                                                    label="Git repository"
+                                                    error={errors.repository}
+                                                    help="HTTPS or SSH URL — e.g. git@github.com:org/app.git"
+                                                >
+                                                    <Input
+                                                        id="repository"
+                                                        name="repository"
+                                                        mono
+                                                        autoComplete="off"
+                                                        spellCheck={false}
+                                                        placeholder="git@github.com:org/app.git"
+                                                        value={repository}
+                                                        onChange={(event) =>
+                                                            setRepository(
+                                                                event.target
+                                                                    .value,
+                                                            )
+                                                        }
+                                                    />
+                                                </Field>
+
+                                                <Field
+                                                    htmlFor="repository_branch"
+                                                    label="Branch"
+                                                    error={
+                                                        errors.repository_branch
+                                                    }
+                                                >
+                                                    <Input
+                                                        id="repository_branch"
+                                                        name="repository_branch"
+                                                        mono
+                                                        autoComplete="off"
+                                                        spellCheck={false}
+                                                        placeholder="main"
+                                                        value={repositoryBranch}
+                                                        onChange={(event) =>
+                                                            setRepositoryBranch(
+                                                                event.target
+                                                                    .value,
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            !repository.trim()
+                                                        }
+                                                    />
+                                                </Field>
+                                            </div>
+
                                             {/* Only the runtime this type actually
-                                              * uses is asked for — a static site
-                                              * has no FPM pool, so no PHP field. */}
+                                             * uses is asked for — a static site
+                                             * has no FPM pool, so no PHP field. */}
                                             {runtime === 'php' && (
                                                 <Field
                                                     htmlFor="php_version"
@@ -247,10 +319,13 @@ export default function SitesIndex({
                                                 >
                                                     <Select
                                                         value={phpVersion}
-                                                        onValueChange={setPhpVersion}
+                                                        onValueChange={
+                                                            setPhpVersion
+                                                        }
                                                         name="php_version"
                                                         disabled={
-                                                            phpVersions.length === 0
+                                                            phpVersions.length ===
+                                                            0
                                                         }
                                                     >
                                                         <SelectTrigger id="php_version">
@@ -260,10 +335,16 @@ export default function SitesIndex({
                                                             {phpVersions.map(
                                                                 (version) => (
                                                                     <SelectItem
-                                                                        key={version.value}
-                                                                        value={version.value}
+                                                                        key={
+                                                                            version.value
+                                                                        }
+                                                                        value={
+                                                                            version.value
+                                                                        }
                                                                     >
-                                                                        {version.label}
+                                                                        {
+                                                                            version.label
+                                                                        }
                                                                         {version.is_default &&
                                                                             ' · default'}
                                                                     </SelectItem>
@@ -284,10 +365,13 @@ export default function SitesIndex({
                                                 >
                                                     <Select
                                                         value={nodeVersion}
-                                                        onValueChange={setNodeVersion}
+                                                        onValueChange={
+                                                            setNodeVersion
+                                                        }
                                                         name="node_version"
                                                         disabled={
-                                                            nodeVersions.length === 0
+                                                            nodeVersions.length ===
+                                                            0
                                                         }
                                                     >
                                                         <SelectTrigger id="node_version">
@@ -297,10 +381,16 @@ export default function SitesIndex({
                                                             {nodeVersions.map(
                                                                 (version) => (
                                                                     <SelectItem
-                                                                        key={version.value}
-                                                                        value={version.value}
+                                                                        key={
+                                                                            version.value
+                                                                        }
+                                                                        value={
+                                                                            version.value
+                                                                        }
                                                                     >
-                                                                        {version.label}
+                                                                        {
+                                                                            version.label
+                                                                        }
                                                                         {version.is_default &&
                                                                             ' · default'}
                                                                     </SelectItem>
@@ -314,8 +404,8 @@ export default function SitesIndex({
                                             {runtime === 'none' && (
                                                 <p className="rounded-md border border-[var(--bc-border-default)] bg-[var(--bc-bg-subtle)] px-3 py-2.5 text-[13px] leading-5 text-fg-muted">
                                                     Static sites are served
-                                                    straight from disk. Nginx will
-                                                    point at{' '}
+                                                    straight from disk. Nginx
+                                                    will point at{' '}
                                                     <code className="font-mono text-fg-code">
                                                         {selected?.web_directory ??
                                                             '/dist'}
@@ -325,15 +415,17 @@ export default function SitesIndex({
                                             )}
 
                                             {/* Advanced settings stay collapsed:
-                                              * the common path is one field and
-                                              * a type, and burying the defaults
-                                              * behind a toggle keeps it that
-                                              * way without hiding them. */}
+                                             * the common path is one field and
+                                             * a type, and burying the defaults
+                                             * behind a toggle keeps it that
+                                             * way without hiding them. */}
                                             <div className="rounded-md border border-[var(--bc-border-default)]">
                                                 <button
                                                     type="button"
                                                     onClick={() =>
-                                                        setAdvancedOpen(!advancedOpen)
+                                                        setAdvancedOpen(
+                                                            !advancedOpen,
+                                                        )
                                                     }
                                                     aria-expanded={advancedOpen}
                                                     className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
@@ -343,7 +435,8 @@ export default function SitesIndex({
                                                         strokeWidth={1.5}
                                                         className={cn(
                                                             'size-4 text-fg-disabled transition-transform duration-[--bc-duration-base]',
-                                                            advancedOpen && 'rotate-90',
+                                                            advancedOpen &&
+                                                                'rotate-90',
                                                         )}
                                                     />
                                                     <span className="text-[14px] leading-5 font-medium text-fg">
@@ -362,7 +455,9 @@ export default function SitesIndex({
                                                             <Field
                                                                 htmlFor="web_directory"
                                                                 label="Document root"
-                                                                error={errors.web_directory}
+                                                                error={
+                                                                    errors.web_directory
+                                                                }
                                                                 help={`Relative to ${'/home/beacon/<domain>'}. Leave blank for ${typeDefaultRoot}.`}
                                                             >
                                                                 <Input
@@ -370,12 +465,22 @@ export default function SitesIndex({
                                                                     name="web_directory"
                                                                     mono
                                                                     autoComplete="off"
-                                                                    spellCheck={false}
-                                                                    placeholder={typeDefaultRoot}
-                                                                    value={webDirectory}
-                                                                    onChange={(event) =>
+                                                                    spellCheck={
+                                                                        false
+                                                                    }
+                                                                    placeholder={
+                                                                        typeDefaultRoot
+                                                                    }
+                                                                    value={
+                                                                        webDirectory
+                                                                    }
+                                                                    onChange={(
+                                                                        event,
+                                                                    ) =>
                                                                         setWebDirectory(
-                                                                            event.target.value,
+                                                                            event
+                                                                                .target
+                                                                                .value,
                                                                         )
                                                                     }
                                                                 />
@@ -383,59 +488,87 @@ export default function SitesIndex({
                                                         )}
 
                                                         {servesFromDisk &&
-                                                            (WEB_DIRECTORY_PRESETS[siteType] ?? [])
-                                                                .length > 1 && (
+                                                            (
+                                                                WEB_DIRECTORY_PRESETS[
+                                                                    siteType
+                                                                ] ?? []
+                                                            ).length > 1 && (
                                                                 <div className="flex flex-wrap gap-1.5">
                                                                     {(
                                                                         WEB_DIRECTORY_PRESETS[
                                                                             siteType
                                                                         ] ?? []
-                                                                    ).map((preset) => (
-                                                                        <button
-                                                                            key={preset}
-                                                                            type="button"
-                                                                            onClick={() =>
-                                                                                setWebDirectory(
-                                                                                    preset,
-                                                                                )
-                                                                            }
-                                                                            className={cn(
-                                                                                'rounded-sm border px-2 py-1 font-mono text-[12px] leading-[18px] transition-colors',
-                                                                                (webDirectory ||
-                                                                                    typeDefaultRoot) ===
+                                                                    ).map(
+                                                                        (
+                                                                            preset,
+                                                                        ) => (
+                                                                            <button
+                                                                                key={
                                                                                     preset
-                                                                                    ? 'border-border-brand bg-brand-subtle text-fg-brand'
-                                                                                    : 'border-[var(--bc-border-default)] text-fg-muted hover:border-border-hover',
-                                                                            )}
-                                                                        >
-                                                                            {preset}
-                                                                        </button>
-                                                                    ))}
+                                                                                }
+                                                                                type="button"
+                                                                                onClick={() =>
+                                                                                    setWebDirectory(
+                                                                                        preset,
+                                                                                    )
+                                                                                }
+                                                                                className={cn(
+                                                                                    'rounded-sm border px-2 py-1 font-mono text-[12px] leading-[18px] transition-colors',
+                                                                                    (webDirectory ||
+                                                                                        typeDefaultRoot) ===
+                                                                                        preset
+                                                                                        ? 'border-border-brand bg-brand-subtle text-fg-brand'
+                                                                                        : 'border-[var(--bc-border-default)] text-fg-muted hover:border-border-hover',
+                                                                                )}
+                                                                            >
+                                                                                {
+                                                                                    preset
+                                                                                }
+                                                                            </button>
+                                                                        ),
+                                                                    )}
                                                                 </div>
                                                             )}
 
-                                                        {siteType === 'static' && (
+                                                        {siteType ===
+                                                            'static' && (
                                                             <label className="flex items-start gap-2.5">
                                                                 <input
                                                                     type="checkbox"
                                                                     name="spa_fallback"
                                                                     value="1"
-                                                                    checked={spaFallback}
-                                                                    onChange={(event) =>
+                                                                    checked={
+                                                                        spaFallback
+                                                                    }
+                                                                    onChange={(
+                                                                        event,
+                                                                    ) =>
                                                                         setSpaFallback(
-                                                                            event.target.checked,
+                                                                            event
+                                                                                .target
+                                                                                .checked,
                                                                         )
                                                                     }
                                                                     className="mt-1 size-3.5 accent-[var(--bc-bg-brand)]"
                                                                 />
                                                                 <span>
                                                                     <span className="block text-[14px] leading-5 font-medium text-fg">
-                                                                        SPA fallback
+                                                                        SPA
+                                                                        fallback
                                                                     </span>
                                                                     <span className="block text-[13px] leading-5 text-fg-muted">
-                                                                        Serve index.html for unknown
-                                                                        paths. Required for React
-                                                                        Router, Vue Router and
+                                                                        Serve
+                                                                        index.html
+                                                                        for
+                                                                        unknown
+                                                                        paths.
+                                                                        Required
+                                                                        for
+                                                                        React
+                                                                        Router,
+                                                                        Vue
+                                                                        Router
+                                                                        and
                                                                         similar.
                                                                     </span>
                                                                 </span>
@@ -445,7 +578,9 @@ export default function SitesIndex({
                                                         <Field
                                                             htmlFor="client_max_body_size"
                                                             label="Max upload size"
-                                                            error={errors.client_max_body_size}
+                                                            error={
+                                                                errors.client_max_body_size
+                                                            }
                                                             help="nginx client_max_body_size — e.g. 100M, 512k, 1G."
                                                         >
                                                             <Input
@@ -463,11 +598,14 @@ export default function SitesIndex({
                                                                     htmlFor="package_manager"
                                                                     className="text-[14px] leading-5 font-medium text-fg"
                                                                 >
-                                                                    Package manager
+                                                                    Package
+                                                                    manager
                                                                 </label>
                                                                 <Select
                                                                     name="package_manager"
-                                                                    defaultValue={packageManager}
+                                                                    defaultValue={
+                                                                        packageManager
+                                                                    }
                                                                 >
                                                                     <SelectTrigger id="package_manager">
                                                                         <SelectValue />
@@ -492,10 +630,14 @@ export default function SitesIndex({
                                                     role="alert"
                                                     className="rounded-md border border-[var(--bc-border-warning)] bg-warning-subtle px-3 py-2.5 text-[13px] leading-5 text-fg-warning"
                                                 >
-                                                    No {runtime === 'php' ? 'PHP' : 'Node'}{' '}
+                                                    No{' '}
+                                                    {runtime === 'php'
+                                                        ? 'PHP'
+                                                        : 'Node'}{' '}
                                                     runtime is installed on this
-                                                    server yet. Install one before
-                                                    creating this site type.
+                                                    server yet. Install one
+                                                    before creating this site
+                                                    type.
                                                 </p>
                                             )}
 
@@ -503,14 +645,19 @@ export default function SitesIndex({
                                                 <Button
                                                     type="button"
                                                     variant="ghost"
-                                                    onClick={() => setCreateOpen(false)}
+                                                    onClick={() =>
+                                                        setCreateOpen(false)
+                                                    }
                                                 >
                                                     Cancel
                                                 </Button>
                                                 <Button
                                                     type="submit"
                                                     variant="primary"
-                                                    disabled={processing || missingRuntime}
+                                                    disabled={
+                                                        processing ||
+                                                        missingRuntime
+                                                    }
                                                 >
                                                     {processing
                                                         ? 'Creating…'
@@ -550,9 +697,14 @@ export default function SitesIndex({
                             <TableHead>
                                 <TableRow>
                                     <TableHeaderCell>Domain</TableHeaderCell>
+                                    <TableHeaderCell>
+                                        Repository
+                                    </TableHeaderCell>
                                     <TableHeaderCell>Type</TableHeaderCell>
                                     <TableHeaderCell>Status</TableHeaderCell>
-                                    <TableHeaderCell>Deployment</TableHeaderCell>
+                                    <TableHeaderCell>
+                                        Deployment
+                                    </TableHeaderCell>
                                     <TableHeaderCell>TLS</TableHeaderCell>
                                 </TableRow>
                             </TableHead>
@@ -565,12 +717,32 @@ export default function SitesIndex({
                                                 href={show(site.name)}
                                                 className="font-mono text-[14px] font-medium text-fg hover:text-fg-link"
                                             >
-                                                {site.primary_domain || site.name}
+                                                {site.primary_domain ||
+                                                    site.name}
                                             </Link>
                                         </TableCell>
                                         <TableCell>
+                                            {site.repository_connected ? (
+                                                <span className="inline-flex max-w-[220px] items-center gap-1.5 truncate font-mono text-[13px] text-fg-muted">
+                                                    <GitBranch
+                                                        aria-hidden="true"
+                                                        strokeWidth={1.5}
+                                                        className="size-3.5 shrink-0 text-fg-disabled"
+                                                    />
+                                                    <span className="truncate">
+                                                        {site.repository}
+                                                    </span>
+                                                </span>
+                                            ) : (
+                                                <span className="text-[13px] text-fg-subtle">
+                                                    Not connected
+                                                </span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell>
                                             <span className="text-overline font-mono text-fg-muted">
-                                                {TYPE_LABELS[site.type] ?? site.type}
+                                                {TYPE_LABELS[site.type] ??
+                                                    site.type}
                                             </span>
                                         </TableCell>
                                         <TableCell>
@@ -590,7 +762,9 @@ export default function SitesIndex({
                                                     status={toStatus(
                                                         site.deployment_status,
                                                     )}
-                                                    label={site.deployment_status}
+                                                    label={
+                                                        site.deployment_status
+                                                    }
                                                     size="sm"
                                                 />
                                             </span>
@@ -603,7 +777,9 @@ export default function SitesIndex({
                                                     className="size-3.5 text-fg-disabled"
                                                 />
                                                 <StatusPill
-                                                    status={toStatus(site.ssl_status)}
+                                                    status={toStatus(
+                                                        site.ssl_status,
+                                                    )}
                                                     label={site.ssl_status}
                                                     size="sm"
                                                 />

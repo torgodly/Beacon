@@ -27,13 +27,14 @@ class CreateSite
     ) {}
 
     /**
-     * @param  array{name: string, type: string, php_version?: string|null, node_version?: string|null, spa_fallback?: bool, web_directory?: string|null, package_manager?: string|null, client_max_body_size?: string|null}  $data
+     * @param  array{name: string, type: string, php_version?: string|null, node_version?: string|null, spa_fallback?: bool, web_directory?: string|null, package_manager?: string|null, client_max_body_size?: string|null, repository?: string|null, repository_branch?: string|null}  $data
      */
     public function handle(array $data): Site
     {
         $server = Server::current();
+        $repository = filled($data['repository'] ?? null) ? $data['repository'] : null;
 
-        return DB::transaction(function () use ($data, $server): Site {
+        return DB::transaction(function () use ($data, $server, $repository): Site {
             $site = Site::query()->create([
                 'server_id' => $server->id,
                 'name' => $data['name'],
@@ -46,6 +47,11 @@ class CreateSite
                 'proxy_port' => $this->needsProxyPort($data['type']) ? $this->ports->allocate() : null,
                 'spa_fallback' => $data['spa_fallback'] ?? ($data['type'] === 'static'),
                 'client_max_body_size' => $data['client_max_body_size'] ?? '100M',
+                'repository' => $repository,
+                'repository_branch' => $repository !== null
+                    ? ($data['repository_branch'] ?? 'main')
+                    : null,
+                'repository_provider' => $repository !== null ? 'custom' : null,
                 'deploy_script' => null,
                 'status' => 'provisioning',
             ]);
