@@ -67,7 +67,7 @@ type RuntimeOption = { value: string; label: string; is_default: boolean };
 /** Sensible document roots per type, offered as one-click presets. */
 const WEB_DIRECTORY_PRESETS: Record<string, string[]> = {
     laravel: ['/public'],
-    static: ['/dist', '/build', '/out', '/public', '/'],
+    static: ['/', '/dist', '/build', '/out', '/public'],
     nextjs: [],
     nuxt: [],
 };
@@ -408,7 +408,7 @@ export default function SitesIndex({
                                                     will point at{' '}
                                                     <code className="font-mono text-fg-code">
                                                         {selected?.web_directory ??
-                                                            '/dist'}
+                                                            '/'}
                                                     </code>{' '}
                                                     — no runtime required.
                                                 </p>

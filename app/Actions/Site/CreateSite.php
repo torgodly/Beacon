@@ -86,10 +86,9 @@ class CreateSite
     /**
      * The directory Nginx serves, relative to the site root.
      *
-     * Static sites resolve to /dist because that is what the default deploy
-     * script builds and what the create form tells the operator. Returning "/"
-     * here while the UI promised "/dist" meant the vhost pointed at the
-     * repository root and served nothing after a successful build.
+     * Static sites default to the repository root because many repos ship plain
+     * HTML (index.html at /). Vite/React builds that emit to dist/ set
+     * web_directory in advanced settings.
      *
      * SSR types are proxied to a local port and have no document root, so the
      * value is unused for them.
@@ -98,7 +97,7 @@ class CreateSite
     {
         return match ($type) {
             'laravel' => '/public',
-            'static' => '/dist',
+            'static' => '/',
             default => '/',
         };
     }

@@ -28,6 +28,7 @@ class DeploymentService
         private readonly ProcessRunner $runner,
         private readonly SiteFilesystem $filesystem,
         private readonly GitService $git,
+        private readonly DeployPreflight $preflight,
         private readonly DeploymentStatusReporter $github,
     ) {}
 
@@ -85,7 +86,10 @@ class DeploymentService
             $site->update(['deployment_status' => 'running']);
             $this->github->inProgress($deployment);
 
-            $this->step($stream, 'Fetching source', fn () => $this->git->syncWorkingTree($site, $stream));
+            $this->step($stream, 'Fetching source', function () use ($site, $stream): void {
+                $this->git->syncWorkingTree($site, $stream);
+                $this->preflight->prepare($site, $stream);
+            });
             $this->step($stream, 'Running deploy script', fn () => $this->runScript($site, $stream, $timeout));
             $this->step($stream, 'Normalising permissions', fn () => $this->fixPermissions($site, $stream));
             $this->step($stream, 'Restarting processes', fn () => $this->restartProcesses($site, $stream));

@@ -104,7 +104,7 @@ class SiteController extends Controller
                     'label' => 'Static',
                     'description' => 'React, Vue, Astro or plain HTML served straight from disk.',
                     'runtime' => 'none',
-                    'web_directory' => '/dist',
+                    'web_directory' => '/',
                 ],
             ],
             'phpVersions' => $installedPhp,

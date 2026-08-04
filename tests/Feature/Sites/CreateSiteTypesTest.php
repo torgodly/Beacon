@@ -45,17 +45,21 @@ class CreateSiteTypesTest extends TestCase
         ]);
     }
 
-    public function test_static_site_serves_dist_and_needs_no_runtime(): void
+    public function test_static_site_serves_from_repository_root_and_needs_no_runtime(): void
     {
         $site = $this->create(['name' => 'static.example.com', 'type' => 'static']);
 
-        $this->assertSame('/dist', $site->web_directory);
+        $this->assertSame('/', $site->web_directory);
         $this->assertNull($site->php_version);
         $this->assertNull($site->proxy_port);
         $this->assertSame('active', $site->status);
+        $this->assertStringContainsString(
+            'No package.json',
+            (string) $site->deploy_script,
+        );
 
-        // The document root must exist before nginx is reloaded.
-        $this->assertCommandRun(['/bin/mkdir', '-p', '/home/beacon/static.example.com/dist']);
+        // Site root only — plain HTML lives here; /dist is opt-in for Vite builds.
+        $this->assertCommandRun(['/bin/mkdir', '-p', '/home/beacon/static.example.com']);
 
         // No FPM pool for a site with no PHP.
         $this->assertNoCommandMatching('pool-write');
