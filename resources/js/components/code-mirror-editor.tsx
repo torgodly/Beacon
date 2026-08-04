@@ -94,20 +94,17 @@ export default function CodeMirrorEditor({
                         minHeight: '12rem',
                     },
                     '.cm-gutters': {
-                        backgroundColor:
-                            'color-mix(in oklab, var(--muted) 50%, transparent)',
-                        borderRight: '1px solid hsl(var(--border))',
-                        color: 'var(--muted-foreground)',
+                        backgroundColor: 'var(--bc-bg-surface-sunken)',
+                        borderRight: '1px solid var(--bc-border-default)',
+                        color: 'var(--bc-fg-subtle)',
                     },
                     '.cm-activeLineGutter': {
-                        backgroundColor:
-                            'color-mix(in oklab, var(--primary) 12%, transparent)',
+                        backgroundColor: 'color-mix(in oklab, var(--bc-cyan-500) 12%, transparent)',
                     },
                     '.cm-activeLine': {
-                        backgroundColor:
-                            'color-mix(in oklab, var(--primary) 8%, transparent)',
+                        backgroundColor: 'color-mix(in oklab, var(--bc-cyan-500) 8%, transparent)',
                         boxShadow:
-                            'inset 2px 0 0 color-mix(in oklab, var(--primary) 70%, transparent)',
+                            'inset 2px 0 0 color-mix(in oklab, var(--bc-cyan-500) 70%, transparent)',
                     },
                     '.cm-line': {
                         paddingLeft: '2px',
@@ -119,13 +116,13 @@ export default function CodeMirrorEditor({
                     '.cm-selectionBackground, &.cm-focused .cm-selectionBackground':
                         {
                             backgroundColor:
-                                'color-mix(in oklab, var(--primary) 20%, transparent) !important',
+                                'color-mix(in oklab, var(--bc-cyan-500) 20%, transparent) !important',
                         },
                     ...(errorLine
                         ? {
                               [`.cm-line:nth-child(${errorLine})`]: {
                                   backgroundColor:
-                                      'color-mix(in oklab, var(--destructive) 12%, transparent)',
+                                      'color-mix(in oklab, var(--bc-red-500) 12%, transparent)',
                               },
                           }
                         : {}),
@@ -167,7 +164,7 @@ export default function CodeMirrorEditor({
             ref={hostRef}
             data-language={language}
             className={cn(
-                'overflow-hidden rounded-lg border bg-muted/30 text-foreground',
+                'overflow-hidden rounded-xl border border-[#E8EEF3] bg-white text-[#1C2D3F] dark:border-[#263647] dark:bg-[#1C2D3F]/80',
                 readOnly && 'opacity-80',
                 className,
             )}

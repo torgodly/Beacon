@@ -1,12 +1,17 @@
 import { Head } from '@inertiajs/react';
 import { Activity } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { EmptyState, PageHeader } from '@/components/console/page-header';
-import { Panel } from '@/components/console/panel';
-import { StatusPill  } from '@/components/status-pill';
-import type {BeaconStatus} from '@/components/status-pill';
+import { EmptyState } from '@/components/console/page-header';
+import {
+    ForgeDividedCard,
+    ForgeListRow,
+} from '@/components/forge/forge-divided-card';
+import {
+    ForgeDetailRow,
+    ForgeDetailsSection,
+    ForgePageLayout,
+} from '@/components/forge/forge-details-sidebar';
 import { Input } from '@/components/ui/input';
-import { cn } from '@/lib/utils';
 import { index as activityIndex } from '@/routes/activity';
 
 type ActivityRow = {
@@ -22,28 +27,25 @@ type ActivityRow = {
     created_at: string | null;
 };
 
-function toneStatus(tone: string): BeaconStatus {
-    return (
-        {
-            success: 'live',
-            info: 'deploying',
-            warning: 'degraded',
-            failed: 'failed',
-        }[tone] ?? 'stopped'
-    ) as BeaconStatus;
-}
-
-function timestamp(iso: string | null): { time: string; date: string } {
-    if (iso === null) {
-        return { time: '--:--:--', date: '' };
+function timeAgo(iso: string | null): string {
+    if (!iso) {
+        return 'Unknown';
     }
 
-    const value = new Date(iso);
+    const diff = Date.now() - new Date(iso).getTime();
+    const hours = Math.floor(diff / 3_600_000);
 
-    return {
-        time: value.toLocaleTimeString(undefined, { hour12: false }),
-        date: value.toLocaleDateString(),
-    };
+    if (hours < 1) {
+        return 'Just now';
+    }
+
+    if (hours < 24) {
+        return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+    }
+
+    const days = Math.floor(hours / 24);
+
+    return `${days} day${days === 1 ? '' : 's'} ago`;
 }
 
 export default function ActivityIndex({ logs }: { logs: ActivityRow[] }) {
@@ -67,91 +69,70 @@ export default function ActivityIndex({ logs }: { logs: ActivityRow[] }) {
         <>
             <Head title="Activity" />
 
-            <div className="flex flex-col gap-8 px-6 py-6">
-                <PageHeader
-                    eyebrow="inspect // activity"
-                    title="Activity"
-                    description="Append-only audit trail of every panel action — deployments, configuration changes and provisioning."
-                    actions={
+            <ForgePageLayout
+                main={
+                    <>
                         <Input
                             value={query}
                             onChange={(event) => setQuery(event.target.value)}
                             placeholder="Filter events…"
                             aria-label="Filter activity"
-                            className="w-64"
+                            className="max-w-md"
                         />
-                    }
-                />
 
-                {filtered.length === 0 ? (
-                    <EmptyState
-                        icon={Activity}
-                        title={query ? 'No matching events' : 'No activity yet'}
-                        description={
-                            query
-                                ? 'Try a different search term.'
-                                : 'Actions taken in the panel will be recorded here.'
-                        }
-                    />
-                ) : (
-                    <Panel eyebrow="activity // stream" flush>
-                        <ol className="divide-y divide-[var(--bc-border-subtle)]">
-                            {filtered.map((log) => {
-                                const stamp = timestamp(log.created_at);
-
-                                return (
-                                    <li
+                        {filtered.length === 0 ? (
+                            <EmptyState
+                                icon={Activity}
+                                title={
+                                    query ? 'No matching events' : 'No activity yet'
+                                }
+                                description={
+                                    query
+                                        ? 'Try a different search term.'
+                                        : 'Actions taken in the panel will be recorded here.'
+                                }
+                            />
+                        ) : (
+                            <ForgeDividedCard title="Activity">
+                                {filtered.map((log) => (
+                                    <ForgeListRow
                                         key={log.id}
-                                        className={cn(
-                                            'flex flex-wrap items-start gap-x-4 gap-y-1.5 px-6 py-3.5',
-                                            'transition-colors duration-[--bc-duration-fast] hover:bg-[var(--bc-bg-hover)]',
-                                        )}
+                                        className="items-start"
                                     >
-                                        {/* Timestamps are mono and tabular so
-                                          * the column stays scannable. */}
-                                        <time
-                                            dateTime={log.created_at ?? undefined}
-                                            className="w-20 shrink-0 font-mono text-[13px] leading-5 tabular-nums text-fg-subtle"
-                                            title={stamp.date}
-                                        >
-                                            {stamp.time}
-                                        </time>
-
-                                        <StatusPill
-                                            status={toneStatus(log.tone)}
-                                            label={log.label}
-                                            size="sm"
-                                            className="shrink-0"
-                                        />
-
-                                        <span className="min-w-0 flex-1">
-                                            <span className="block text-[14px] leading-[22px] text-fg">
+                                        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#f1f5f9] dark:bg-[#2e3032]">
+                                            <Activity className="size-4 text-[#18B69B]" />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                                                {log.label}
+                                            </p>
+                                            <p className="text-sm text-[#64748b]">
                                                 {log.description ?? log.event}
-                                            </span>
-                                            <span className="text-caption font-mono text-fg-disabled">
-                                                {log.event}
-                                                {log.subject_type && (
-                                                    <>
-                                                        {' · '}
-                                                        {log.subject_type
-                                                            .split('\\')
-                                                            .pop()}
-                                                        #{log.subject_id}
-                                                    </>
-                                                )}
-                                            </span>
-                                        </span>
-
-                                        <span className="shrink-0 text-[13px] leading-5 text-fg-muted">
-                                            {log.user?.name ?? 'system'}
-                                        </span>
-                                    </li>
-                                );
-                            })}
-                        </ol>
-                    </Panel>
-                )}
-            </div>
+                                            </p>
+                                            <p className="mt-1 font-mono text-xs text-[#94a3b8]">
+                                                {timeAgo(log.created_at)} by{' '}
+                                                {log.user?.name ?? 'Beacon'}
+                                            </p>
+                                        </div>
+                                    </ForgeListRow>
+                                ))}
+                            </ForgeDividedCard>
+                        )}
+                    </>
+                }
+                sidebar={
+                    <ForgeDetailsSection title="Activity">
+                        <ForgeDetailRow
+                            label="Total events"
+                            value={String(logs.length)}
+                        />
+                        <ForgeDetailRow
+                            label="Showing"
+                            value={String(filtered.length)}
+                        />
+                    </ForgeDetailsSection>
+                }
+            />
         </>
     );
 }

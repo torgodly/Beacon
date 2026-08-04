@@ -3,9 +3,11 @@ import {
     Copy,
     Database,
     Globe,
+    Moon,
     Play,
     RefreshCw,
     Server,
+    Sun,
     Terminal,
     Trash2,
 } from 'lucide-react';
@@ -21,6 +23,7 @@ import {
     CommandSeparator,
     CommandShortcut,
 } from '@/components/ui/command';
+import { useAppearance } from '@/hooks/use-appearance';
 import { useClipboard } from '@/hooks/use-clipboard';
 import { dashboard } from '@/routes';
 import { index as databasesIndex } from '@/routes/databases';
@@ -42,6 +45,7 @@ export type CommandPalettePayload = {
 export function CommandPalette({ data }: { data: CommandPalettePayload }) {
     const [open, setOpen] = useState(false);
     const [, copy] = useClipboard();
+    const { resolvedAppearance, updateAppearance } = useAppearance();
 
     const run = useCallback((action: () => void) => {
         setOpen(false);
@@ -210,6 +214,25 @@ export function CommandPalette({ data }: { data: CommandPalettePayload }) {
                             </CommandItem>
                         </>
                     )}
+                </CommandGroup>
+
+                <CommandSeparator />
+                <CommandGroup heading="Appearance">
+                    <CommandItem
+                        value="toggle theme light dark"
+                        onSelect={() =>
+                            run(() =>
+                                updateAppearance(
+                                    resolvedAppearance === 'dark'
+                                        ? 'light'
+                                        : 'dark',
+                                ),
+                            )
+                        }
+                    >
+                        {resolvedAppearance === 'dark' ? <Sun /> : <Moon />}
+                        Switch to {resolvedAppearance === 'dark' ? 'light' : 'dark'} mode
+                    </CommandItem>
                 </CommandGroup>
 
                 <CommandSeparator />

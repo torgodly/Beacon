@@ -12,6 +12,20 @@ import { useEffect, useRef, useState } from 'react';
 import { CodeDiffViewer } from '@/components/code-diff-viewer';
 import { CodeEditor } from '@/components/code-editor';
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import {
+    ForgeDividedCard,
+    ForgeListRow,
+} from '@/components/forge/forge-divided-card';
+import {
+    ForgeDetailRow,
+    ForgeDetailsSection,
+    ForgePageLayout,
+} from '@/components/forge/forge-details-sidebar';
+import {
+    ForgeFrameworkBadge,
+    ForgeRuntimeBadge,
+    ForgeStatusBadge,
+} from '@/components/forge/forge-badge';
 import { Panel, SpecList, StatCluster } from '@/components/console/panel';
 import { DeployScriptEnvReference } from '@/components/deploy-script-env-reference';
 import InputError from '@/components/input-error';
@@ -143,6 +157,8 @@ type SiteDetail = SiteSummary &
         repository: string | null;
         repository_branch: string;
         repository_connected: boolean;
+        system_user?: string;
+        created_at?: string | null;
     };
 
 type ServingFields = {
@@ -283,208 +299,232 @@ function OverviewTab({
     site,
     activeDeployment,
     latestDeployment,
+    supervisorProcesses,
+    cronJobs,
 }: {
     site: SiteDetail;
     activeDeployment: DeploymentRow | null;
     latestDeployment: DeploymentRow | null;
+    supervisorProcesses: SupervisorProcessRow[];
+    cronJobs: CronJobRow[];
 }) {
+    const page = usePage<{ server?: { public_ip: string } }>();
+    const publicIp = page.props.server?.public_ip ?? '—';
+
+    const formatDate = (iso: string | null | undefined) =>
+        iso
+            ? new Date(iso).toLocaleDateString(undefined, {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+              })
+            : '—';
+
     return (
-        <div className="flex flex-col gap-6">
-            {activeDeployment && (
-                <DeploymentStream
-                    siteId={site.id}
-                    deployment={activeDeployment}
-                />
-            )}
-
-            <StatCluster
-                className="max-w-3xl rounded-lg border border-[var(--bc-border-default)] bg-surface px-2 py-4"
-                stats={[
-                    {
-                        label: 'Deploy',
-                        value: site.deployment_status,
-                        tone:
-                            site.deployment_status === 'success'
-                                ? 'success'
-                                : site.deployment_status === 'failed'
-                                  ? 'danger'
-                                  : 'default',
-                    },
-                    {
-                        label: 'TLS',
-                        value: site.ssl_status,
-                        tone:
-                            site.ssl_status === 'issued' ||
-                            site.ssl_status === 'active'
-                                ? 'brand'
-                                : 'default',
-                    },
-                    {
-                        label: 'Runtime',
-                        value:
-                            site.php_version ?? site.node_version ?? 'static',
-                    },
-                    {
-                        label: 'Repository',
-                        value: site.repository_connected ? 'connected' : 'none',
-                        tone: site.repository_connected ? 'success' : 'warning',
-                    },
-                ]}
-            />
-
-            <div className="grid gap-6 lg:grid-cols-2">
-                <Panel eyebrow="site // spec" title="Infrastructure">
-                    <SpecList
-                        columns={1}
-                        items={[
-                            {
-                                label: 'Status',
-                                value: site.status,
-                                mono: false,
-                            },
-                            { label: 'Type', value: site.type, mono: false },
-                            { label: 'Path', value: site.path },
-                            { label: 'Web root', value: site.web_directory },
-                            ...(site.php_version
-                                ? [{ label: 'PHP', value: site.php_version }]
-                                : []),
-                            ...(site.node_version
-                                ? [{ label: 'Node', value: site.node_version }]
-                                : []),
-                            ...(site.proxy_port
-                                ? [
-                                      {
-                                          label: 'Proxy port',
-                                          value: String(site.proxy_port),
-                                      },
-                                  ]
-                                : []),
-                        ]}
-                    />
-                </Panel>
-
-                <Panel
-                    eyebrow="deploy // source"
-                    title="Repository"
-                    description={
-                        site.repository_connected
-                            ? 'Git remote Beacon clones on each deploy.'
-                            : 'Connect a repository to enable deployments.'
-                    }
-                    actions={
-                        <DeployButton
+        <ForgePageLayout
+            main={
+                <>
+                    {activeDeployment && (
+                        <DeploymentStream
                             siteId={site.id}
-                            repository={site.repository}
-                            deploymentStatus={site.deployment_status}
-                            size="sm"
+                            deployment={activeDeployment}
                         />
-                    }
-                >
-                    {site.repository_connected ? (
-                        <SpecList
-                            columns={1}
-                            items={[
-                                {
-                                    label: 'Remote',
-                                    value: site.repository ?? '—',
-                                },
-                                {
-                                    label: 'Branch',
-                                    value: site.repository_branch,
-                                },
-                                {
-                                    label: 'Nginx',
-                                    value: site.nginx_customized
-                                        ? 'Custom config'
-                                        : 'Generated',
-                                    mono: false,
-                                },
-                            ]}
-                        />
-                    ) : (
-                        <div className="flex flex-col gap-3">
-                            <p className="text-[14px] leading-[22px] text-fg-muted">
-                                Add a Git URL in Settings, or paste one when
-                                creating the next site.
-                            </p>
-                            <Button
-                                variant="outline"
+                    )}
+
+                    <ForgeDividedCard
+                        title="Repository"
+                        action={
+                            <DeployButton
+                                siteId={site.id}
+                                repository={site.repository}
+                                deploymentStatus={site.deployment_status}
                                 size="sm"
-                                className="w-fit"
-                                asChild
-                            >
-                                <Link
-                                    href={show.url(site.id, {
-                                        query: { tab: 'settings' },
-                                    })}
-                                >
-                                    Connect repository
-                                </Link>
-                            </Button>
-                        </div>
-                    )}
-
-                    {latestDeployment && !activeDeployment && (
-                        <div className="mt-5 border-t border-[var(--bc-border-subtle)] pt-4">
-                            <p className="text-overline font-mono text-fg-subtle">
-                                Last deployment
-                            </p>
-                            <button
-                                type="button"
-                                className="mt-2 text-left text-[14px] font-medium text-fg-link hover:underline"
-                                onClick={() =>
-                                    router.get(
-                                        show.url(site.id, {
-                                            query: {
-                                                tab: 'deployments',
-                                                deployment:
-                                                    latestDeployment.uuid,
-                                            },
-                                        }),
-                                    )
+                            />
+                        }
+                    >
+                        <ForgeListRow>
+                            <div className="min-w-0 flex-1">
+                                <p className="font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                                    {site.repository_connected
+                                        ? 'Connected'
+                                        : 'Not connected'}
+                                </p>
+                                <p className="truncate font-mono text-xs text-[#64748b]">
+                                    {site.repository_connected
+                                        ? `${site.repository}:${site.repository_branch}`
+                                        : site.path}
+                                </p>
+                            </div>
+                            {site.php_version && (
+                                <ForgeRuntimeBadge
+                                    label={`PHP ${site.php_version}`}
+                                />
+                            )}
+                            <ForgeStatusBadge
+                                label={
+                                    site.repository_connected
+                                        ? 'Connected'
+                                        : 'Pending'
                                 }
-                            >
-                                {latestDeployment.status} ·{' '}
-                                {latestDeployment.created_at
-                                    ? new Date(
-                                          latestDeployment.created_at,
-                                      ).toLocaleString()
-                                    : 'Unknown time'}
-                            </button>
-                        </div>
-                    )}
-                </Panel>
-            </div>
+                            />
+                        </ForgeListRow>
+                        {latestDeployment && !activeDeployment && (
+                            <ForgeListRow>
+                                <div className="min-w-0 flex-1">
+                                    <button
+                                        type="button"
+                                        className="text-left text-sm font-medium text-[#0f172a] hover:text-[#18B69B] dark:text-[#f8fafc]"
+                                        onClick={() =>
+                                            router.get(
+                                                show.url(site.id, {
+                                                    query: {
+                                                        tab: 'deployments',
+                                                        deployment:
+                                                            latestDeployment.uuid,
+                                                    },
+                                                }),
+                                            )
+                                        }
+                                    >
+                                        Last deployment: {latestDeployment.status}
+                                    </button>
+                                    <p className="text-xs text-[#64748b]">
+                                        {latestDeployment.created_at
+                                            ? new Date(
+                                                  latestDeployment.created_at,
+                                              ).toLocaleString()
+                                            : 'Unknown time'}
+                                    </p>
+                                </div>
+                            </ForgeListRow>
+                        )}
+                    </ForgeDividedCard>
 
-            <Panel eyebrow="danger zone" title="Delete site">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                    <p className="max-w-prose text-[14px] leading-[22px] text-fg-muted">
-                        Permanently removes the Nginx vhost, SSL certificates,
-                        PHP pool, Supervisor workers, cron jobs, deploy keys,
-                        logs, site directory, and all database records. This
-                        cannot be undone.
-                    </p>
-                    <ConfirmDialog
-                        trigger={
-                            <Button variant="destructive" size="sm">
-                                <Trash2 className="size-3.5" />
-                                Delete site
-                            </Button>
-                        }
-                        title={`Delete ${site.name}?`}
-                        description="Permanently removes Nginx, SSL, runtime pools, Supervisor, cron, deploy keys, logs, the site directory, and every database record for this site."
-                        confirmLabel="Delete site"
-                        destructive
-                        confirmationValue={site.name}
-                        onConfirm={() =>
-                            router.delete(destroy.url(site.id), {
-                                data: { confirmation: site.name },
-                            })
-                        }
-                    />
-                </div>
-            </Panel>
-        </div>
+                    <ForgeDividedCard title="Background Processes">
+                        {supervisorProcesses.length === 0 ? (
+                            <ForgeListRow className="text-[#64748b]">
+                                No workers configured.
+                            </ForgeListRow>
+                        ) : (
+                            supervisorProcesses.map((process) => (
+                                <ForgeListRow key={process.id}>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                                            {process.name}
+                                        </p>
+                                        <p className="truncate font-mono text-xs text-[#64748b]">
+                                            {process.program_name}
+                                        </p>
+                                    </div>
+                                    <ForgeStatusBadge
+                                        label={
+                                            process.status === 'running'
+                                                ? 'Running'
+                                                : process.status
+                                        }
+                                        pulse={process.status === 'running'}
+                                    />
+                                </ForgeListRow>
+                            ))
+                        )}
+                    </ForgeDividedCard>
+
+                    <ForgeDividedCard title="Scheduled Jobs">
+                        {cronJobs.length === 0 ? (
+                            <ForgeListRow className="text-[#64748b]">
+                                No scheduled jobs.
+                            </ForgeListRow>
+                        ) : (
+                            cronJobs.map((job) => (
+                                <ForgeListRow key={job.id}>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                                            {job.name}
+                                        </p>
+                                        <p className="text-xs text-[#64748b]">
+                                            {job.frequency_preset ??
+                                                job.expression}
+                                        </p>
+                                    </div>
+                                    <ForgeStatusBadge
+                                        label={job.enabled ? 'Installed' : 'Disabled'}
+                                    />
+                                </ForgeListRow>
+                            ))
+                        )}
+                    </ForgeDividedCard>
+
+                    <ForgeDividedCard title="Danger zone">
+                        <ForgeListRow className="flex-col items-start gap-3 sm:flex-row sm:items-center">
+                            <p className="flex-1 text-sm text-[#64748b]">
+                                Permanently removes Nginx, SSL, runtime pools,
+                                workers, cron, deploy keys, logs, and the site
+                                directory.
+                            </p>
+                            <ConfirmDialog
+                                trigger={
+                                    <Button variant="destructive" size="sm">
+                                        <Trash2 className="size-3.5" />
+                                        Delete site
+                                    </Button>
+                                }
+                                title={`Delete ${site.name}?`}
+                                description="This cannot be undone."
+                                confirmLabel="Delete site"
+                                destructive
+                                confirmationValue={site.name}
+                                onConfirm={() =>
+                                    router.delete(destroy.url(site.id), {
+                                        data: { confirmation: site.name },
+                                    })
+                                }
+                            />
+                        </ForgeListRow>
+                    </ForgeDividedCard>
+                </>
+            }
+            sidebar={
+                <>
+                    <ForgeDetailsSection title="Details">
+                        <ForgeDetailRow label="Site" value={site.name} mono />
+                        <ForgeDetailRow
+                            label="Site user"
+                            value={site.system_user ?? 'beacon'}
+                            mono
+                        />
+                        <ForgeDetailRow
+                            label="Framework"
+                            value={<ForgeFrameworkBadge type={site.type} />}
+                        />
+                        {site.php_version && (
+                            <ForgeDetailRow
+                                label="PHP"
+                                value={`PHP ${site.php_version}`}
+                                mono
+                            />
+                        )}
+                        <ForgeDetailRow
+                            label="Web root"
+                            value={site.web_directory}
+                            mono
+                        />
+                        <ForgeDetailRow
+                            label="Created"
+                            value={formatDate(site.created_at)}
+                        />
+                    </ForgeDetailsSection>
+
+                    <ForgeDetailsSection title="Networking">
+                        <ForgeDetailRow
+                            label="Public IP"
+                            value={publicIp}
+                            mono
+                            copyable
+                        />
+                    </ForgeDetailsSection>
+                </>
+            }
+        />
     );
 }
 
@@ -2469,6 +2509,8 @@ export default function SiteShow({
                     site={site}
                     activeDeployment={activeDeployment}
                     latestDeployment={latestDeployment}
+                    supervisorProcesses={supervisorProcesses ?? []}
+                    cronJobs={cronJobs ?? []}
                 />
             </>
         );

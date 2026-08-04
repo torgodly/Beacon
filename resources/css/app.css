@@ -14,10 +14,12 @@
  * Tailwind theme — Beacon tokens exposed as utilities.
  * ==========================================================================*/
 @theme inline {
-    /* Inter for Latin UI, JetBrains Mono for anything that must line up. */
+    /* Inter — UI. JetBrains Mono — code & metrics. */
     --font-sans:
-        'Inter', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
-        'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+        'Inter', ui-sans-serif, system-ui, sans-serif,
+        'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-display:
+        'Inter', ui-sans-serif, system-ui, sans-serif;
     --font-mono:
         'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas,
         monospace;
@@ -102,8 +104,8 @@
     --color-border-focus: var(--bc-border-focus);
     --color-border-danger: var(--bc-border-danger);
 
-    /* Sidebar — the shell reads slightly recessed from the content surface. */
-    --color-sidebar: var(--bc-bg-canvas-alt);
+    /* Sidebar — white in light, slate-1000 in dark (see .dark below). */
+    --color-sidebar: var(--bc-slate-0);
     --color-sidebar-foreground: var(--bc-fg-default);
     --color-sidebar-primary: var(--bc-bg-brand);
     --color-sidebar-primary-foreground: var(--bc-fg-on-brand);
@@ -158,12 +160,33 @@
     body {
         background-color: var(--bc-bg-canvas);
         color: var(--bc-fg-default);
-        /* Comfortable density: body-lg 16/26 rather than body-md 14/22. */
-        font-size: 16px;
-        line-height: 26px;
+        font-family: var(--font-sans);
+        font-size: 15px;
+        line-height: 24px;
         font-weight: 400;
         -webkit-font-smoothing: antialiased;
         text-rendering: optimizeLegibility;
+    }
+
+    .font-display {
+        font-family: var(--font-display);
+        letter-spacing: -0.025em;
+    }
+
+    /* Mesh canvas behind all panel pages */
+    .beacon-canvas {
+        background-color: #f5f8fa;
+        background-image:
+            radial-gradient(ellipse 80% 50% at 0% -10%, rgba(6, 200, 224, 0.12), transparent),
+            radial-gradient(ellipse 60% 40% at 100% 0%, rgba(139, 92, 246, 0.06), transparent),
+            radial-gradient(ellipse 50% 30% at 50% 100%, rgba(6, 200, 224, 0.05), transparent);
+    }
+
+    .dark .beacon-canvas {
+        background-color: #05131e;
+        background-image:
+            radial-gradient(ellipse 80% 50% at 0% -10%, rgba(6, 200, 224, 0.08), transparent),
+            radial-gradient(ellipse 60% 40% at 100% 0%, rgba(139, 92, 246, 0.05), transparent);
     }
 
     /* cv11/ss01 give a single-storey a-adjacent clarity in dense tables. */
@@ -273,6 +296,18 @@
             infinite;
     }
 
+    /* Interactive cards/panels — cyan hover glow per brand spec. */
+    .bc-card-hover {
+        transition:
+            border-color var(--bc-duration-fast) var(--bc-ease-standard),
+            box-shadow var(--bc-duration-fast) var(--bc-ease-standard);
+    }
+
+    .bc-card-hover:hover {
+        border-color: rgba(6, 200, 224, 0.4);
+        box-shadow: 0 0 15px rgba(6, 200, 224, 0.1);
+    }
+
     @keyframes bc-pulse {
         0%,
         100% {
@@ -350,6 +385,11 @@
 }
 
 /* Reduced motion collapses every duration. Do not re-introduce motion in JS. */
+.dark {
+    --color-sidebar: var(--bc-slate-1000);
+    --color-sidebar-border: var(--bc-slate-950);
+}
+
 @media (prefers-reduced-motion: reduce) {
     :root {
         --bc-duration-fast: 1ms;

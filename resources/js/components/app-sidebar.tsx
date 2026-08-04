@@ -74,7 +74,11 @@ export function AppSidebar() {
     const currentPath = new URL(page.url, 'http://localhost').pathname;
 
     return (
-        <Sidebar collapsible="icon" variant="inset">
+        <Sidebar
+            collapsible="icon"
+            variant="inset"
+            className="border-r border-[#E8EEF3] bg-white dark:border-[#101F2E] dark:bg-[#05131E]"
+        >
             <SidebarHeader>
                 <SidebarMenu>
                     <SidebarMenuItem>
@@ -112,13 +116,11 @@ export function AppSidebar() {
                                             isActive={isActive}
                                             tooltip={{ children: item.title }}
                                             className={cn(
-                                                'relative',
-                                                // The active marker is a 2px
-                                                // cyan bar, not just a colour
-                                                // swap — colour alone is
-                                                // invisible to a low-vision user.
+                                                'relative rounded-md',
                                                 isActive &&
-                                                    'before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-[var(--bc-bg-brand)]',
+                                                    'bg-[#ECFDFF] font-medium text-[#04A3BC] dark:bg-[#063543]/40 dark:text-[#22D0E8]',
+                                                isActive &&
+                                                    'before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-[#06C8E0]',
                                             )}
                                         >
                                             <Link href={item.href} prefetch>
@@ -138,14 +140,14 @@ export function AppSidebar() {
 
             <SidebarFooter>
                 {health && (
-                    <div className="mb-1 flex items-center gap-2 rounded-md border border-[var(--bc-border-subtle)] bg-[var(--bc-bg-subtle)] px-2.5 py-2 group-data-[collapsible=icon]:hidden">
+                    <div className="mb-1 flex items-center gap-2 rounded-lg border border-[#E8EEF3] bg-[#F5F8FA] px-2.5 py-2 group-data-[collapsible=icon]:hidden dark:border-[#263647] dark:bg-[#1C2D3F]/60">
                         <span
                             aria-hidden="true"
                             className={cn(
-                                'size-1.5 shrink-0 rounded-full',
+                                'size-2 shrink-0 rounded-full',
                                 health.healthy
-                                    ? 'bg-[var(--bc-bg-success)]'
-                                    : 'bg-[var(--bc-bg-warning)]',
+                                    ? 'animate-pulse bg-[#21C55D]'
+                                    : 'bg-[#F59E0B]',
                             )}
                         />
                         <span className="text-caption truncate text-fg-muted">

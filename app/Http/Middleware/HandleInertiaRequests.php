@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Server;
 use App\Services\Server\HealthCheckService;
 use App\Support\CommandPaletteData;
 use Illuminate\Http\Request;
@@ -55,6 +56,19 @@ class HandleInertiaRequests extends Middleware
             'beacon' => [
                 'health' => $health,
             ],
+            'server' => fn () => $request->user()
+                ? (function (): array {
+                    $server = Server::current();
+
+                    return [
+                        'id' => $server->id,
+                        'hostname' => $server->hostname,
+                        'public_ip' => $server->public_ip,
+                        'site_user' => config('beacon.site_user'),
+                        'created_at' => $server->created_at?->toIso8601String(),
+                    ];
+                })()
+                : null,
             'commandPalette' => fn () => $request->user()
                 ? app(CommandPaletteData::class)->build()
                 : null,

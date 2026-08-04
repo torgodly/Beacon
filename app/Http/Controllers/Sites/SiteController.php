@@ -241,14 +241,14 @@ class SiteController extends Controller
             ];
         }
 
-        if ($tab === 'supervisor') {
+        if ($tab === 'supervisor' || $tab === 'overview') {
             $supervisorProcesses = $site->supervisorProcesses()
                 ->orderBy('name')
                 ->get()
                 ->map(fn (SupervisorProcess $process): array => SupervisorController::processPayload($process));
         }
 
-        if ($tab === 'cron') {
+        if ($tab === 'cron' || $tab === 'overview') {
             $cronJobs = $site->cronJobs()
                 ->orderBy('name')
                 ->get()
@@ -427,6 +427,8 @@ class SiteController extends Controller
                 'redirect_to' => $domain->redirect_to,
                 'redirect_status_code' => $domain->redirect_status_code,
             ])->values()->all(),
+            'system_user' => $site->system_user,
+            'created_at' => $site->created_at?->toIso8601String(),
             'ssl_status' => $site->ssl_status,
             'deployment_status' => $site->deployment_status,
             'repository' => $site->repository,

@@ -21,6 +21,7 @@ const buttonVariants = cva(
         'transition-[background-color,border-color,box-shadow,color]',
         'duration-[--bc-duration-fast] ease-[--bc-ease-standard]',
         'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#18B69B]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#151718]',
         '[&_svg]:pointer-events-none [&_svg]:shrink-0',
         "[&_svg:not([class*='size-'])]:size-4",
         'aria-invalid:border-danger',
@@ -28,12 +29,12 @@ const buttonVariants = cva(
     {
         variants: {
             variant: {
-                /** bg/brand + fg/on-brand. Hover adds the one permitted glow. */
+                /** Forge primary — solid dark / inverted in dark mode */
                 primary:
-                    'bg-brand text-on-brand hover:bg-brand-hover hover:shadow-[var(--bc-glow-brand)] active:bg-[var(--bc-bg-brand-active)]',
+                    'bg-zinc-900 text-white shadow-xs hover:bg-zinc-800 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-100 active:scale-[0.98]',
                 /** transparent + 1px border/strong + fg/default */
                 secondary:
-                    'border border-border-strong bg-transparent text-fg hover:border-border-hover hover:bg-[var(--bc-bg-hover)] active:bg-[var(--bc-bg-active)]',
+                    'border border-[#e2e8f0] bg-white text-sm font-medium text-[#0f172a] hover:bg-[#f8fafc] dark:border-[#2e3032] dark:bg-[#1f2021] dark:text-[#f8fafc] dark:hover:bg-[#151718]',
                 /** transparent + fg/muted */
                 ghost: 'bg-transparent text-fg-muted hover:bg-[var(--bc-bg-hover)] hover:text-fg active:bg-[var(--bc-bg-active)]',
                 /** bg/danger + fg/on-danger */
@@ -48,9 +49,9 @@ const buttonVariants = cva(
                  * redesigned, which is also when "one primary per view" gets
                  * enforced. Do not use these in new code. */
                 default:
-                    'bg-brand text-on-brand hover:bg-brand-hover hover:shadow-[var(--bc-glow-brand)] active:bg-[var(--bc-bg-brand-active)]',
+                    'bg-zinc-900 text-white shadow-xs hover:bg-zinc-800 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-100 active:scale-[0.98]',
                 outline:
-                    'border border-border-strong bg-transparent text-fg hover:border-border-hover hover:bg-[var(--bc-bg-hover)] active:bg-[var(--bc-bg-active)]',
+                    'border border-[#e2e8f0] bg-white text-sm font-medium text-[#0f172a] hover:bg-[#f8fafc] dark:border-[#2e3032] dark:bg-[#1f2021] dark:text-[#f8fafc] dark:hover:bg-[#151718]',
                 destructive:
                     'bg-danger text-[var(--bc-fg-on-danger)] hover:bg-[var(--bc-bg-danger-hover)] active:bg-[var(--bc-red-700)]',
             },

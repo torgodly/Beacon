@@ -1,7 +1,7 @@
 import { Form, Head } from '@inertiajs/react';
 import { useRef } from 'react';
 import SecurityController from '@/actions/App/Http/Controllers/Settings/SecurityController';
-import Heading from '@/components/heading';
+import { ForgeFormCard } from '@/components/forge/forge-form-card';
 import InputError from '@/components/input-error';
 import type { Props as ManagePasskeysProps } from '@/components/manage-passkeys';
 import ManagePasskeys from '@/components/manage-passkeys';
@@ -27,14 +27,12 @@ export default function Security(props: Props) {
 
             <h1 className="sr-only">Security settings</h1>
 
-            <div className="space-y-6">
-                <Heading
-                    variant="small"
+            <div className="flex flex-col gap-6">
+                <ForgeFormCard
                     title="Update password"
                     description="Ensure your account is using a long, random password to stay secure"
-                />
-
-                <Form
+                >
+                    <Form
                     {...SecurityController.update.form()}
                     options={{
                         preserveScroll: true,
@@ -112,6 +110,7 @@ export default function Security(props: Props) {
 
                             <div className="flex items-center gap-4">
                                 <Button
+                                    variant="primary"
                                     disabled={processing}
                                     data-test="update-password-button"
                                 >
@@ -121,18 +120,23 @@ export default function Security(props: Props) {
                         </>
                     )}
                 </Form>
+                </ForgeFormCard>
+
+                <ForgeFormCard title="Two-factor authentication">
+                    <ManageTwoFactor
+                        canManageTwoFactor={props.canManageTwoFactor}
+                        requiresConfirmation={props.requiresConfirmation}
+                        twoFactorEnabled={props.twoFactorEnabled}
+                    />
+                </ForgeFormCard>
+
+                <ForgeFormCard title="Passkeys">
+                    <ManagePasskeys
+                        canManagePasskeys={props.canManagePasskeys}
+                        passkeys={props.passkeys}
+                    />
+                </ForgeFormCard>
             </div>
-
-            <ManageTwoFactor
-                canManageTwoFactor={props.canManageTwoFactor}
-                requiresConfirmation={props.requiresConfirmation}
-                twoFactorEnabled={props.twoFactorEnabled}
-            />
-
-            <ManagePasskeys
-                canManagePasskeys={props.canManagePasskeys}
-                passkeys={props.passkeys}
-            />
         </>
     );
 }

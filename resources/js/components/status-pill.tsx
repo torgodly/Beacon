@@ -1,7 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
 import {
-    CircleDot,
-    CircleX,
     Clock,
     Hammer,
     Moon,
@@ -10,6 +8,10 @@ import {
     TriangleAlert,
     UploadCloud,
 } from 'lucide-react';
+import {
+    StatusIndicator,
+    type StatusIndicatorTone,
+} from '@/components/status-indicator';
 import { cn } from '@/lib/utils';
 
 /**
@@ -17,10 +19,6 @@ import { cn } from '@/lib/utils';
  *
  * The nine states of the deployment lifecycle. Never remapped per-screen —
  * status colours are learned muscle memory.
- *
- * Colour is the THIRD signal. Every pill renders icon + label + colour, in
- * that order of reliability, so the whole system survives a greyscale
- * screenshot and colour-blind vision. That is the practical test.
  */
 export type BeaconStatus =
     | 'queued'
@@ -36,11 +34,8 @@ export type BeaconStatus =
 type StatusSpec = {
     label: string;
     icon: LucideIcon;
-    /** Foreground + subtle background, both from the semantic layer. */
     className: string;
-    /** Slow breathing opacity — only the live indicator gets this. */
-    pulse?: boolean;
-    /** Continuous rotation for genuinely in-flight work. */
+    indicator: StatusIndicatorTone | null;
     spin?: boolean;
 };
 
@@ -49,68 +44,68 @@ const STATUS: Record<BeaconStatus, StatusSpec> = {
         label: 'Queued',
         icon: Clock,
         className:
-            'text-fg-muted bg-[var(--bc-bg-neutral-subtle)] border-[var(--bc-border-default)]',
+            'border-[#DDD6FE] bg-[#F5F3FF] text-[#6D28D9] dark:border-[#5B21B6] dark:bg-[#2E1065]/50 dark:text-[#A78BFA]',
+        indicator: 'progress',
     },
     building: {
         label: 'Building',
         icon: Hammer,
         className:
-            'text-fg-progress bg-progress-subtle border-[var(--bc-bg-progress)]/30',
+            'border-[#DDD6FE] bg-[#F5F3FF] text-[#6D28D9] dark:border-[#5B21B6] dark:bg-[#2E1065]/50 dark:text-[#A78BFA]',
+        indicator: 'progress',
+        spin: true,
     },
     deploying: {
         label: 'Deploying',
         icon: UploadCloud,
         className:
-            'text-fg-brand bg-brand-subtle border-[var(--bc-border-brand)]/30',
-        spin: false,
+            'border-[#A5F2FB] bg-[#ECFDFF] text-[#0A788F] dark:border-[#106175] dark:bg-[#063543]/50 dark:text-[#22D0E8]',
+        indicator: null,
     },
     live: {
         label: 'Live',
-        icon: CircleDot,
+        icon: Square,
         className:
-            'text-fg-success bg-success-subtle border-[var(--bc-border-success)]/30',
-        pulse: true,
+            'border-[#A6F4C5] bg-[#ECFDF3] text-[#15803D] dark:border-[#166534] dark:bg-[#052E16]/50 dark:text-[#4ADE80]',
+        indicator: 'healthy',
     },
     degraded: {
         label: 'Degraded',
         icon: TriangleAlert,
         className:
-            'text-fg-warning bg-warning-subtle border-[var(--bc-border-warning)]/30',
+            'border-[#FDE68A] bg-[#FFFBEB] text-[#B45309] dark:border-[#92400E] dark:bg-[#451A03]/50 dark:text-[#FBBF24]',
+        indicator: 'warning',
     },
     failed: {
         label: 'Failed',
-        icon: CircleX,
+        icon: Square,
         className:
-            'text-fg-danger bg-danger-subtle border-[var(--bc-border-danger)]/30',
+            'border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C] dark:border-[#991B1B] dark:bg-[#450A0A]/50 dark:text-[#F87171]',
+        indicator: 'failed',
     },
     stopped: {
         label: 'Stopped',
         icon: Square,
         className:
-            'text-fg-subtle bg-[var(--bc-bg-neutral-subtle)] border-[var(--bc-border-default)]',
+            'border-[var(--bc-border-default)] bg-[var(--bc-bg-neutral-subtle)] text-fg-muted',
+        indicator: 'neutral',
     },
     sleeping: {
         label: 'Sleeping',
         icon: Moon,
         className:
-            'text-fg-subtle bg-[var(--bc-bg-neutral-subtle)] border-[var(--bc-border-default)]',
+            'border-[var(--bc-border-default)] bg-[var(--bc-bg-neutral-subtle)] text-fg-muted',
+        indicator: 'neutral',
     },
     canceled: {
         label: 'Canceled',
         icon: Slash,
         className:
-            'text-fg-subtle bg-[var(--bc-bg-neutral-subtle)] border-[var(--bc-border-default)]',
+            'border-[var(--bc-border-default)] bg-[var(--bc-bg-neutral-subtle)] text-fg-muted',
+        indicator: 'neutral',
     },
 };
 
-/**
- * Maps Beacon's many domain vocabularies onto the nine canonical states.
- *
- * Deployments, Supervisor programs, systemd units, SSL certificates and PHP
- * installs all report differently worded statuses; without one funnel every
- * screen invents its own colour mapping, which is exactly the decay the
- * design system exists to prevent.
- */
 export function toStatus(raw: string | null | undefined): BeaconStatus {
     switch ((raw ?? '').toLowerCase()) {
         case 'queued':
@@ -121,7 +116,7 @@ export function toStatus(raw: string | null | undefined): BeaconStatus {
             return 'queued';
 
         case 'building':
-        case 'running': // a running *deployment* is work in progress
+        case 'running':
             return 'building';
 
         case 'deploying':
@@ -175,7 +170,6 @@ export function StatusPill({
     className,
 }: {
     status: BeaconStatus;
-    /** Overrides the canonical label. The colour never changes. */
     label?: string;
     size?: 'sm' | 'md';
     className?: string;
@@ -196,17 +190,18 @@ export function StatusPill({
                 className,
             )}
         >
-            <Icon
-                aria-hidden="true"
-                strokeWidth={1.5}
-                className={cn(
-                    'size-3.5 shrink-0',
-                    spec.pulse && 'bc-live-dot',
-                    spec.spin && 'animate-spin',
-                )}
-            />
-            {/* Real text in the DOM — never a ::before or a background image,
-             * so screen readers and greyscale screenshots both work. */}
+            {spec.indicator ? (
+                <StatusIndicator tone={spec.indicator} size="sm" />
+            ) : (
+                <Icon
+                    aria-hidden="true"
+                    strokeWidth={1.5}
+                    className={cn(
+                        'size-3.5 shrink-0',
+                        spec.spin && 'animate-spin',
+                    )}
+                />
+            )}
             <span>{label ?? spec.label}</span>
         </span>
     );

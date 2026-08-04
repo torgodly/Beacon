@@ -215,9 +215,9 @@
 :root {
     color-scheme: light;
 
-    --bc-bg-canvas: var(--bc-slate-25);
-    --bc-bg-canvas-alt: var(--bc-slate-50);
-    --bc-bg-surface: var(--bc-slate-0);
+    --bc-bg-canvas: #f8fafc;
+    --bc-bg-canvas-alt: #ffffff;
+    --bc-bg-surface: #ffffff;
     /* Identical to surface by design: light-theme level 2 is carried by
      * shadow-md + border/strong, per the elevation recipe. */
     --bc-bg-surface-raised: var(--bc-slate-0);
@@ -247,7 +247,7 @@
 
     --bc-fg-default: var(--bc-slate-900);
     --bc-fg-strong: var(--bc-slate-1000);
-    --bc-fg-muted: var(--bc-slate-600);
+    --bc-fg-muted: var(--bc-slate-500);
     --bc-fg-subtle: var(--bc-slate-500);
     --bc-fg-disabled: var(--bc-slate-400);
     --bc-fg-on-brand: var(--bc-slate-1000); /* 9.25:1 — required pairing */
@@ -263,7 +263,7 @@
     --bc-fg-code: var(--bc-cyan-900);
 
     --bc-border-subtle: var(--bc-slate-100);
-    --bc-border-default: var(--bc-slate-200);
+    --bc-border-default: #e2e8f0;
     --bc-border-strong: var(--bc-slate-300);
     --bc-border-hover: var(--bc-slate-400);
     --bc-border-brand: var(--bc-cyan-500);
@@ -303,9 +303,9 @@
 .dark {
     color-scheme: dark;
 
-    --bc-bg-canvas: var(--bc-slate-1000);
-    --bc-bg-canvas-alt: var(--bc-slate-950);
-    --bc-bg-surface: var(--bc-slate-900);
+    --bc-bg-canvas: #151718;
+    --bc-bg-canvas-alt: #1f2021;
+    --bc-bg-surface: #1f2021;
     --bc-bg-surface-raised: var(--bc-slate-800);
     --bc-bg-surface-sunken: var(--bc-slate-950);
     --bc-bg-subtle: rgba(255, 255, 255, 0.04);
@@ -349,7 +349,7 @@
     --bc-fg-code: var(--bc-cyan-200);
 
     --bc-border-subtle: rgba(255, 255, 255, 0.08);
-    --bc-border-default: var(--bc-slate-800);
+    --bc-border-default: #2e3032;
     --bc-border-strong: var(--bc-slate-700);
     --bc-border-hover: var(--bc-slate-600);
     --bc-border-brand: var(--bc-cyan-500);

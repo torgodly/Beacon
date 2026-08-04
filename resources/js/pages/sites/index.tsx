@@ -3,24 +3,29 @@ import {
     ChevronRight,
     GitBranch,
     Globe,
+    MoreHorizontal,
     Plus,
-    ShieldCheck,
-    Zap,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { EmptyState, PageHeader } from '@/components/console/page-header';
-import { Panel, StatCluster } from '@/components/console/panel';
-import InputError from '@/components/input-error';
-import { StatusPill, toStatus } from '@/components/status-pill';
-import { Button } from '@/components/ui/button';
 import {
-    DataTable,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeaderCell,
-    TableRow,
-} from '@/components/ui/data-table';
+    ForgeDividedCard,
+    ForgeListRow,
+} from '@/components/forge/forge-divided-card';
+import {
+    ForgeDetailRow,
+    ForgeDetailsSection,
+    ForgePageLayout,
+} from '@/components/forge/forge-details-sidebar';
+import {
+    ForgeFrameworkBadge,
+    ForgeStatusBadge,
+} from '@/components/forge/forge-badge';
+import {
+    ForgeActionsPanel,
+    ForgeEmptyState,
+} from '@/components/forge/forge-empty-state';
+import InputError from '@/components/input-error';
+import { Button } from '@/components/ui/button';
 import {
     Dialog,
     DialogContent,
@@ -37,6 +42,12 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { index as sitesIndex, show, store } from '@/routes/sites';
 
@@ -70,13 +81,6 @@ const WEB_DIRECTORY_PRESETS: Record<string, string[]> = {
     static: ['/', '/dist', '/build', '/out', '/public'],
     nextjs: [],
     nuxt: [],
-};
-
-const TYPE_LABELS: Record<string, string> = {
-    laravel: 'Laravel',
-    nextjs: 'Next.js',
-    nuxt: 'Nuxt',
-    static: 'Static',
 };
 
 export default function SitesIndex({
@@ -126,45 +130,16 @@ export default function SitesIndex({
         (runtime === 'php' && phpVersions.length === 0) ||
         (runtime === 'node' && nodeVersions.length === 0);
 
-    const stats = useMemo(() => {
-        const live = sites.filter((site) => site.status === 'active').length;
-        const secured = sites.filter(
-            (site) =>
-                site.ssl_status === 'active' || site.ssl_status === 'issued',
-        ).length;
-        const failed = sites.filter(
-            (site) => site.deployment_status === 'failed',
-        ).length;
+    const stats = useMemo(() => sites.length, [sites]);
 
-        return [
-            { label: 'Total', value: sites.length },
-            { label: 'Active', value: live, tone: 'success' as const },
-            { label: 'TLS', value: secured, tone: 'brand' as const },
-            {
-                label: 'Failed deploys',
-                value: failed,
-                tone: failed > 0 ? ('danger' as const) : ('default' as const),
-            },
-        ];
-    }, [sites]);
-
-    return (
-        <>
-            <Head title="Sites" />
-
-            <div className="flex flex-col gap-8 px-6 py-6">
-                <PageHeader
-                    eyebrow="sites"
-                    title="Sites"
-                    description="Every application this server serves, with its runtime, TLS and last deployment."
-                    actions={
-                        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-                            <DialogTrigger asChild>
-                                <Button variant="primary">
-                                    <Plus />
-                                    New site
-                                </Button>
-                            </DialogTrigger>
+    const createSiteDialog = (
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+            <DialogTrigger asChild>
+                <Button variant="primary" size="sm">
+                    <Plus />
+                    New site
+                </Button>
+            </DialogTrigger>
 
                             <DialogContent className="sm:max-w-2xl">
                                 <DialogHeader>
@@ -668,130 +643,128 @@ export default function SitesIndex({
                                     )}
                                 </Form>
                             </DialogContent>
-                        </Dialog>
+        </Dialog>
+    );
+
+    return (
+        <>
+            <Head title="Sites" />
+
+            {sites.length === 0 ? (
+                <ForgePageLayout
+                    main={
+                        <ForgeEmptyState
+                            icon={Globe}
+                            title="No sites yet"
+                            description="Create your first site and Beacon will provision the directory, the Nginx vhost and the runtime for you."
+                        />
+                    }
+                    sidebar={
+                        <>
+                            <ForgeDetailsSection title="Sites">
+                                <ForgeDetailRow label="Total" value="0" />
+                                <ForgeDetailRow label="Active" value="0" />
+                                <ForgeDetailRow label="With TLS" value="0" />
+                            </ForgeDetailsSection>
+                            <ForgeActionsPanel>
+                                {createSiteDialog}
+                            </ForgeActionsPanel>
+                        </>
                     }
                 />
-
-                {sites.length > 0 && (
-                    <StatCluster stats={stats} className="max-w-2xl" />
-                )}
-
-                {sites.length === 0 ? (
-                    <EmptyState
-                        icon={Globe}
-                        title="No sites yet"
-                        description="Create your first site and Beacon will provision the directory, the Nginx vhost and the runtime for you."
-                        action={
-                            <Button
-                                variant="primary"
-                                onClick={() => setCreateOpen(true)}
+            ) : (
+                <ForgePageLayout
+                    main={
+                        <ForgeDividedCard
+                            title={`Sites (${stats})`}
+                            action={createSiteDialog}
+                        >
+                            {sites.map((site) => (
+                        <ForgeListRow key={site.id}>
+                            <Link
+                                href={show(site.name)}
+                                className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#f1f5f9] font-mono text-xs font-semibold text-[#475569] dark:bg-[#2e3032] dark:text-[#cbd5e1]"
                             >
-                                <Plus />
-                                New site
-                            </Button>
-                        }
-                    />
-                ) : (
-                    <Panel eyebrow="sites // inventory" flush>
-                        <DataTable>
-                            <TableHead>
-                                <TableRow>
-                                    <TableHeaderCell>Domain</TableHeaderCell>
-                                    <TableHeaderCell>
-                                        Repository
-                                    </TableHeaderCell>
-                                    <TableHeaderCell>Type</TableHeaderCell>
-                                    <TableHeaderCell>Status</TableHeaderCell>
-                                    <TableHeaderCell>
-                                        Deployment
-                                    </TableHeaderCell>
-                                    <TableHeaderCell>TLS</TableHeaderCell>
-                                </TableRow>
-                            </TableHead>
-                            <TableBody>
-                                {sites.map((site) => (
-                                    <TableRow key={site.id} interactive>
-                                        <TableCell>
-                                            {/* First column is the link target. */}
-                                            <Link
-                                                href={show(site.name)}
-                                                className="font-mono text-[14px] font-medium text-fg hover:text-fg-link"
-                                            >
-                                                {site.primary_domain ||
-                                                    site.name}
-                                            </Link>
-                                        </TableCell>
-                                        <TableCell>
-                                            {site.repository_connected ? (
-                                                <span className="inline-flex max-w-[220px] items-center gap-1.5 truncate font-mono text-[13px] text-fg-muted">
-                                                    <GitBranch
-                                                        aria-hidden="true"
-                                                        strokeWidth={1.5}
-                                                        className="size-3.5 shrink-0 text-fg-disabled"
-                                                    />
-                                                    <span className="truncate">
-                                                        {site.repository}
-                                                    </span>
-                                                </span>
-                                            ) : (
-                                                <span className="text-[13px] text-fg-subtle">
-                                                    Not connected
-                                                </span>
-                                            )}
-                                        </TableCell>
-                                        <TableCell>
-                                            <span className="text-overline font-mono text-fg-muted">
-                                                {TYPE_LABELS[site.type] ??
-                                                    site.type}
-                                            </span>
-                                        </TableCell>
-                                        <TableCell>
-                                            <StatusPill
-                                                status={toStatus(site.status)}
-                                                size="sm"
-                                            />
-                                        </TableCell>
-                                        <TableCell>
-                                            <span className="inline-flex items-center gap-1.5">
-                                                <Zap
-                                                    aria-hidden="true"
-                                                    strokeWidth={1.5}
-                                                    className="size-3.5 text-fg-disabled"
-                                                />
-                                                <StatusPill
-                                                    status={toStatus(
-                                                        site.deployment_status,
-                                                    )}
-                                                    label={
-                                                        site.deployment_status
-                                                    }
-                                                    size="sm"
-                                                />
-                                            </span>
-                                        </TableCell>
-                                        <TableCell>
-                                            <span className="inline-flex items-center gap-1.5">
-                                                <ShieldCheck
-                                                    aria-hidden="true"
-                                                    strokeWidth={1.5}
-                                                    className="size-3.5 text-fg-disabled"
-                                                />
-                                                <StatusPill
-                                                    status={toStatus(
-                                                        site.ssl_status,
-                                                    )}
-                                                    label={site.ssl_status}
-                                                    size="sm"
-                                                />
-                                            </span>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </DataTable>
-                    </Panel>
-                )}
-            </div>
+                                {(site.primary_domain || site.name)
+                                    .slice(0, 2)
+                                    .toUpperCase()}
+                            </Link>
+                            <Link
+                                href={show(site.name)}
+                                className="min-w-0 flex-1"
+                            >
+                                <p className="truncate font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                                    {site.primary_domain || site.name}
+                                </p>
+                                {site.repository_connected && site.repository ? (
+                                    <p className="mt-0.5 flex items-center gap-1 truncate font-mono text-xs text-[#64748b]">
+                                        <GitBranch className="size-3 shrink-0" />
+                                        {site.repository}:{site.repository_branch}
+                                    </p>
+                                ) : (
+                                    <p className="mt-0.5 text-xs text-[#64748b]">
+                                        No repository connected
+                                    </p>
+                                )}
+                            </Link>
+                            <ForgeFrameworkBadge type={site.type} />
+                            <ForgeStatusBadge
+                                label={
+                                    site.deployment_status === 'success'
+                                        ? 'Deployed'
+                                        : site.deployment_status
+                                }
+                                pulse={site.deployment_status === 'deploying'}
+                            />
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <button
+                                        type="button"
+                                        className="rounded-md p-1.5 text-[#94a3b8] hover:bg-[#f1f5f9] hover:text-[#475569] dark:hover:bg-[#2e3032]"
+                                        aria-label="Site actions"
+                                    >
+                                        <MoreHorizontal className="size-4" />
+                                    </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    <DropdownMenuItem asChild>
+                                        <Link href={show(site.name)}>
+                                            Manage
+                                        </Link>
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </ForgeListRow>
+                            ))}
+                        </ForgeDividedCard>
+                    }
+                    sidebar={
+                        <ForgeDetailsSection title="Sites">
+                            <ForgeDetailRow
+                                label="Total"
+                                value={String(sites.length)}
+                            />
+                            <ForgeDetailRow
+                                label="Active"
+                                value={String(
+                                    sites.filter((s) => s.status === 'active')
+                                        .length,
+                                )}
+                            />
+                            <ForgeDetailRow
+                                label="With TLS"
+                                value={String(
+                                    sites.filter(
+                                        (s) =>
+                                            s.ssl_status === 'active' ||
+                                            s.ssl_status === 'issued',
+                                    ).length,
+                                )}
+                            />
+                        </ForgeDetailsSection>
+                    }
+                />
+            )}
         </>
     );
 }

@@ -1,6 +1,7 @@
 import { Link, router } from '@inertiajs/react';
 import { Play, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import {
     Tooltip,
     TooltipContent,
@@ -71,7 +72,11 @@ export function DeployButton({
                 )
             }
         >
-            <Play />
+            {isDeploying ? (
+                <Spinner tone="progress" className="size-4" />
+            ) : (
+                <Play />
+            )}
             {isDeploying ? 'Deploying…' : 'Deploy'}
         </Button>
     );

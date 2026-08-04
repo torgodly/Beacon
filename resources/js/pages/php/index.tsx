@@ -11,10 +11,17 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { ConfirmDialog } from '@/components/confirm-dialog';
-import { PageHeader } from '@/components/console/page-header';
-import { Panel, StatCluster } from '@/components/console/panel';
+import {
+    ForgeDividedCard,
+    ForgeListRow,
+} from '@/components/forge/forge-divided-card';
+import {
+    ForgeDetailRow,
+    ForgeDetailsSection,
+    ForgePageLayout,
+} from '@/components/forge/forge-details-sidebar';
+import { ForgeStatusBadge } from '@/components/forge/forge-badge';
 import { HealthBanner } from '@/components/health-banner';
-import { StatusPill, toStatus } from '@/components/status-pill';
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -162,37 +169,13 @@ export default function PhpIndex({
         <>
             <Head title="PHP" />
 
-            <div className="flex flex-col gap-8 px-6 py-6">
-                <PageHeader
-                    eyebrow="server // php"
-                    title="PHP"
-                    description="Install runtimes, toggle extensions and tune php.ini. Installs stream their apt output to the operations dock."
-                />
-
+            <div className="mb-6">
                 <HealthBanner />
+            </div>
 
-                <StatCluster
-                    className="max-w-xl"
-                    stats={[
-                        { label: 'Installed', value: installed.length },
-                        {
-                            label: 'Default',
-                            value: defaultPhpVersion || '—',
-                            tone: 'brand',
-                        },
-                        { label: 'Extensions on', value: enabledCount },
-                    ]}
-                />
-
-                {/* Supported-but-absent versions get an explicit install row
-                 * rather than being mixed in with what is actually present. */}
-                <Panel
-                    eyebrow="php // runtimes"
-                    title="Runtimes"
-                    description="Only installed versions can be assigned to a site."
-                    flush
-                >
-                    <ul className="divide-y divide-[var(--bc-border-subtle)]">
+            <ForgePageLayout
+                main={
+                    <ForgeDividedCard title="PHP Versions">
                         {supported.map((version) => {
                             const record = versionMap.get(version);
                             const isInstalled = record?.status === 'installed';
@@ -202,8 +185,8 @@ export default function PhpIndex({
                             const isOpen = expanded === version;
 
                             return (
-                                <li key={version}>
-                                    <div className="flex flex-wrap items-center gap-3 px-6 py-4">
+                                <div key={version}>
+                                    <ForgeListRow>
                                         <button
                                             type="button"
                                             onClick={() =>
@@ -222,11 +205,11 @@ export default function PhpIndex({
                                                 )}
                                             />
 
-                                            <span className="min-w-0">
-                                                <span className="block font-mono text-[16px] leading-6 font-semibold text-fg-strong">
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block font-mono text-sm font-semibold text-[#0f172a] dark:text-[#f8fafc]">
                                                     PHP {version}
                                                 </span>
-                                                <span className="text-caption block text-fg-subtle">
+                                                <span className="block text-xs text-[#64748b]">
                                                     {record?.installed_at
                                                         ? `installed ${new Date(record.installed_at).toLocaleDateString()}`
                                                         : isInstalled
@@ -237,7 +220,7 @@ export default function PhpIndex({
                                         </button>
 
                                         {record?.is_default && (
-                                            <span className="text-overline inline-flex items-center gap-1 font-mono text-fg-brand">
+                                            <span className="inline-flex items-center gap-1 text-xs font-medium text-[#18B69B]">
                                                 <Star
                                                     aria-hidden="true"
                                                     className="size-3"
@@ -246,12 +229,8 @@ export default function PhpIndex({
                                             </span>
                                         )}
 
-                                        <StatusPill
-                                            status={toStatus(
-                                                record?.status ?? 'stopped',
-                                            )}
+                                        <ForgeStatusBadge
                                             label={record?.status ?? 'not installed'}
-                                            size="sm"
                                         />
 
                                         <div className="flex items-center gap-2">
@@ -315,27 +294,29 @@ export default function PhpIndex({
                                                 </>
                                             )}
                                         </div>
-                                    </div>
+                                    </ForgeListRow>
 
                                     {record?.last_error && (
-                                        <p
-                                            role="alert"
-                                            className="mx-6 mb-4 rounded-md border border-[var(--bc-border-danger)] bg-danger-subtle px-3 py-2 font-mono text-[12px] leading-[18px] text-fg-danger"
-                                        >
-                                            {record.last_error}
-                                        </p>
+                                        <ForgeListRow>
+                                            <p
+                                                role="alert"
+                                                className="w-full rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 font-mono text-xs text-red-600 dark:text-red-400"
+                                            >
+                                                {record.last_error}
+                                            </p>
+                                        </ForgeListRow>
                                     )}
 
                                     {isBusy && (
-                                        <p className="mx-6 mb-4 text-[13px] leading-5 text-fg-muted">
+                                        <ForgeListRow className="text-sm text-[#64748b]">
                                             Running — open the operations dock
                                             (bottom right) to watch the apt output
                                             live.
-                                        </p>
+                                        </ForgeListRow>
                                     )}
 
                                     {isOpen && record && isInstalled && (
-                                        <div className="space-y-6 border-t border-[var(--bc-border-subtle)] bg-[var(--bc-bg-surface-sunken)] px-6 py-5">
+                                        <ForgeListRow className="flex-col items-stretch gap-6 bg-[#f8fafc] dark:bg-[#151718]/60">
                                             <section className="space-y-3">
                                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                                     <h3 className="text-overline inline-flex items-center gap-2 font-mono text-fg-subtle">
@@ -456,14 +437,31 @@ export default function PhpIndex({
                                                     )}
                                                 </Form>
                                             </section>
-                                        </div>
+                                        </ForgeListRow>
                                     )}
-                                </li>
+                                </div>
                             );
                         })}
-                    </ul>
-                </Panel>
-            </div>
+                    </ForgeDividedCard>
+                }
+                sidebar={
+                    <ForgeDetailsSection title="Runtime">
+                        <ForgeDetailRow
+                            label="Installed"
+                            value={String(installed.length)}
+                        />
+                        <ForgeDetailRow
+                            label="Default"
+                            value={defaultPhpVersion || '—'}
+                            mono
+                        />
+                        <ForgeDetailRow
+                            label="Extensions on"
+                            value={String(enabledCount)}
+                        />
+                    </ForgeDetailsSection>
+                }
+            />
         </>
     );
 }

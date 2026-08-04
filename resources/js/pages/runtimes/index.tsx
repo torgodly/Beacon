@@ -1,19 +1,19 @@
 import { Form, Head, router } from '@inertiajs/react';
 import { Boxes, MemoryStick, Star } from 'lucide-react';
 import { useState } from 'react';
-import { EmptyState, PageHeader } from '@/components/console/page-header';
-import { Panel, SpecList, StatCluster } from '@/components/console/panel';
-import { HealthBanner } from '@/components/health-banner';
-import { StatusPill, toStatus } from '@/components/status-pill';
-import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/console/page-header';
 import {
-    DataTable,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeaderCell,
-    TableRow,
-} from '@/components/ui/data-table';
+    ForgeDividedCard,
+    ForgeListRow,
+} from '@/components/forge/forge-divided-card';
+import {
+    ForgeDetailRow,
+    ForgeDetailsSection,
+    ForgePageLayout,
+} from '@/components/forge/forge-details-sidebar';
+import { ForgeStatusBadge } from '@/components/forge/forge-badge';
+import { HealthBanner } from '@/components/health-banner';
+import { Button } from '@/components/ui/button';
 import {
     Select,
     SelectContent,
@@ -36,69 +36,51 @@ type RuntimeRow = {
     is_default: boolean;
 };
 
-function RuntimeTable({
+function RuntimeRows({
     rows,
     canSetDefault,
 }: {
     rows: RuntimeRow[];
     canSetDefault: boolean;
 }) {
-    return (
-        <DataTable>
-            <TableHead>
-                <TableRow>
-                    <TableHeaderCell>Version</TableHeaderCell>
-                    <TableHeaderCell>Path</TableHeaderCell>
-                    <TableHeaderCell>Status</TableHeaderCell>
-                    <TableHeaderCell />
-                </TableRow>
-            </TableHead>
-            <TableBody>
-                {rows.map((runtime) => (
-                    <TableRow key={runtime.id} interactive>
-                        <TableCell>
-                            <span className="font-mono text-[14px] font-medium text-fg">
-                                {runtime.version}
-                            </span>
-                            {runtime.is_default && (
-                                <span className="text-overline ms-2 inline-flex items-center gap-1 font-mono text-fg-brand">
-                                    <Star aria-hidden="true" className="size-3" />
-                                    default
-                                </span>
-                            )}
-                        </TableCell>
-                        <TableCell>
-                            <span className="font-mono text-[13px] text-fg-muted">
-                                {runtime.path}
-                            </span>
-                        </TableCell>
-                        <TableCell>
-                            <StatusPill
-                                status={toStatus(runtime.status)}
-                                label={runtime.status}
-                                size="sm"
-                            />
-                        </TableCell>
-                        <TableCell className="text-right">
-                            {canSetDefault && !runtime.is_default && (
-                                <Button
-                                    size="sm"
-                                    variant="secondary"
-                                    onClick={() =>
-                                        router.patch(
-                                            setDefaultRuntime.url(runtime.id),
-                                        )
-                                    }
-                                >
-                                    Make default
-                                </Button>
-                            )}
-                        </TableCell>
-                    </TableRow>
-                ))}
-            </TableBody>
-        </DataTable>
-    );
+    if (rows.length === 0) {
+        return (
+            <ForgeListRow className="text-[#64748b]">
+                No runtimes detected on this server.
+            </ForgeListRow>
+        );
+    }
+
+    return rows.map((runtime) => (
+        <ForgeListRow key={runtime.id}>
+            <div className="min-w-0 flex-1">
+                <p className="font-mono text-sm font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                    {runtime.version}
+                    {runtime.is_default && (
+                        <span className="ms-2 inline-flex items-center gap-1 text-xs font-medium text-[#18B69B]">
+                            <Star className="size-3" />
+                            default
+                        </span>
+                    )}
+                </p>
+                <p className="truncate font-mono text-xs text-[#64748b]">
+                    {runtime.path}
+                </p>
+            </div>
+            <ForgeStatusBadge label={runtime.status} />
+            {canSetDefault && !runtime.is_default && (
+                <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() =>
+                        router.patch(setDefaultRuntime.url(runtime.id))
+                    }
+                >
+                    Make default
+                </Button>
+            )}
+        </ForgeListRow>
+    ));
 }
 
 export default function RuntimesIndex({
@@ -130,155 +112,135 @@ export default function RuntimesIndex({
         <>
             <Head title="Runtimes" />
 
-            <div className="flex flex-col gap-8 px-6 py-6">
-                <PageHeader
-                    eyebrow="server // runtimes"
-                    title="Runtimes"
-                    description="Node.js and Bun installations discovered on this server, and the defaults new sites inherit."
-                />
-
+            <div className="mb-6">
                 <HealthBanner />
-
-                <StatCluster
-                    className="max-w-2xl"
-                    stats={[
-                        { label: 'Node', value: nodeRuntimes.length },
-                        { label: 'Bun', value: bunRuntimes.length },
-                        {
-                            label: 'Default node',
-                            value: defaultNodeVersion || '—',
-                            tone: 'brand',
-                        },
-                        {
-                            label: 'Build heap',
-                            value: `${nodeHeapMb}`,
-                            hint: 'MB max-old-space',
-                        },
-                    ]}
-                />
-
-                <Panel
-                    eyebrow="runtimes // node"
-                    title="Node.js"
-                    icon={Boxes}
-                    description="Runs SSR servers and every JavaScript build step."
-                    flush={nodeRuntimes.length > 0}
-                >
-                    {nodeRuntimes.length === 0 ? (
-                        <EmptyState
-                            icon={Boxes}
-                            title="No Node runtime detected"
-                            description="Beacon discovers runtimes under /usr/local/node. Install one on the host and it will appear here."
-                            className="border-0"
-                        />
-                    ) : (
-                        <RuntimeTable rows={nodeRuntimes} canSetDefault />
-                    )}
-                </Panel>
-
-                {missing.length > 0 && (
-                    <Panel
-                        eyebrow="runtimes // not installed"
-                        title="Supported but absent"
-                        description="These versions are supported by Beacon but are not present on this host yet."
-                    >
-                        <div className="flex flex-wrap gap-1.5">
-                            {missing.map((version) => (
-                                <span
-                                    key={version}
-                                    className="inline-flex items-center rounded-sm border border-dashed border-[var(--bc-border-default)] px-2 py-1 font-mono text-[12px] leading-[18px] text-fg-disabled"
-                                >
-                                    node {version}
-                                </span>
-                            ))}
-                        </div>
-                    </Panel>
-                )}
-
-                <Panel
-                    eyebrow="runtimes // bun"
-                    title="Bun"
-                    icon={Boxes}
-                    description="An alternative package manager and build runtime."
-                    flush={bunRuntimes.length > 0}
-                >
-                    {bunRuntimes.length === 0 ? (
-                        <EmptyState
-                            icon={Boxes}
-                            title="Bun is not installed"
-                            description="Beacon looks for Bun at /usr/local/bun/default/bin/bun."
-                            className="border-0"
-                        />
-                    ) : (
-                        <RuntimeTable rows={bunRuntimes} canSetDefault={false} />
-                    )}
-                </Panel>
-
-                <div className="grid gap-4 lg:grid-cols-2">
-                    <Panel
-                        eyebrow="runtimes // defaults"
-                        title="Default package manager"
-                        description="Applied to newly created sites. Existing sites keep their own setting."
-                    >
-                        <Form
-                            action={updatePackageManager()}
-                            options={{ preserveScroll: true }}
-                        >
-                            {({ processing }) => (
-                                <div className="flex flex-wrap items-end gap-3">
-                                    <Select
-                                        value={packageManager}
-                                        onValueChange={setPackageManager}
-                                        name="package_manager"
-                                    >
-                                        <SelectTrigger
-                                            id="package_manager"
-                                            className="w-48"
-                                            aria-label="Default package manager"
-                                        >
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="npm">npm</SelectItem>
-                                            <SelectItem value="bun">bun</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-
-                                    <Button
-                                        type="submit"
-                                        variant="primary"
-                                        disabled={processing}
-                                    >
-                                        {processing ? 'Saving…' : 'Save'}
-                                    </Button>
-                                </div>
-                            )}
-                        </Form>
-                    </Panel>
-
-                    <Panel
-                        eyebrow="runtimes // memory"
-                        title="Build memory budget"
-                        icon={MemoryStick}
-                        description="Caps V8's heap so a Next.js build cannot take the database down with it."
-                    >
-                        <SpecList
-                            columns={2}
-                            items={[
-                                {
-                                    label: 'NODE_OPTIONS',
-                                    value: `--max-old-space-size=${nodeHeapMb}`,
-                                },
-                                {
-                                    label: 'Applied to',
-                                    value: 'every deploy',
-                                    mono: false,
-                                },
-                            ]}
-                        />
-                    </Panel>
-                </div>
             </div>
+
+            <ForgePageLayout
+                main={
+                    <>
+                        <ForgeDividedCard title="Node.js">
+                            {nodeRuntimes.length === 0 ? (
+                                <EmptyState
+                                    icon={Boxes}
+                                    title="No Node runtime detected"
+                                    description="Beacon discovers runtimes under /usr/local/node."
+                                    className="border-0 bg-transparent py-8"
+                                />
+                            ) : (
+                                <RuntimeRows rows={nodeRuntimes} canSetDefault />
+                            )}
+                        </ForgeDividedCard>
+
+                        {missing.length > 0 && (
+                            <ForgeDividedCard title="Supported but absent">
+                                {missing.map((version) => (
+                                    <ForgeListRow key={version}>
+                                        <span className="font-mono text-sm text-[#64748b]">
+                                            node {version}
+                                        </span>
+                                    </ForgeListRow>
+                                ))}
+                            </ForgeDividedCard>
+                        )}
+
+                        <ForgeDividedCard title="Bun">
+                            {bunRuntimes.length === 0 ? (
+                                <EmptyState
+                                    icon={Boxes}
+                                    title="Bun is not installed"
+                                    description="Beacon looks for Bun at /usr/local/bun/default/bin/bun."
+                                    className="border-0 bg-transparent py-8"
+                                />
+                            ) : (
+                                <RuntimeRows
+                                    rows={bunRuntimes}
+                                    canSetDefault={false}
+                                />
+                            )}
+                        </ForgeDividedCard>
+
+                        <ForgeDividedCard title="Default package manager">
+                            <ForgeListRow className="flex-col items-stretch gap-4 sm:flex-row sm:items-center">
+                                <p className="flex-1 text-sm text-[#64748b]">
+                                    Applied to newly created sites. Existing sites
+                                    keep their own setting.
+                                </p>
+                                <Form
+                                    action={updatePackageManager()}
+                                    options={{ preserveScroll: true }}
+                                    className="flex flex-wrap items-end gap-3"
+                                >
+                                    {({ processing }) => (
+                                        <>
+                                            <Select
+                                                value={packageManager}
+                                                onValueChange={setPackageManager}
+                                                name="package_manager"
+                                            >
+                                                <SelectTrigger
+                                                    id="package_manager"
+                                                    className="w-48"
+                                                    aria-label="Default package manager"
+                                                >
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="npm">
+                                                        npm
+                                                    </SelectItem>
+                                                    <SelectItem value="bun">
+                                                        bun
+                                                    </SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            <Button
+                                                type="submit"
+                                                variant="primary"
+                                                size="sm"
+                                                disabled={processing}
+                                            >
+                                                {processing ? 'Saving…' : 'Save'}
+                                            </Button>
+                                        </>
+                                    )}
+                                </Form>
+                            </ForgeListRow>
+                        </ForgeDividedCard>
+                    </>
+                }
+                sidebar={
+                    <>
+                        <ForgeDetailsSection title="Runtime">
+                            <ForgeDetailRow
+                                label="Node"
+                                value={String(nodeRuntimes.length)}
+                            />
+                            <ForgeDetailRow
+                                label="Bun"
+                                value={String(bunRuntimes.length)}
+                            />
+                            <ForgeDetailRow
+                                label="Default node"
+                                value={defaultNodeVersion || '—'}
+                                mono
+                            />
+                        </ForgeDetailsSection>
+
+                        <ForgeDetailsSection title="Build memory">
+                            <ForgeDetailRow
+                                label="NODE_OPTIONS"
+                                value={`--max-old-space-size=${nodeHeapMb}`}
+                                mono
+                            />
+                            <ForgeDetailRow
+                                label="Applied to"
+                                value="Every deploy"
+                            />
+                        </ForgeDetailsSection>
+                    </>
+                }
+            />
         </>
     );
 }

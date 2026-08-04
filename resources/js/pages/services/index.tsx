@@ -1,19 +1,18 @@
 import { Head, router } from '@inertiajs/react';
 import { RefreshCw } from 'lucide-react';
 import { ConfirmDialog } from '@/components/confirm-dialog';
-import { PageHeader } from '@/components/console/page-header';
-import { Panel, StatCluster } from '@/components/console/panel';
 import { HealthBanner } from '@/components/health-banner';
-import { StatusPill, toStatus } from '@/components/status-pill';
-import { Button } from '@/components/ui/button';
 import {
-    DataTable,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeaderCell,
-    TableRow,
-} from '@/components/ui/data-table';
+    ForgeDividedCard,
+    ForgeListRow,
+} from '@/components/forge/forge-divided-card';
+import {
+    ForgeDetailRow,
+    ForgeDetailsSection,
+    ForgePageLayout,
+} from '@/components/forge/forge-details-sidebar';
+import { ForgeStatusBadge } from '@/components/forge/forge-badge';
+import { Button } from '@/components/ui/button';
 import {
     index as servicesIndex,
     restart as restartService,
@@ -35,105 +34,79 @@ export default function ServicesIndex({
 }) {
     const running = services.filter((service) => service.status === 'running')
         .length;
-    const stopped = services.length - running;
 
     return (
         <>
             <Head title="Services" />
 
-            <div className="flex flex-col gap-8 px-6 py-6">
-                <PageHeader
-                    eyebrow="server // services"
-                    title="Services"
-                    description="The systemd units Beacon is allowed to control. Reading status needs no privileges; restarting goes through a restricted sudo wrapper."
-                />
-
+            <div className="mb-6">
                 <HealthBanner />
-
-                <StatCluster
-                    className="max-w-lg"
-                    stats={[
-                        { label: 'Units', value: services.length },
-                        { label: 'Running', value: running, tone: 'success' },
-                        {
-                            label: 'Stopped',
-                            value: stopped,
-                            tone: stopped > 0 ? 'warning' : 'default',
-                        },
-                    ]}
-                />
-
-                <Panel eyebrow="systemd // units" flush>
-                    <DataTable>
-                        <TableHead>
-                            <TableRow>
-                                <TableHeaderCell>Service</TableHeaderCell>
-                                <TableHeaderCell>Unit</TableHeaderCell>
-                                <TableHeaderCell>State</TableHeaderCell>
-                                <TableHeaderCell numeric>PID</TableHeaderCell>
-                                <TableHeaderCell>Status</TableHeaderCell>
-                                <TableHeaderCell />
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {services.map((service) => (
-                                <TableRow key={service.unit} interactive>
-                                    <TableCell>
-                                        <span className="font-medium text-fg">
-                                            {service.label}
-                                        </span>
-                                    </TableCell>
-                                    <TableCell>
-                                        <span className="font-mono text-[13px] text-fg-muted">
-                                            {service.unit}
-                                        </span>
-                                    </TableCell>
-                                    <TableCell>
-                                        <span className="font-mono text-[13px] text-fg-muted">
-                                            {service.active_state}/
-                                            {service.sub_state}
-                                        </span>
-                                    </TableCell>
-                                    <TableCell numeric>
-                                        {service.main_pid ?? '—'}
-                                    </TableCell>
-                                    <TableCell>
-                                        <StatusPill
-                                            status={toStatus(service.status)}
-                                            label={service.status}
-                                            size="sm"
-                                        />
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <ConfirmDialog
-                                            trigger={
-                                                <Button
-                                                    size="sm"
-                                                    variant="secondary"
-                                                    aria-label={`Restart ${service.label}`}
-                                                >
-                                                    <RefreshCw className="size-3.5" />
-                                                    Restart
-                                                </Button>
-                                            }
-                                            title={`Restart ${service.label}?`}
-                                            description="This briefly interrupts every connection the service is handling."
-                                            confirmLabel="Restart"
-                                            onConfirm={() =>
-                                                router.post(
-                                                    restartService.url(
-                                                        service.unit,
-                                                    ),
-                                                )
-                                            }
-                                        />
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </DataTable>
-                </Panel>
             </div>
+
+            <ForgePageLayout
+                main={
+                    <ForgeDividedCard title="System services">
+                        {services.map((service) => (
+                            <ForgeListRow key={service.unit}>
+                                <div className="min-w-0 flex-1">
+                                    <p className="font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                                        {service.label}
+                                    </p>
+                                    <p className="truncate font-mono text-xs text-[#64748b]">
+                                        {service.unit}
+                                    </p>
+                                </div>
+                                <span className="hidden font-mono text-xs text-[#64748b] sm:inline">
+                                    {service.active_state}/{service.sub_state}
+                                    {service.main_pid
+                                        ? ` · pid ${service.main_pid}`
+                                        : ''}
+                                </span>
+                                <ForgeStatusBadge
+                                    label={service.status}
+                                    pulse={service.status === 'running'}
+                                />
+                                <ConfirmDialog
+                                    trigger={
+                                        <Button
+                                            size="sm"
+                                            variant="secondary"
+                                            aria-label={`Restart ${service.label}`}
+                                        >
+                                            <RefreshCw className="size-3.5" />
+                                            Restart
+                                        </Button>
+                                    }
+                                    title={`Restart ${service.label}?`}
+                                    description="This briefly interrupts every connection the service is handling."
+                                    confirmLabel="Restart"
+                                    onConfirm={() =>
+                                        router.post(
+                                            restartService.url(service.unit),
+                                        )
+                                    }
+                                />
+                            </ForgeListRow>
+                        ))}
+                    </ForgeDividedCard>
+                }
+                sidebar={
+                    <ForgeDetailsSection title="Processes">
+                        <ForgeDetailRow
+                            label="Units"
+                            value={String(services.length)}
+                        />
+                        <ForgeDetailRow
+                            label="Running"
+                            value={String(running)}
+                        />
+                        <ForgeDetailRow
+                            label="Stopped"
+                            value={String(services.length - running)}
+                        />
+                    </ForgeDetailsSection>
+                }
+            />
         </>
     );
 }

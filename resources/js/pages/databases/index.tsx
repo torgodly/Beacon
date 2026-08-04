@@ -11,10 +11,23 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { ConfirmDialog } from '@/components/confirm-dialog';
-import { EmptyState, PageHeader } from '@/components/console/page-header';
-import { Panel, StatCluster } from '@/components/console/panel';
+import { EmptyState } from '@/components/console/page-header';
+import {
+    ForgeDividedCard,
+    ForgeListRow,
+} from '@/components/forge/forge-divided-card';
+import {
+    ForgeDetailRow,
+    ForgeDetailsSection,
+    ForgePageLayout,
+} from '@/components/forge/forge-details-sidebar';
+import { ForgeStatusBadge } from '@/components/forge/forge-badge';
+import {
+    ForgeActionsPanel,
+    ForgeActionGroup,
+    ForgeEmptyState,
+} from '@/components/forge/forge-empty-state';
 import InputError from '@/components/input-error';
-import { StatusPill, toStatus } from '@/components/status-pill';
 import { Button } from '@/components/ui/button';
 import {
     DataTable,
@@ -144,27 +157,19 @@ export default function DatabasesIndex({
         0,
     );
 
-    return (
-        <>
-            <Head title="Databases" />
-
-            <div className="flex flex-col gap-8 px-6 py-6">
-                <PageHeader
-                    eyebrow="databases"
-                    title="Databases"
-                    description="MySQL databases, users and manual backups. Beacon connects over the unix socket with a least-privilege admin account."
-                    actions={
-                        <div className="flex items-center gap-3">
-                            <Dialog open={userOpen} onOpenChange={setUserOpen}>
-                                <DialogTrigger asChild>
-                                    <Button
-                                        variant="secondary"
-                                        disabled={databases.length === 0}
-                                    >
-                                        <Users />
-                                        New user
-                                    </Button>
-                                </DialogTrigger>
+    const headerActions = (
+        <ForgeActionGroup layout="vertical">
+            <Dialog open={userOpen} onOpenChange={setUserOpen}>
+                <DialogTrigger asChild>
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={databases.length === 0}
+                    >
+                        <Users />
+                        New user
+                    </Button>
+                </DialogTrigger>
                                 <DialogContent>
                                     <DialogHeader>
                                         <DialogTitle>
@@ -264,7 +269,7 @@ export default function DatabasesIndex({
 
                             <Dialog open={createOpen} onOpenChange={setCreateOpen}>
                                 <DialogTrigger asChild>
-                                    <Button variant="primary">
+                                    <Button variant="primary" size="sm">
                                         <Plus />
                                         New database
                                     </Button>
@@ -327,73 +332,73 @@ export default function DatabasesIndex({
                                     </Form>
                                 </DialogContent>
                             </Dialog>
-                        </div>
+        </ForgeActionGroup>
+    );
+
+    return (
+        <>
+            <Head title="Databases" />
+
+            {revealedPassword && (
+                <div
+                    role="alert"
+                    className="mb-6 rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-3"
+                >
+                    <p className="text-xs font-semibold tracking-wide text-amber-700 uppercase dark:text-amber-400">
+                        Shown once
+                    </p>
+                    <p className="mt-1 text-sm text-[#334155] dark:text-[#e2e8f0]">
+                        Copy this password now — Beacon stores it encrypted and
+                        will not display it again.
+                    </p>
+                    <code className="mt-2 block rounded-md bg-white px-2 py-1.5 font-mono text-xs text-[#0f172a] dark:bg-[#151718] dark:text-[#f8fafc]">
+                        {revealedPassword}
+                    </code>
+                </div>
+            )}
+
+            {databases.length === 0 ? (
+                <ForgePageLayout
+                    main={
+                        <ForgeEmptyState
+                            icon={Database}
+                            title="No databases yet"
+                            description="Create a MySQL database and Beacon will hand you a ready-to-paste connection string."
+                        />
+                    }
+                    sidebar={
+                        <>
+                            <ForgeDetailsSection title="Storage">
+                                <ForgeDetailRow label="Databases" value="0" />
+                                <ForgeDetailRow label="Users" value="0" />
+                            </ForgeDetailsSection>
+                            <ForgeActionsPanel>
+                                {headerActions}
+                            </ForgeActionsPanel>
+                        </>
                     }
                 />
-
-                {revealedPassword && (
-                    <div
-                        role="alert"
-                        className="rounded-lg border border-[var(--bc-border-warning)] bg-warning-subtle px-4 py-3"
-                    >
-                        <p className="text-overline font-mono text-fg-warning">
-                            shown once
-                        </p>
-                        <p className="mt-1 text-[14px] leading-[22px] text-fg">
-                            Copy this password now — Beacon stores it encrypted
-                            and will not display it again.
-                        </p>
-                        <code className="mt-2 block rounded-sm bg-[var(--bc-bg-surface)] px-2 py-1.5 font-mono text-[13px] text-fg-code">
-                            {revealedPassword}
-                        </code>
-                    </div>
-                )}
-
-                {databases.length === 0 ? (
-                    <EmptyState
-                        icon={Database}
-                        title="No databases yet"
-                        description="Create a MySQL database and Beacon will hand you a ready-to-paste connection string."
-                        action={
-                            <Button
-                                variant="primary"
-                                onClick={() => setCreateOpen(true)}
-                            >
-                                <Plus />
-                                New database
-                            </Button>
-                        }
-                    />
-                ) : (
-                    <>
-                        <StatCluster
-                            className="max-w-lg"
-                            stats={[
-                                { label: 'Databases', value: databases.length },
-                                { label: 'Users', value: totalUsers },
-                            ]}
-                        />
-
-                        <div className="flex flex-col gap-4">
+            ) : (
+                <ForgePageLayout
+                    main={
+                        <>
                             {databases.map((database) => (
-                                <Panel
+                                <ForgeDividedCard
                                     key={database.id}
-                                    eyebrow="mysql // database"
                                     title={database.name}
-                                    icon={Database}
-                                    actions={
-                                        <>
-                                            <StatusPill
-                                                status={toStatus(database.status)}
+                                    action={
+                                        <div className="flex items-center gap-2">
+                                            <ForgeStatusBadge
                                                 label={database.status}
-                                                size="sm"
                                             />
                                             <Button
                                                 size="sm"
                                                 variant="secondary"
                                                 onClick={() =>
                                                     router.post(
-                                                        storeBackup.url(database.id),
+                                                        storeBackup.url(
+                                                            database.id,
+                                                        ),
                                                     )
                                                 }
                                             >
@@ -423,17 +428,16 @@ export default function DatabasesIndex({
                                                     )
                                                 }
                                             />
-                                        </>
+                                        </div>
                                     }
                                 >
-                                    <div className="grid gap-6 lg:grid-cols-2">
-                                        <section className="space-y-3">
-                                            <h3 className="text-overline font-mono text-fg-subtle">
-                                                connection strings
+                                    <ForgeListRow className="flex-col items-stretch gap-4">
+                                        <div className="w-full space-y-3">
+                                            <h3 className="text-xs font-semibold tracking-wide text-[#64748b] uppercase">
+                                                Connection strings
                                             </h3>
-
                                             {database.connections.length === 0 ? (
-                                                <p className="text-[13px] leading-5 text-fg-muted">
+                                                <p className="text-sm text-[#64748b]">
                                                     Create a user to get a
                                                     connection string.
                                                 </p>
@@ -442,41 +446,52 @@ export default function DatabasesIndex({
                                                     {database.connections.map(
                                                         (connection) => (
                                                             <div
-                                                                key={connection.user_id}
-                                                                className="space-y-1.5 rounded-md border border-[var(--bc-border-subtle)] p-3"
+                                                                key={
+                                                                    connection.user_id
+                                                                }
+                                                                className="space-y-2 rounded-md border border-[#e2e8f0] p-3 dark:border-[#2e3032]"
                                                             >
-                                                                <p className="font-mono text-[13px] font-medium text-fg">
-                                                                    {connection.username}
-                                                                    <span className="text-fg-disabled">
+                                                                <p className="font-mono text-sm font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                                                                    {
+                                                                        connection.username
+                                                                    }
+                                                                    <span className="text-[#94a3b8]">
                                                                         @
-                                                                        {connection.host}
+                                                                        {
+                                                                            connection.host
+                                                                        }
                                                                     </span>
                                                                 </p>
                                                                 <CopyRow
                                                                     label="laravel"
-                                                                    value={connection.laravel}
+                                                                    value={
+                                                                        connection.laravel
+                                                                    }
                                                                 />
                                                                 <CopyRow
                                                                     label="url"
-                                                                    value={connection.url}
+                                                                    value={
+                                                                        connection.url
+                                                                    }
                                                                 />
                                                             </div>
                                                         ),
                                                     )}
                                                 </div>
                                             )}
-                                        </section>
+                                        </div>
+                                    </ForgeListRow>
 
-                                        <section className="space-y-3">
-                                            <h3 className="text-overline font-mono text-fg-subtle">
-                                                recent backups
-                                            </h3>
-
-                                            {database.backups.length === 0 ? (
-                                                <p className="text-[13px] leading-5 text-fg-muted">
-                                                    No backups taken yet.
-                                                </p>
-                                            ) : (
+                                    <ForgeListRow className="flex-col items-stretch gap-3">
+                                        <h3 className="text-xs font-semibold tracking-wide text-[#64748b] uppercase">
+                                            Recent backups
+                                        </h3>
+                                        {database.backups.length === 0 ? (
+                                            <p className="text-sm text-[#64748b]">
+                                                No backups taken yet.
+                                            </p>
+                                        ) : (
+                                            <div className="w-full overflow-x-auto">
                                                 <DataTable density="dense">
                                                     <TableHead>
                                                         <TableRow>
@@ -496,11 +511,15 @@ export default function DatabasesIndex({
                                                         {database.backups.map(
                                                             (backup) => (
                                                                 <TableRow
-                                                                    key={backup.uuid}
+                                                                    key={
+                                                                        backup.uuid
+                                                                    }
                                                                 >
                                                                     <TableCell>
-                                                                        <span className="font-mono text-[12px] text-fg-muted">
-                                                                            {backup.filename}
+                                                                        <span className="font-mono text-xs text-[#64748b]">
+                                                                            {
+                                                                                backup.filename
+                                                                            }
                                                                         </span>
                                                                     </TableCell>
                                                                     <TableCell numeric>
@@ -509,12 +528,10 @@ export default function DatabasesIndex({
                                                                         )}
                                                                     </TableCell>
                                                                     <TableCell>
-                                                                        <StatusPill
-                                                                            status={toStatus(
-                                                                                backup.status,
-                                                                            )}
-                                                                            label={backup.status}
-                                                                            size="sm"
+                                                                        <ForgeStatusBadge
+                                                                            label={
+                                                                                backup.status
+                                                                            }
                                                                         />
                                                                     </TableCell>
                                                                     <TableCell className="text-right">
@@ -540,15 +557,32 @@ export default function DatabasesIndex({
                                                         )}
                                                     </TableBody>
                                                 </DataTable>
-                                            )}
-                                        </section>
-                                    </div>
-                                </Panel>
+                                            </div>
+                                        )}
+                                    </ForgeListRow>
+                                </ForgeDividedCard>
                             ))}
-                        </div>
-                    </>
-                )}
-            </div>
+                        </>
+                    }
+                    sidebar={
+                        <>
+                            <ForgeDetailsSection title="Storage">
+                                <ForgeDetailRow
+                                    label="Databases"
+                                    value={String(databases.length)}
+                                />
+                                <ForgeDetailRow
+                                    label="Users"
+                                    value={String(totalUsers)}
+                                />
+                            </ForgeDetailsSection>
+                            <ForgeActionsPanel>
+                                {headerActions}
+                            </ForgeActionsPanel>
+                        </>
+                    }
+                />
+            )}
         </>
     );
 }

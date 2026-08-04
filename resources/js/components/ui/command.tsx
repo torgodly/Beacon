@@ -35,7 +35,7 @@ function CommandDialog({
         <Dialog {...props}>
             <DialogContent
                 className={cn(
-                    'overflow-hidden p-0 shadow-2xl sm:max-w-xl [&>button]:hidden',
+                    'overflow-hidden rounded-xl border border-[#E8EEF3] bg-white/90 p-0 shadow-2xl backdrop-blur-xl sm:max-w-xl dark:border-[#263647] dark:bg-[#1C2D3F]/90 [&>button]:hidden',
                     className,
                 )}
             >
@@ -136,7 +136,7 @@ function CommandItem({
         <CommandPrimitive.Item
             data-slot="command-item"
             className={cn(
-                'relative flex cursor-default items-center gap-2 rounded-md px-2 py-2 text-sm outline-none select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0',
+                'relative flex cursor-default items-center gap-2 rounded-md px-2 py-2 text-sm outline-none select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-[#ECFDFF] data-[selected=true]:text-[#04A3BC] dark:data-[selected=true]:bg-[#063543]/40 dark:data-[selected=true]:text-[#22D0E8] [&_svg]:pointer-events-none [&_svg]:shrink-0',
                 className,
             )}
             {...props}

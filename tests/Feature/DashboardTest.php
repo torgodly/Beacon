@@ -27,10 +27,13 @@ class DashboardTest extends TestCase
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
             ->component('dashboard')
-            ->has('metrics.metrics')
-            ->has('sparkline')
-            ->has('services')
-            ->has('phpVersions')
+            ->has('server')
+            ->has('overview')
+            ->has('overview.sites')
+            ->has('overview.databases')
+            ->has('overview.processes')
+            ->has('overview.cronJobs')
+            ->has('overview.activity')
         );
     }
 }
