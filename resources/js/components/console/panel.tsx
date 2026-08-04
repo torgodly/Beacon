@@ -112,8 +112,9 @@ export function SpecList({
                     </dt>
                     <dd
                         className={cn(
-                            'mt-1.5 truncate text-[15px] text-[#1C2D3F] dark:text-[#E8EEF3]',
-                            (item.mono ?? true) && 'font-mono text-[14px] tabular-nums',
+                            'mt-1.5 min-w-0 text-[14px] leading-relaxed break-all text-[#1C2D3F] dark:text-[#E8EEF3]',
+                            item.mono === false && 'font-sans',
+                            (item.mono ?? true) && 'font-mono text-[13px]',
                         )}
                     >
                         {item.value}

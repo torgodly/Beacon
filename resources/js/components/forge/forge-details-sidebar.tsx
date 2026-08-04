@@ -22,7 +22,7 @@ export function ForgePageLayout({
             )}
         >
             <div className="min-w-0 flex-1 space-y-8 lg:max-w-[900px]">{main}</div>
-            <aside className="w-full shrink-0 space-y-6 md:w-52 lg:w-60">
+            <aside className="w-full shrink-0 space-y-6 md:w-56 lg:w-72">
                 {sidebar}
             </aside>
         </div>
@@ -67,30 +67,32 @@ export function ForgeDetailRow({
     const text = typeof value === 'string' ? value : null;
 
     return (
-        <div className="flex items-start justify-between gap-3 px-4 py-2.5">
+        <div className="flex flex-col gap-1.5 px-4 py-2.5">
             <dt className="text-xs text-[#64748b] dark:text-[#94a3b8]">{label}</dt>
             <dd
                 className={cn(
-                    'flex items-center gap-1.5 text-right text-xs text-[#0f172a] dark:text-[#f8fafc]',
+                    'min-w-0 text-xs leading-relaxed break-all text-[#0f172a] dark:text-[#f8fafc]',
                     mono && 'font-mono',
                 )}
             >
-                {value}
-                {copyable && text && (
-                    <button
-                        type="button"
-                        className="rounded p-0.5 text-[#64748b] hover:text-[#18B69B]"
-                        aria-label={`Copy ${label}`}
-                        onClick={async () => {
-                            const ok = await copy(text);
-                            if (ok) {
-                                toast.success(`${label} copied`);
-                            }
-                        }}
-                    >
-                        <Copy className="size-3.5" />
-                    </button>
-                )}
+                <span className="inline-flex min-w-0 items-start gap-1.5">
+                    <span className="min-w-0 flex-1">{value}</span>
+                    {copyable && text && (
+                        <button
+                            type="button"
+                            className="mt-0.5 shrink-0 rounded p-0.5 text-[#64748b] hover:text-[#18B69B]"
+                            aria-label={`Copy ${label}`}
+                            onClick={async () => {
+                                const ok = await copy(text);
+                                if (ok) {
+                                    toast.success(`${label} copied`);
+                                }
+                            }}
+                        >
+                            <Copy className="size-3.5" />
+                        </button>
+                    )}
+                </span>
             </dd>
         </div>
     );

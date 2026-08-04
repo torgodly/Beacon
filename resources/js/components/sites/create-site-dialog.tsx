@@ -702,7 +702,7 @@ return validateConfigureStep();
                 )}
             </DialogTrigger>
 
-            <DialogContent size="lg">
+            <DialogContent size="xl">
                 <div className="flex min-h-0 flex-1 flex-col">
                     <DialogHeader
                         tone="brand"

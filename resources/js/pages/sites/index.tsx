@@ -141,8 +141,12 @@ export default function SitesIndex({
                                                 'No repository connected'
                                             )}
                                         </p>
+                                        <SiteMetaBadges
+                                            site={site}
+                                            layout="inline"
+                                            className="mt-1"
+                                        />
                                     </Link>
-                                    <SiteMetaBadges site={site} />
                                     <ForgeStatusBadge
                                         label={
                                             site.deployment_status === 'success'

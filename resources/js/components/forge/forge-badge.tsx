@@ -1,6 +1,5 @@
 import { Check } from 'lucide-react';
 import { SiteFrameworkIcon } from '@/components/sites/site-framework-icon';
-import { formatAppEnv, type AppEnv } from '@/lib/site-env';
 import { siteFrameworkLabel } from '@/lib/site-framework';
 import { cn } from '@/lib/utils';
 
@@ -69,35 +68,6 @@ export function ForgeRuntimeBadge({
             )}
         >
             {label}
-        </span>
-    );
-}
-
-const envBadgeStyles: Record<AppEnv, string> = {
-    testing:
-        'border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300',
-    staging:
-        'border-[#06C8E0]/30 bg-[#ECFDFF] text-[#047481] dark:border-[#22D0E8]/25 dark:bg-[#063543]/40 dark:text-[#22D0E8]',
-    production:
-        'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
-};
-
-export function ForgeEnvBadge({
-    env,
-    className,
-}: {
-    env: AppEnv;
-    className?: string;
-}) {
-    return (
-        <span
-            className={cn(
-                'inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold tracking-wide uppercase',
-                envBadgeStyles[env],
-                className,
-            )}
-        >
-            {formatAppEnv(env)}
         </span>
     );
 }

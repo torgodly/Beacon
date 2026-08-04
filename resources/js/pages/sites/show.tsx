@@ -88,8 +88,6 @@ import {
 } from '@/lib/validation';
 import {
     consoleCommandPlaceholder,
-    consoleSuggestedCommands,
-    defaultConsoleCommand,
     defaultCronCommand,
     defaultSupervisorCommand,
     defaultSupervisorProcessKind,
@@ -389,7 +387,7 @@ function OverviewTab({
                                         : site.path}
                                 </p>
                             </div>
-                            <SiteMetaBadges site={site} />
+                            <SiteMetaBadges site={site} layout="inline" />
                             <ForgeStatusBadge
                                 label={
                                     site.repository_connected
@@ -1681,7 +1679,7 @@ function SettingsTab({
                         <p className="mb-3 text-[11px] font-bold tracking-[0.16em] text-[#06C8E0] uppercase">
                             Site profile
                         </p>
-                        <SiteMetaBadges site={site} className="mb-4" />
+                        <SiteMetaBadges site={site} layout="stack" className="mb-4" />
                         <SpecList
                             columns={1}
                             items={[
@@ -2005,7 +2003,7 @@ function IsolationTab({ site }: { site: SiteDetail }) {
             sidebar={
                 <>
                     <div className="rounded-2xl border border-[#E8EEF3]/90 bg-white/85 p-4 shadow-[0_8px_30px_rgba(5,19,30,0.04)] backdrop-blur-md dark:border-[#263647] dark:bg-[#1C2D3F]/75">
-                        <SiteMetaBadges site={site} className="mb-4" />
+                        <SiteMetaBadges site={site} layout="stack" className="mb-4" />
                     </div>
 
                     <ForgeDetailsSection title="Policy summary">
@@ -3080,15 +3078,29 @@ function ConsoleTab({
     commands: ConsoleCommandRow[];
     activeCommand: ConsoleCommandRow | null;
 }) {
-    const [command, setCommand] = useState(() =>
-        defaultConsoleCommand(site),
-    );
-    const suggestions = consoleSuggestedCommands(site);
+    const [command, setCommand] = useState('');
+    const [viewingCommand, setViewingCommand] =
+        useState<ConsoleCommandRow | null>(activeCommand);
+
+    useEffect(() => {
+        if (activeCommand !== null) {
+            setViewingCommand(activeCommand);
+        }
+    }, [activeCommand]);
+
     const successCount = commands.filter((entry) => entry.status === 'success')
         .length;
     const failedCount = commands.filter(
         (entry) => entry.status === 'failed' || entry.status === 'timed_out',
     ).length;
+
+    function rerunCommand(commandText: string): void {
+        router.post(
+            storeSiteCommand.url(site.id),
+            { command: commandText },
+            { preserveScroll: true },
+        );
+    }
 
     return (
         <ForgePageLayout
@@ -3135,15 +3147,15 @@ function ConsoleTab({
                                             <Play className="size-3.5" />
                                             {processing ? 'Running…' : 'Run command'}
                                         </Button>
-                                        {activeCommand ? (
+                                        {viewingCommand &&
+                                        (viewingCommand.status === 'queued' ||
+                                            viewingCommand.status ===
+                                                'running') ? (
                                             <StatusBadge
                                                 status={deploymentStatus(
-                                                    activeCommand.status ===
-                                                        'timed_out'
-                                                        ? 'failed'
-                                                        : activeCommand.status,
+                                                    viewingCommand.status,
                                                 )}
-                                                label={activeCommand.status}
+                                                label={viewingCommand.status}
                                             />
                                         ) : null}
                                     </div>
@@ -3152,22 +3164,12 @@ function ConsoleTab({
                         </Form>
                     </Panel>
 
-                    {activeCommand ? (
+                    {viewingCommand ? (
                         <CommandLogViewer
                             siteId={site.id}
-                            command={activeCommand}
+                            command={viewingCommand}
                         />
-                    ) : (
-                        <Panel
-                            title="Output"
-                            description="Run a command to stream stdout and stderr here."
-                            icon={Terminal}
-                        >
-                            <p className="font-mono text-sm text-fg-muted">
-                                No active command.
-                            </p>
-                        </Panel>
-                    )}
+                    ) : null}
 
                     <Panel
                         eyebrow="site // history"
@@ -3189,12 +3191,16 @@ function ConsoleTab({
                                 {commands.map((entry) => (
                                     <li
                                         key={entry.uuid}
-                                        className="flex flex-wrap items-center justify-between gap-3 px-6 py-3.5"
+                                        className={cn(
+                                            'flex flex-wrap items-center justify-between gap-3 px-6 py-3.5',
+                                            viewingCommand?.uuid === entry.uuid &&
+                                                'bg-[#F4F8FB] dark:bg-[#243447]',
+                                        )}
                                     >
                                         <code className="min-w-0 flex-1 truncate font-mono text-xs text-[#1C2D3F] dark:text-[#E8EEF3]">
                                             {entry.command}
                                         </code>
-                                        <div className="flex shrink-0 items-center gap-2">
+                                        <div className="flex shrink-0 flex-wrap items-center gap-2">
                                             <span className="text-xs tabular-nums text-fg-muted">
                                                 {formatDuration(entry.duration_ms)}
                                             </span>
@@ -3206,6 +3212,28 @@ function ConsoleTab({
                                                 )}
                                                 label={entry.status}
                                             />
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() =>
+                                                    setViewingCommand(entry)
+                                                }
+                                            >
+                                                <Eye className="size-3.5" />
+                                                View
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() =>
+                                                    rerunCommand(entry.command)
+                                                }
+                                            >
+                                                <RotateCcw className="size-3.5" />
+                                                Re-run
+                                            </Button>
                                         </div>
                                     </li>
                                 ))}
@@ -3217,7 +3245,7 @@ function ConsoleTab({
             sidebar={
                 <>
                     <div className="rounded-2xl border border-[#E8EEF3]/90 bg-white/85 p-4 shadow-[0_8px_30px_rgba(5,19,30,0.04)] backdrop-blur-md dark:border-[#263647] dark:bg-[#1C2D3F]/75">
-                        <SiteMetaBadges site={site} className="mb-4" />
+                        <SiteMetaBadges site={site} layout="stack" className="mb-4" />
                         <SpecList
                             columns={1}
                             items={[
@@ -3256,21 +3284,6 @@ function ConsoleTab({
                         ]}
                         className="grid-cols-1!"
                     />
-
-                    {suggestions.length > 0 ? (
-                        <ForgeDetailsSection title="Quick commands">
-                            {suggestions.map((suggestion) => (
-                                <button
-                                    key={suggestion}
-                                    type="button"
-                                    onClick={() => setCommand(suggestion)}
-                                    className="flex w-full px-4 py-2.5 text-left font-mono text-xs text-[#475569] transition-colors hover:bg-[#f8fafc] dark:text-[#cbd5e1] dark:hover:bg-[#151718]"
-                                >
-                                    {suggestion}
-                                </button>
-                            ))}
-                        </ForgeDetailsSection>
-                    ) : null}
                 </>
             }
         />

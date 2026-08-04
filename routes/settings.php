@@ -5,7 +5,6 @@ use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
 use App\Http\Controllers\Settings\ServerSettingsController;
 use App\Http\Controllers\Settings\UpdatesController;
-use Illuminate\Auth\Middleware\RequirePassword;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth'])->group(function () {
@@ -19,7 +18,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('settings/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
     Route::get('settings/security', [SecurityController::class, 'edit'])
-        ->middleware(RequirePassword::class)
+        ->middleware('password.confirm.recent')
         ->name('security.edit');
 
     Route::put('settings/password', [SecurityController::class, 'update'])
@@ -37,10 +36,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('settings/updates', [UpdatesController::class, 'edit'])->name('updates.edit');
     Route::post('settings/updates', [UpdatesController::class, 'store'])
-        ->middleware(RequirePassword::class)
+        ->middleware('password.confirm.recent')
         ->name('updates.store');
     Route::post('settings/updates/rollback', [UpdatesController::class, 'rollback'])
-        ->middleware(RequirePassword::class)
+        ->middleware('password.confirm.recent')
         ->name('updates.rollback');
     Route::get('settings/updates/{update:uuid}/log', [UpdatesController::class, 'log'])->name('updates.log');
 
@@ -48,7 +47,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::patch('settings/server/deploy-polling', [ServerSettingsController::class, 'updateDeployPolling'])
         ->name('server.deploy-polling.update');
     Route::post('settings/server/domain', [ServerSettingsController::class, 'attachDomain'])
-        ->middleware(RequirePassword::class)
+        ->middleware('password.confirm.recent')
         ->name('server.domain.attach');
 });
 
