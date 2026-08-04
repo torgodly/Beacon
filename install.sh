@@ -1303,6 +1303,12 @@ server {
         fastcgi_param DOCUMENT_ROOT \$realpath_root;
         fastcgi_hide_header X-Powered-By;
         fastcgi_read_timeout 120;
+        # Must match the other panel vhosts. nginx defaults to a single 4k
+        # buffer for response headers; anything larger is answered with 502
+        # ("upstream sent too big header"), which is indistinguishable from a
+        # dead panel. The :8443 vhost and the site templates already set these.
+        fastcgi_buffers 16 16k;
+        fastcgi_buffer_size 32k;
     }
 
     location ~ /\\.(?!well-known).* { deny all; }

@@ -4,6 +4,7 @@ namespace App\Services\Server;
 
 use App\Services\System\ProcessRunner;
 use App\Services\System\SudoWrapper;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Redis;
 
 class HealthCheckService
@@ -51,9 +52,29 @@ class HealthCheckService
      */
     private function privilegeChecks(): array
     {
+        // Cached hard, and separately from the rest of the health result.
+        //
+        // This is the only check that spawns a process, and health is shared
+        // on every authenticated request — including the operations dock
+        // polling every 1.5s. `nginx -t` also re-parses every vhost and reads
+        // every certificate, so at the 30s cadence of the outer cache it would
+        // add a subprocess to the critical path of a busy panel. Privileges do
+        // not change minute to minute; fifteen minutes is plenty.
+        return Cache::remember(
+            'beacon:health:privileges',
+            now()->addMinutes(15),
+            fn (): array => $this->probePrivileges(),
+        );
+    }
+
+    /**
+     * @return list<array{severity: string, message: string}>
+     */
+    private function probePrivileges(): array
+    {
         $result = $this->runner->run(
             ['sudo', '-n', SudoWrapper::Nginx->path(), 'test'],
-            timeout: 15,
+            timeout: 8,
         );
 
         // 0 = config valid, 65 = nginx rejected the config. Either way sudo and

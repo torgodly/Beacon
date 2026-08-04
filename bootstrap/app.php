@@ -8,7 +8,6 @@ use App\Jobs\SyncSslCertificates;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schedule;
 
@@ -32,10 +31,20 @@ return Application::configure(basePath: dirname(__DIR__))
             'webhooks/github',
         ]);
 
+        // AddLinkHeadersForPreloadedAssets is deliberately NOT registered.
+        //
+        // It emits one `Link: <asset>; rel="preload"` entry per Vite chunk, in a
+        // single header that grew to ~3 KB on the site detail page. nginx buffers
+        // an upstream's whole header block in one allocation, so once the total
+        // crossed the default 4 KB the panel answered 502 "upstream sent too big
+        // header" — a hard failure that scales with the number of chunks a page
+        // imports, so it would return as the UI grows. The vhosts now provision
+        // 32 KB, but the header itself is redundant: Vite already emits
+        // <link rel="modulepreload"> tags into the document head, and the header's
+        // one unique consumer was HTTP/2 Server Push, which Chrome removed.
         $middleware->web(append: [
             HandleAppearance::class,
             HandleInertiaRequests::class,
-            AddLinkHeadersForPreloadedAssets::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
