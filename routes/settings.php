@@ -17,9 +17,7 @@ Route::middleware(['auth'])->group(function () {
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('settings/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
-    Route::get('settings/security', [SecurityController::class, 'edit'])
-        ->middleware('password.confirm.recent')
-        ->name('security.edit');
+    Route::get('settings/security', [SecurityController::class, 'edit'])->name('security.edit');
 
     Route::put('settings/password', [SecurityController::class, 'update'])
         ->middleware('throttle:6,1')
@@ -35,20 +33,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('settings/github', [GitHubController::class, 'destroy'])->name('github.destroy');
 
     Route::get('settings/updates', [UpdatesController::class, 'edit'])->name('updates.edit');
-    Route::post('settings/updates', [UpdatesController::class, 'store'])
-        ->middleware('password.confirm.recent')
-        ->name('updates.store');
-    Route::post('settings/updates/rollback', [UpdatesController::class, 'rollback'])
-        ->middleware('password.confirm.recent')
-        ->name('updates.rollback');
+    Route::post('settings/updates', [UpdatesController::class, 'store'])->name('updates.store');
+    Route::post('settings/updates/rollback', [UpdatesController::class, 'rollback'])->name('updates.rollback');
     Route::get('settings/updates/{update:uuid}/log', [UpdatesController::class, 'log'])->name('updates.log');
 
     Route::get('settings/server', [ServerSettingsController::class, 'edit'])->name('server.edit');
     Route::patch('settings/server/deploy-polling', [ServerSettingsController::class, 'updateDeployPolling'])
         ->name('server.deploy-polling.update');
-    Route::post('settings/server/domain', [ServerSettingsController::class, 'attachDomain'])
-        ->middleware('password.confirm.recent')
-        ->name('server.domain.attach');
+    Route::post('settings/server/domain', [ServerSettingsController::class, 'attachDomain'])->name('server.domain.attach');
 });
 
 Route::get('.well-known/passkey-endpoints', function () {

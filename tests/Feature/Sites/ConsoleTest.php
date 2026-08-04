@@ -35,7 +35,6 @@ class ConsoleTest extends TestCase
         $site = $this->createSite('app.example.com');
 
         $response = $this->actingAs($user)
-            ->withSession(['auth.password_confirmed_at' => time()])
             ->post(route('sites.commands.store', $site), [
                 'command' => 'php artisan --version',
             ]);

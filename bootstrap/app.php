@@ -2,7 +2,6 @@
 
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
-use App\Http\Middleware\RequireRecentPassword;
 use App\Jobs\PollRepositoryHeads;
 use App\Jobs\PollServerMetrics;
 use App\Jobs\SyncSslCertificates;
@@ -46,10 +45,6 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             HandleAppearance::class,
             HandleInertiaRequests::class,
-        ]);
-
-        $middleware->alias([
-            'password.confirm.recent' => RequireRecentPassword::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

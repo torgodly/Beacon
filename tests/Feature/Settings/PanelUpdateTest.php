@@ -32,7 +32,6 @@ class PanelUpdateTest extends TestCase
         Server::factory()->create(['id' => 1, 'beacon_version' => '0.1.0-dev']);
 
         $response = $this->actingAs($user)
-            ->withSession(['auth.password_confirmed_at' => time()])
             ->post(route('updates.store'), [
                 'tag' => 'v1.0.0',
             ]);
@@ -53,7 +52,6 @@ class PanelUpdateTest extends TestCase
         Server::factory()->create(['id' => 1]);
 
         $response = $this->actingAs($user)
-            ->withSession(['auth.password_confirmed_at' => time()])
             ->post(route('updates.rollback'));
 
         $response->assertRedirect(route('updates.edit'));
@@ -70,7 +68,6 @@ class PanelUpdateTest extends TestCase
         Server::factory()->create(['id' => 1]);
 
         $response = $this->actingAs($user)
-            ->withSession(['auth.password_confirmed_at' => time()])
             ->post(route('updates.store'), [
                 'tag' => 'main',
             ]);

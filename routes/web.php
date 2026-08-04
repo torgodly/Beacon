@@ -22,7 +22,6 @@ use App\Http\Controllers\Sites\SiteSettingsController;
 use App\Http\Controllers\Sites\SslController;
 use App\Http\Controllers\Sites\SupervisorController;
 use App\Http\Controllers\Webhooks\GitHubWebhookController;
-use App\Http\Middleware\RequireRecentPassword;
 use App\Http\Middleware\VerifyGitHubSignature;
 use Illuminate\Support\Facades\Route;
 
@@ -46,15 +45,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('github/repositories', [GitHubBrowseController::class, 'repositories'])->name('github.repositories');
     Route::get('github/repositories/{owner}/{repo}/branches', [GitHubBrowseController::class, 'branches'])->name('github.branches');
     Route::get('github/remote-branches', [GitHubBrowseController::class, 'remoteBranches'])->name('github.remote-branches');
-    Route::get('sites/{site:name}', [SiteController::class, 'show'])
-        ->middleware(RequireRecentPassword::using(null, null, 'console', 'environment'))
-        ->name('sites.show');
-    Route::patch('sites/{site:name}/nginx', [SiteController::class, 'updateNginx'])
-        ->middleware('password.confirm.recent')
-        ->name('sites.nginx.update');
-    Route::post('sites/{site:name}/nginx/reset', [SiteController::class, 'resetNginx'])
-        ->middleware('password.confirm.recent')
-        ->name('sites.nginx.reset');
+    Route::get('sites/{site:name}', [SiteController::class, 'show'])->name('sites.show');
+    Route::patch('sites/{site:name}/nginx', [SiteController::class, 'updateNginx'])->name('sites.nginx.update');
+    Route::post('sites/{site:name}/nginx/reset', [SiteController::class, 'resetNginx'])->name('sites.nginx.reset');
     Route::patch('sites/{site:name}/isolation', [SiteController::class, 'updateIsolation'])->name('sites.isolation.update');
     Route::patch('sites/{site:name}/serving', [SiteController::class, 'updateServing'])->name('sites.serving.update');
     Route::post('sites/{site:name}/deployments', [DeploymentController::class, 'store'])
@@ -79,14 +72,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('sites/{site:name}/cron', [CronController::class, 'store'])->name('sites.cron.store');
     Route::post('sites/{site:name}/cron/scheduler', [CronController::class, 'toggleScheduler'])->name('sites.cron.scheduler');
     Route::delete('sites/{site:name}/cron/{cronJob}', [CronController::class, 'destroy'])->name('sites.cron.destroy');
-    Route::patch('sites/{site:name}/environment', [EnvironmentController::class, 'update'])
-        ->middleware('password.confirm.recent')
-        ->name('sites.environment.update');
-    Route::post('sites/{site:name}/environment/snapshots/{snapshot}/restore', [EnvironmentController::class, 'restore'])
-        ->middleware('password.confirm.recent')
-        ->name('sites.environment.restore');
+    Route::patch('sites/{site:name}/environment', [EnvironmentController::class, 'update'])->name('sites.environment.update');
+    Route::post('sites/{site:name}/environment/snapshots/{snapshot}/restore', [EnvironmentController::class, 'restore'])->name('sites.environment.restore');
     Route::post('sites/{site:name}/commands', [ConsoleController::class, 'store'])
-        ->middleware(['password.confirm.recent', 'throttle:console'])
+        ->middleware('throttle:console')
         ->name('sites.commands.store');
     Route::get('sites/{site:name}/commands/{command:uuid}/log', [ConsoleController::class, 'log'])->name('sites.commands.log');
     Route::delete('sites/{site:name}', [SiteController::class, 'destroy'])->name('sites.destroy');

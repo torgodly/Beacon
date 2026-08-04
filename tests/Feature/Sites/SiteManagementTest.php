@@ -326,7 +326,6 @@ class SiteManagementTest extends TestCase
         $site = $this->createSiteWithDomain('app.example.com');
 
         $response = $this->actingAs($user)
-            ->withSession(['auth.password_confirmed_at' => time()])
             ->patch(route('sites.nginx.update', $site), [
                 'contents' => 'server { bad_thing on; }',
             ]);

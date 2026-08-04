@@ -38,7 +38,6 @@ class DestructiveInvocationTest extends TestCase
         $contents = "server { listen 80; server_name app.example.com; }\n";
 
         $this->actingAs($user)
-            ->withSession(['auth.password_confirmed_at' => time()])
             ->patch(route('sites.nginx.update', $site), [
                 'contents' => $contents,
             ])
@@ -67,7 +66,6 @@ class DestructiveInvocationTest extends TestCase
         $contents = "APP_NAME=Updated\nAPP_ENV=local\n";
 
         $this->actingAs($user)
-            ->withSession(['auth.password_confirmed_at' => time()])
             ->patch(route('sites.environment.update', $site), [
                 'contents' => $contents,
             ])
@@ -104,7 +102,6 @@ class DestructiveInvocationTest extends TestCase
         $site = $this->createSite('app.example.com');
 
         $this->actingAs($user)
-            ->withSession(['auth.password_confirmed_at' => time()])
             ->post(route('sites.commands.store', $site), [
                 'command' => 'whoami',
             ])
@@ -133,7 +130,6 @@ class DestructiveInvocationTest extends TestCase
         Server::factory()->create(['id' => 1]);
 
         $this->actingAs($user)
-            ->withSession(['auth.password_confirmed_at' => time()])
             ->post(route('updates.store'), [
                 'tag' => 'v1.2.3',
             ])
@@ -288,7 +284,6 @@ OUTPUT;
         ]);
 
         $this->actingAs($user)
-            ->withSession(['auth.password_confirmed_at' => time()])
             ->post(route('sites.deployments.store', $site))
             ->assertRedirect();
 

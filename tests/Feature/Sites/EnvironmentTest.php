@@ -35,7 +35,6 @@ class EnvironmentTest extends TestCase
         $site = $this->createSite('app.example.com');
 
         $response = $this->actingAs($user)
-            ->withSession(['auth.password_confirmed_at' => time()])
             ->patch(route('sites.environment.update', $site), [
                 'contents' => "APP_NAME=Updated\nAPP_ENV=local\n",
             ]);
@@ -75,7 +74,6 @@ class EnvironmentTest extends TestCase
         file_put_contents($path.'/artisan', '');
 
         $response = $this->actingAs($user)
-            ->withSession(['auth.password_confirmed_at' => time()])
             ->patch(route('sites.environment.update', $site), [
                 'contents' => "APP_NAME=Updated\nAPP_ENV=production\n",
                 'env_cache_on_save' => true,
@@ -105,7 +103,6 @@ class EnvironmentTest extends TestCase
         $site = $this->createSite('app.example.com');
 
         $this->actingAs($user)
-            ->withSession(['auth.password_confirmed_at' => time()])
             ->patch(route('sites.environment.update', $site), [
                 'contents' => "APP_NAME=Updated\n",
                 'env_cache_on_save' => true,
@@ -129,7 +126,6 @@ class EnvironmentTest extends TestCase
         ]);
 
         $response = $this->actingAs($user)
-            ->withSession(['auth.password_confirmed_at' => time()])
             ->post(
                 route('sites.environment.restore', [$site, $snapshot]),
             );

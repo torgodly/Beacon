@@ -73,7 +73,6 @@ class ServerSettingsTest extends TestCase
         ]);
 
         $this->actingAs($user)
-            ->withSession(['auth.password_confirmed_at' => time()])
             ->from(route('server.edit'))
             ->post(route('server.domain.attach'), [
                 'domain' => 'panel.example.com',

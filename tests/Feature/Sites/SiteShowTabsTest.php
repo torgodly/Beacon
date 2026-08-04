@@ -69,7 +69,6 @@ class SiteShowTabsTest extends TestCase
 
         foreach ($tabs as $tab) {
             $response = $this->actingAs($user)
-                ->withSession(['auth.password_confirmed_at' => time()])
                 ->get(route('sites.show', $site).'?tab='.$tab);
 
             $response->assertOk("{$type} site: the {$tab} tab should render");
