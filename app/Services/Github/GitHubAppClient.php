@@ -18,7 +18,13 @@ class GitHubAppClient
      */
     public function convertManifest(string $code): array
     {
+        // GitHub rejects Laravel's default POST body of "[]" for this endpoint.
         $response = Http::acceptJson()
+            ->withHeaders([
+                'User-Agent' => config('app.name', 'Beacon').'-Panel',
+                'X-GitHub-Api-Version' => '2022-11-28',
+            ])
+            ->withBody('', 'application/json')
             ->post(self::API."/app-manifests/{$code}/conversions");
 
         if ($response->failed()) {

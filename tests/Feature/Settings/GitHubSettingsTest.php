@@ -5,6 +5,7 @@ namespace Tests\Feature\Settings;
 use App\Models\GithubInstallation;
 use App\Models\Server;
 use App\Models\User;
+use App\Services\Github\GitHubManifestFlow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\Test;
@@ -87,6 +88,52 @@ class GitHubSettingsTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->where('manifest.url', 'https://beacon.example.com')
                 ->where('manifest.redirect_url', 'https://beacon.example.com/settings/github/callback'));
+    }
+
+    #[Test]
+    public function callback_converts_manifest_with_an_empty_request_body(): void
+    {
+        Server::factory()->create([
+            'id' => 1,
+            'panel_domain' => 'beacon.example.com',
+            'panel_port' => 443,
+            'panel_url_public' => true,
+            'public_ip' => '203.0.113.10',
+        ]);
+
+        $user = User::factory()->create();
+        $registration = app(GitHubManifestFlow::class)->manifestRegistration($user);
+
+        Http::fake([
+            'api.github.com/app-manifests/*/conversions' => Http::response([
+                'id' => 123456,
+                'slug' => 'beacon-panel-test',
+                'client_id' => 'Iv1.test-client-id',
+                'client_secret' => 'test-client-secret',
+                'pem' => "-----BEGIN RSA PRIVATE KEY-----\nTEST\n-----END RSA PRIVATE KEY-----\n",
+                'webhook_secret' => 'test-webhook-secret',
+            ], 201),
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('github.callback', [
+                'code' => 'temporary-manifest-code',
+                'state' => $registration['state'],
+            ]))
+            ->assertRedirect('https://github.com/apps/beacon-panel-test/installations/new');
+
+        Http::assertSent(function ($request): bool {
+            return $request->method() === 'POST'
+                && str_ends_with($request->url(), '/app-manifests/temporary-manifest-code/conversions')
+                && $request->body() === '';
+        });
+
+        $this->assertDatabaseHas('github_installations', [
+            'user_id' => $user->id,
+            'app_id' => 123456,
+            'app_slug' => 'beacon-panel-test',
+            'installation_id' => null,
+        ]);
     }
 
     #[Test]
