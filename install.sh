@@ -835,6 +835,34 @@ panel_node_heap_mb() {
 #
 # The application code is not secret. The secrets live in shared/.env, which
 # is a symlink to a 0640 root:beacon-panel file and is unaffected by this.
+# Delete bootstrap caches inherited from the previous release.
+#
+# bootstrap/cache is a symlink into shared state, so a new release begins life
+# holding the last release's routes-v7.php and config.php. The Vite build runs
+# `wayfinder:generate`, which boots Laravel to enumerate routes — against that
+# stale cache. A route added in this release is invisible, its typed helper is
+# never written, and the build dies with
+#   Could not load .../resources/js/routes/sites/serving
+# (resources/js/routes is gitignored, so nothing else supplies it.)
+#
+# The files are removed directly rather than via `artisan optimize:clear`,
+# which runs cache:clear SECOND and route:clear FIFTH. cache:clear talks to
+# Redis, so if Redis is briefly unreachable the command aborts before ever
+# clearing the route cache — silently, and precisely when it matters.
+#
+# packages.php and services.php are left alone: they are package-discovery
+# output written moments ago by composer, not stale state.
+clear_inherited_bootstrap_cache() {
+    local rel="$1"
+    local cache="${rel}/bootstrap/cache"
+
+    [[ -d "$cache" ]] || return 0
+
+    rm -f "${cache}/config.php" "${cache}/events.php" "${cache}"/routes-v*.php
+
+    echo "    Cleared inherited config/route cache"
+}
+
 harden_release() {
     local rel="$1"
     [[ -d "$rel" ]] || return 0
@@ -942,16 +970,7 @@ bootstrap_panel() {
     panel_run "$rel" composer install -d "$rel" --no-dev --no-interaction \
         --prefer-dist --optimize-autoloader
 
-    # Drop caches inherited from the PREVIOUS release before building.
-    #
-    # bootstrap/cache is a symlink into shared state, so a new release starts
-    # life holding the last release's routes-v7.php and config.php. The Vite
-    # build runs `wayfinder:generate`, which boots Laravel to enumerate routes
-    # — against that stale cache. A route added in this release is therefore
-    # invisible, its typed helper is never written, and the build dies with
-    #   Could not load .../resources/js/routes/sites/serving
-    # (resources/js/routes is gitignored, so nothing else supplies it).
-    panel_run "$rel" php "$rel/artisan" optimize:clear >/dev/null 2>&1 || true
+    clear_inherited_bootstrap_cache "$rel"
 
     panel_run "$rel" npm --prefix "$rel" ci
     panel_run "$rel" npm --prefix "$rel" run build

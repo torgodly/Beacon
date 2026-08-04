@@ -105,7 +105,13 @@ case "$action" in
         # with the previous one's route and config cache. wayfinder:generate
         # runs during the Vite build and would enumerate those stale routes,
         # omitting typed helpers for anything added in this release.
-        panel_run "$rel" php "$rel/artisan" optimize:clear >/dev/null 2>&1 || true
+        #
+        # Removed directly rather than via `artisan optimize:clear`: that runs
+        # cache:clear (Redis) before route:clear, so an unreachable Redis
+        # aborts it before the route cache is ever touched.
+        rm -f "$rel/bootstrap/cache/config.php" \
+              "$rel/bootstrap/cache/events.php" \
+              "$rel"/bootstrap/cache/routes-v*.php
 
         panel_run "$rel" npm --prefix "$rel" ci
         panel_run "$rel" npm --prefix "$rel" run build
