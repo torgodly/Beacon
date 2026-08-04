@@ -2877,7 +2877,11 @@ function EnvironmentTab({
         <ForgePageContent>
             <ForgeFormCard
                 title="Environment"
-                description="Below you may edit the .env file for your application. If the application is uninstalled, the environment file will also be removed."
+                description={
+                    site.type === 'laravel'
+                        ? 'Below you may edit the .env file for your application. If the application is uninstalled, the environment file will also be removed.'
+                        : 'Edit the server .env file for this site. Next.js and Nuxt apps usually keep secrets in .env.local locally — copy those values here (Beacon writes .env on the server, not .env.local).'
+                }
             >
                 <div className="space-y-6">
                     <div className="space-y-2">

@@ -310,15 +310,49 @@ BASH;
     {
         $supervisor = app(SupervisorService::class);
 
-        // The build just produced the SSR bundle, so the Node server can now
-        // actually start. Re-render the launcher too — the site's Node version
-        // or proxy port may have changed since it was last written.
         if (SsrLauncher::supports($site->type)) {
             $stream->append("Registering SSR server…\n");
-            $supervisor->syncSsrProcess($site, autostart: true);
+            $ssr = $supervisor->syncSsrProcess($site, autostart: true);
+
+            if ($ssr !== null) {
+                $stream->append("Starting {$ssr->program_name}…\n");
+
+                try {
+                    $supervisor->ensureRunning($ssr);
+                    $status = $ssr->fresh()?->status ?? 'unknown';
+                    $stream->append("  → {$status}\n");
+                } catch (RuntimeException $e) {
+                    throw new DeploymentFailedException(
+                        "SSR server failed to start: {$e->getMessage()}. "
+                        ."Check {$ssr->log_path} and configure environment variables under the Env tab.",
+                        1,
+                    );
+                }
+            }
         }
 
-        $supervisor->restartAllForSite($site, $stream);
+        $workers = $site->supervisorProcesses()->where('kind', '!=', 'ssr')->get();
+
+        if ($workers->isEmpty()) {
+            if (! SsrLauncher::supports($site->type)) {
+                $stream->append("No managed processes to restart.\n");
+            }
+
+            return;
+        }
+
+        foreach ($workers as $process) {
+            $stream->append("Restarting {$process->program_name}…\n");
+
+            try {
+                $supervisor->restart($process);
+                $refreshed = $process->fresh();
+                $status = $refreshed !== null ? $refreshed->status : 'unknown';
+                $stream->append("  → {$status}\n");
+            } catch (RuntimeException $e) {
+                $stream->append("  → failed: {$e->getMessage()}\n");
+            }
+        }
     }
 
     private function finish(

@@ -221,7 +221,28 @@ class SupervisorService
 
     public function restart(SupervisorProcess $process): void
     {
-        $this->control($process, 'restart');
+        $this->control($process, 'restart', fallbackToStart: true);
+    }
+
+    public function ensureRunning(SupervisorProcess $process): void
+    {
+        $this->refreshStatus($process);
+        $process->refresh();
+
+        if (in_array($process->status, ['running', 'starting'], true)) {
+            return;
+        }
+
+        $this->start($process);
+        $process->refresh();
+
+        if (! in_array($process->status, ['running', 'starting'], true)) {
+            $detail = trim((string) $process->status_message);
+
+            throw new RuntimeException(
+                $detail !== '' ? $detail : 'Process is not running.',
+            );
+        }
     }
 
     public function restartAllForSite(Site $site, ?OutputStream $stream = null): void
@@ -264,12 +285,19 @@ class SupervisorService
         ]);
     }
 
-    private function control(SupervisorProcess $process, string $action): void
+    private function control(SupervisorProcess $process, string $action, bool $fallbackToStart = false): void
     {
         $result = $this->runner->sudoRoot(
             SudoWrapper::Supervisor,
             [$action, $process->program_name],
         );
+
+        if ($result->failed() && $fallbackToStart && $action === 'restart') {
+            $result = $this->runner->sudoRoot(
+                SudoWrapper::Supervisor,
+                ['start', $process->program_name],
+            );
+        }
 
         if ($result->failed()) {
             throw new RuntimeException($result->errorOutput() ?: "Supervisor {$action} failed.");

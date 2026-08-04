@@ -79,10 +79,20 @@ class SsrLauncher
 
         cd {$site->path}
 
-        # Load the site's .env so the running server sees the same variables the
-        # build did. `set -a` exports every assignment without touching the file.
+        # Load site env files (Next.js / Nuxt convention). Beacon's Env tab writes
+        # to .env; .env.local is optional and usually gitignored.
+        load_env_file() {
+          local file="\$1"
+          if [ -f "\$file" ]; then
+            . "./\${file}"
+          fi
+        }
+
         set -a
-        [ -f .env ] && . ./.env
+        load_env_file .env
+        load_env_file .env.local
+        load_env_file .env.production
+        load_env_file .env.production.local
         set +a
 
         export PATH="{$nodeBin}:/usr/local/bun/default/bin:\$PATH"

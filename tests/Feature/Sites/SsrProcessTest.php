@@ -105,16 +105,18 @@ class SsrProcessTest extends TestCase
         $this->assertStringContainsString('exec node .output/server/index.mjs', $nuxt);
     }
 
-    public function test_launcher_sources_the_site_env_before_exec(): void
+    public function test_launcher_sources_site_env_files_before_exec(): void
     {
         $script = app(SsrLauncher::class)->script($this->createSite('nextjs'));
 
-        $envLine = strpos($script, '. ./.env');
+        $envBlock = strpos($script, 'load_env_file .env');
         $execLine = strpos($script, 'exec ');
 
-        $this->assertNotFalse($envLine);
+        $this->assertNotFalse($envBlock);
         $this->assertNotFalse($execLine);
-        $this->assertLessThan($execLine, $envLine, 'The .env must be sourced before exec.');
+        $this->assertLessThan($execLine, $envBlock, 'Env files must load before exec.');
+        $this->assertStringContainsString('load_env_file .env.local', $script);
+        $this->assertStringContainsString('load_env_file .env.production', $script);
     }
 
     private function createSite(string $type, string $name = 'app.example.com'): Site

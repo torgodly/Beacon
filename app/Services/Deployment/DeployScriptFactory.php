@@ -34,6 +34,8 @@ class DeployScriptFactory
                 ) => $this->forSite($site),
             in_array($site->type, ['static', 'nextjs', 'nuxt'], true)
                 && $this->usesFrozenLockfileInstall($site->deploy_script) => $this->forSite($site),
+            in_array($site->type, ['nextjs', 'nuxt'], true)
+                && ! $this->includesSsrEnvBootstrap($site->deploy_script) => $this->forSite($site),
             default => null,
         };
 
@@ -211,12 +213,27 @@ BASH;
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$BEACON_SITE_DIR"
+BASH
+            .$this->ssrEnvBootstrap().<<<'BASH'
 if [ ! -f package.json ]; then
   echo "Error: package.json not found. Check the repository URL and site type." >&2
   exit 1
 fi
 $BEACON_PM ci || $BEACON_PM install
 $BEACON_PM run build
+BASH;
+    }
+
+    private function ssrEnvBootstrap(): string
+    {
+        return <<<'BASH'
+# ── Environment bootstrap ─────────────────────────────────────────────
+# .env.local is usually gitignored. Seed .env from .env.example on first
+# deploy, then edit values in Beacon → Env (written to .env on the server).
+if [ ! -f .env ] && [ -f .env.example ]; then
+  cp .env.example .env
+  echo "Created .env from .env.example — review values under the Env tab."
+fi
 BASH;
     }
 
@@ -274,5 +291,10 @@ BASH;
     private function usesFrozenLockfileInstall(?string $script): bool
     {
         return str_contains((string) $script, '--frozen-lockfile');
+    }
+
+    private function includesSsrEnvBootstrap(?string $script): bool
+    {
+        return str_contains((string) $script, 'Created .env from .env.example');
     }
 }

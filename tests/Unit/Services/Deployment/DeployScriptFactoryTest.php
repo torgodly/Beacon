@@ -149,6 +149,44 @@ BASH;
         $this->assertStringContainsString('No package.json', (string) $site->fresh()->deploy_script);
     }
 
+    public function test_ssr_script_bootstraps_env_from_example(): void
+    {
+        $site = Site::factory()->create(['type' => 'nextjs']);
+
+        $script = app(DeployScriptFactory::class)->forSite($site);
+
+        $this->assertStringContainsString('cp .env.example .env', $script);
+        $this->assertStringContainsString('$BEACON_PM ci || $BEACON_PM install', $script);
+    }
+
+    public function test_refresh_legacy_default_rewrites_nextjs_script_without_env_bootstrap(): void
+    {
+        $legacy = <<<'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$BEACON_SITE_DIR"
+$BEACON_PM ci || $BEACON_PM install
+$BEACON_PM run build
+BASH;
+
+        $site = Site::factory()->create([
+            'type' => 'nextjs',
+            'deploy_script' => $legacy,
+        ]);
+
+        $this->mock(SiteFilesystem::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('write')->once();
+        });
+
+        $refreshed = app(DeployScriptFactory::class)->refreshLegacyDefault(
+            $site,
+            app(SiteFilesystem::class),
+        );
+
+        $this->assertTrue($refreshed);
+        $this->assertStringContainsString('cp .env.example .env', (string) $site->fresh()->deploy_script);
+    }
+
     public function test_refresh_legacy_default_rewrites_nextjs_script_with_frozen_lockfile_flag(): void
     {
         $legacy = <<<'BASH'
