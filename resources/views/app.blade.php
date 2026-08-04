@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @class(['dark' => ($appearance ?? 'system') == 'dark'])>
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-theme="corporate" @class(['dark' => ($appearance ?? 'system') == 'dark'])>
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -14,6 +14,9 @@
 
                     if (prefersDark) {
                         document.documentElement.classList.add('dark');
+                        document.documentElement.dataset.theme = 'business';
+                    } else {
+                        document.documentElement.dataset.theme = 'corporate';
                     }
                 }
             })();

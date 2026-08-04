@@ -3,7 +3,6 @@ import {
     ChevronRight,
     GitBranch,
     Globe,
-    MoreHorizontal,
     Plus,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -35,6 +34,7 @@ import {
     Dialog,
     DialogContent,
     DialogDescription,
+    DialogFooter,
     DialogHeader,
     DialogTitle,
     DialogTrigger,
@@ -47,12 +47,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import {
     branches as githubBranchRoute,
@@ -350,18 +344,17 @@ export default function SitesIndex({
                 </Button>
             </DialogTrigger>
 
-                            <DialogContent className="sm:max-w-2xl">
-                                <DialogHeader>
-                                    <DialogTitle>Create a site</DialogTitle>
-                                    <DialogDescription>
-                                        Beacon provisions the directory, Nginx
-                                        vhost, and runtime. Connect a Git
-                                        repository now to deploy immediately
-                                        after creation.
-                                    </DialogDescription>
-                                </DialogHeader>
+            <DialogContent className="sm:max-w-2xl">
+                <DialogHeader>
+                    <DialogTitle>Create a site</DialogTitle>
+                    <DialogDescription>
+                        Beacon provisions the directory, Nginx vhost, and
+                        runtime. Connect a Git repository now to deploy
+                        immediately after creation.
+                    </DialogDescription>
+                </DialogHeader>
 
-                                <Form
+                <Form
                                     action={store()}
                                     onSuccess={() => setCreateOpen(false)}
                                     className="space-y-6"
@@ -396,7 +389,7 @@ export default function SitesIndex({
                                                         <label
                                                             key={type.value}
                                                             className={cn(
-                                                                'flex cursor-pointer gap-3 rounded-md border p-3 transition-colors duration-[--bc-duration-fast]',
+                                                                'flex cursor-pointer gap-3 rounded-xl border p-3 transition-colors duration-[--bc-duration-fast]',
                                                                 siteType ===
                                                                     type.value
                                                                     ? 'border-border-brand bg-brand-subtle'
@@ -912,7 +905,7 @@ export default function SitesIndex({
                                                 </p>
                                             )}
 
-                                            <div className="flex items-center justify-end gap-3">
+                                            <DialogFooter>
                                                 <Button
                                                     type="button"
                                                     variant="ghost"
@@ -934,7 +927,7 @@ export default function SitesIndex({
                                                         ? 'Creating…'
                                                         : 'Create site'}
                                                 </Button>
-                                            </div>
+                                            </DialogFooter>
                                         </>
                                     )}
                                 </Form>
@@ -959,7 +952,7 @@ export default function SitesIndex({
                         <>
                             <ForgeDetailsSection title="Sites">
                                 <ForgeDetailRow label="Total" value="0" />
-                                <ForgeDetailRow label="Active" value="0" />
+                                <ForgeDetailRow label="With Git" value="0" />
                                 <ForgeDetailRow label="With TLS" value="0" />
                             </ForgeDetailsSection>
                             <ForgeActionsPanel>
@@ -979,7 +972,7 @@ export default function SitesIndex({
                         <ForgeListRow key={site.id}>
                             <Link
                                 href={show(site.name)}
-                                className="flex size-9 shrink-0 items-center justify-center rounded-md bg-[#f1f5f9] dark:bg-[#2e3032]"
+                                className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#f1f5f9] dark:bg-[#2e3032]"
                             >
                                 <SiteFrameworkIcon type={site.type} size="md" />
                             </Link>
@@ -1010,24 +1003,6 @@ export default function SitesIndex({
                                 }
                                 pulse={site.deployment_status === 'deploying'}
                             />
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <button
-                                        type="button"
-                                        className="rounded-md p-1.5 text-[#94a3b8] hover:bg-[#f1f5f9] hover:text-[#475569] dark:hover:bg-[#2e3032]"
-                                        aria-label="Site actions"
-                                    >
-                                        <MoreHorizontal className="size-4" />
-                                    </button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                    <DropdownMenuItem asChild>
-                                        <Link href={show(site.name)}>
-                                            Manage
-                                        </Link>
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
                         </ForgeListRow>
                             ))}
                         </ForgeDividedCard>
@@ -1039,9 +1014,9 @@ export default function SitesIndex({
                                 value={String(sites.length)}
                             />
                             <ForgeDetailRow
-                                label="Active"
+                                label="With Git"
                                 value={String(
-                                    sites.filter((s) => s.status === 'active')
+                                    sites.filter((s) => s.repository_connected)
                                         .length,
                                 )}
                             />

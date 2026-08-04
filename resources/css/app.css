@@ -2,6 +2,17 @@
 
 @import 'tw-animate-css';
 
+@plugin "daisyui" {
+    themes: corporate --default, business --prefersdark;
+    logs: false;
+}
+
+:root {
+    --radius-selector: 0.75rem;
+    --radius-field: 0.75rem;
+    --radius-box: 1rem;
+}
+
 /* Beacon Design System token layer — must load before the bridge below. */
 @import './beacon-tokens.css';
 
@@ -125,7 +136,7 @@
     --color-chart-8: var(--bc-chart-8);
 
     /* ---- Radius: maps exactly onto the Beacon scale ----------------------- */
-    --radius: var(--bc-radius-lg); /* 8 — cards, panels, alerts */
+    --radius: var(--bc-radius-lg); /* 12 — cards, panels, alerts */
     --radius-xs: var(--bc-radius-xs); /* 3 */
     --radius-sm: var(--bc-radius-sm); /* 4 — badge, tag */
     --radius-md: var(--bc-radius-md); /* 6 — button, input, select */
@@ -264,6 +275,22 @@
 }
 
 @layer components {
+    .modal-box {
+        animation: modal-pop 180ms var(--bc-ease-decelerate);
+    }
+
+    @keyframes modal-pop {
+        from {
+            opacity: 0;
+            transform: scale(0.96) translateY(8px);
+        }
+
+        to {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+        }
+    }
+
     /* ---- Elevation recipes ------------------------------------------------
      * Dark interfaces get depth from a background step plus a border, not
      * from shadows: canvas→surface is only a 1.34:1 step, so the 1px border
@@ -316,77 +343,6 @@
         50% {
             opacity: 0.55;
         }
-    }
-
-    /* ---- Toasts (Sonner) --------------------------------------------------
-     * The starter kit wired Sonner to shadcn vars (--popover) that Tailwind v4
-     * exposes as --color-popover, so backgrounds were transparent. These rules
-     * map Sonner onto Beacon tokens and sit above the operations dock. */
-    [data-sonner-toaster] {
-        --width: 22rem;
-        font-family: var(--font-sans);
-    }
-
-    [data-sonner-toaster][data-sonner-theme='light'] {
-        --normal-bg: var(--bc-bg-surface-raised);
-        --normal-bg-hover: var(--bc-bg-hover);
-        --normal-border: var(--bc-border-default);
-        --normal-border-hover: var(--bc-border-strong);
-        --normal-text: var(--bc-fg-default);
-
-        --success-bg: var(--bc-bg-success-subtle);
-        --success-border: var(--bc-border-success);
-        --success-text: var(--bc-fg-success);
-
-        --info-bg: var(--bc-bg-brand-subtle);
-        --info-border: var(--bc-border-brand);
-        --info-text: var(--bc-fg-brand);
-
-        --warning-bg: var(--bc-bg-warning-subtle);
-        --warning-border: var(--bc-border-warning);
-        --warning-text: var(--bc-fg-warning);
-
-        --error-bg: var(--bc-bg-danger-subtle);
-        --error-border: var(--bc-border-danger);
-        --error-text: var(--bc-fg-danger);
-    }
-
-    [data-sonner-toaster][data-sonner-theme='dark'] {
-        --normal-bg: var(--bc-bg-surface-raised);
-        --normal-bg-hover: var(--bc-bg-hover);
-        --normal-border: var(--bc-border-strong);
-        --normal-border-hover: var(--bc-border-hover);
-        --normal-text: var(--bc-fg-default);
-
-        --success-bg: var(--bc-bg-success-subtle);
-        --success-border: var(--bc-border-success);
-        --success-text: var(--bc-fg-success);
-
-        --info-bg: var(--bc-bg-brand-subtle);
-        --info-border: var(--bc-border-brand);
-        --info-text: var(--bc-fg-brand);
-
-        --warning-bg: var(--bc-bg-warning-subtle);
-        --warning-border: var(--bc-border-warning);
-        --warning-text: var(--bc-fg-warning);
-
-        --error-bg: var(--bc-bg-danger-subtle);
-        --error-border: var(--bc-border-danger);
-        --error-text: var(--bc-fg-danger);
-    }
-
-    [data-sonner-toast][data-styled='true'].bc-toast,
-    [data-sonner-toast][data-styled='true'] {
-        border-radius: var(--bc-radius-lg);
-        box-shadow: var(--bc-shadow-lg);
-        font-size: 14px;
-        line-height: 22px;
-        padding: 14px 16px;
-    }
-
-    [data-rich-colors='true'][data-sonner-toast][data-styled='true'] [data-description] {
-        color: inherit;
-        opacity: 0.92;
     }
 }
 

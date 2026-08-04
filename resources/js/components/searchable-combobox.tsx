@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
 export type SearchableComboboxOption = {
@@ -77,16 +76,24 @@ export function SearchableCombobox({
     }, []);
 
     return (
-        <div ref={containerRef} className={cn('relative', className)}>
-            <Input
+        <div
+            ref={containerRef}
+            className={cn('dropdown w-full', open && 'dropdown-open', className)}
+        >
+            <input
                 id={id}
                 name={name}
+                type="text"
                 value={query}
-                mono={mono}
                 autoComplete="off"
                 spellCheck={false}
                 placeholder={placeholder}
                 disabled={disabled}
+                className={cn(
+                    'input input-bordered w-full rounded-xl bg-base-100 text-base-content',
+                    'h-11 min-h-11',
+                    mono && 'font-mono text-sm tabular-nums',
+                )}
                 onFocus={() => setOpen(true)}
                 onChange={(event) => {
                     const next = event.target.value;
@@ -96,49 +103,44 @@ export function SearchableCombobox({
                 }}
             />
 
-            {open && !disabled && (
-                <div className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-md border border-[var(--bc-border-default)] bg-[var(--bc-bg-default)] shadow-lg">
-                    {loading ? (
-                        <p className="px-3 py-2 text-[13px] text-fg-muted">
-                            Loading…
-                        </p>
-                    ) : filtered.length === 0 ? (
-                        <p className="px-3 py-2 text-[13px] text-fg-muted">
+            <ul className="dropdown-content menu z-[60] mt-1 max-h-56 w-full flex-nowrap overflow-y-auto rounded-2xl border border-base-300 bg-base-100 p-2 shadow-lg">
+                {loading ? (
+                    <li className="pointer-events-none">
+                        <span className="text-base-content/70">Loading…</span>
+                    </li>
+                ) : filtered.length === 0 ? (
+                    <li className="pointer-events-none">
+                        <span className="text-base-content/70">
                             {emptyMessage}
-                        </p>
-                    ) : (
-                        <ul className="py-1">
-                            {filtered.map((option) => (
-                                <li key={option.value}>
-                                    <button
-                                        type="button"
-                                        className={cn(
-                                            'flex w-full flex-col items-start px-3 py-2 text-left text-[13px] hover:bg-[var(--bc-bg-subtle)]',
-                                            option.value === value &&
-                                                'bg-[var(--bc-bg-subtle)]',
-                                        )}
-                                        onMouseDown={(event) => {
-                                            event.preventDefault();
-                                            setQuery(option.label);
-                                            onValueChange(option.value);
-                                            setOpen(false);
-                                        }}
-                                    >
-                                        <span className="font-medium text-fg">
-                                            {option.label}
-                                        </span>
-                                        {option.description && (
-                                            <span className="text-fg-muted">
-                                                {option.description}
-                                            </span>
-                                        )}
-                                    </button>
-                                </li>
-                            ))}
-                        </ul>
-                    )}
-                </div>
-            )}
+                        </span>
+                    </li>
+                ) : (
+                    filtered.map((option) => (
+                        <li key={option.value}>
+                            <button
+                                type="button"
+                                className={cn(
+                                    option.value === value && 'active',
+                                    mono && 'font-mono text-sm',
+                                )}
+                                onMouseDown={(event) => {
+                                    event.preventDefault();
+                                    setQuery(option.label);
+                                    onValueChange(option.value);
+                                    setOpen(false);
+                                }}
+                            >
+                                <span>{option.label}</span>
+                                {option.description && (
+                                    <span className="text-xs opacity-70">
+                                        {option.description}
+                                    </span>
+                                )}
+                            </button>
+                        </li>
+                    ))
+                )}
+            </ul>
         </div>
     );
 }

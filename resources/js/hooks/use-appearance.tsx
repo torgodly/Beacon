@@ -50,6 +50,7 @@ const applyTheme = (appearance: Appearance): void => {
 
     document.documentElement.classList.toggle('dark', isDark);
     document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+    document.documentElement.dataset.theme = isDark ? 'business' : 'corporate';
 };
 
 const subscribe = (callback: () => void) => {

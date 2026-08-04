@@ -7,12 +7,14 @@ import {
     DialogContent,
     DialogDescription,
     DialogFooter,
+    DialogHeader,
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+import { cn } from '@/lib/utils';
 
 export type ConfirmDialogProps = {
     /** Element that opens the dialog, e.g. a `<Button>`. */
@@ -73,16 +75,24 @@ export function ConfirmDialog({
         >
             <DialogTrigger asChild>{trigger}</DialogTrigger>
 
-            <DialogContent>
-                <DialogTitle>{title}</DialogTitle>
-                {description && (
-                    <DialogDescription>{description}</DialogDescription>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>{title}</DialogTitle>
+                    {description && (
+                        <DialogDescription>{description}</DialogDescription>
+                    )}
+                </DialogHeader>
+
+                {destructive && (
+                    <div className="alert alert-warning rounded-xl text-sm">
+                        <span>This action cannot be undone.</span>
+                    </div>
                 )}
 
                 {children}
 
                 {requiresTypedConfirmation && (
-                    <div className="grid gap-2">
+                    <div className="form-control mt-4 w-full gap-2">
                         <Label htmlFor="confirm-dialog-value">
                             {confirmationLabel ?? (
                                 <>
@@ -105,13 +115,14 @@ export function ConfirmDialog({
                     </div>
                 )}
 
-                <DialogFooter className="gap-2">
+                <DialogFooter>
                     <DialogClose asChild>
-                        <Button variant="secondary">{cancelLabel}</Button>
+                        <Button variant="ghost">{cancelLabel}</Button>
                     </DialogClose>
 
                     <Button
                         variant={destructive ? 'destructive' : 'default'}
+                        className={cn(destructive && 'btn-error')}
                         disabled={!canConfirm || processing}
                         onClick={onConfirm}
                     >

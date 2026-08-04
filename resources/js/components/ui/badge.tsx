@@ -26,10 +26,8 @@ const badgeVariants = cva(
                     'border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C] dark:border-[#991B1B] dark:bg-[#450A0A]/50 dark:text-[#F87171]',
                 brand:
                     'border-[#A5F2FB] bg-[#ECFDFF] text-[#0A788F] dark:border-[#106175] dark:bg-[#063543]/50 dark:text-[#22D0E8]',
-                neutral:
-                    'border-[var(--bc-border-default)] bg-[var(--bc-bg-neutral-subtle)] text-fg-muted',
-                outline:
-                    'border-[var(--bc-border-strong)] bg-transparent text-fg',
+                neutral: 'badge badge-neutral bg-base-200 text-base-content border-base-300',
+                outline: 'badge badge-outline bg-base-100 text-base-content border-base-300',
             },
         },
         defaultVariants: {

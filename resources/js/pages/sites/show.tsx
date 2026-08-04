@@ -8,7 +8,7 @@ import {
     usePage,
 } from '@inertiajs/react';
 import { Clock, Cog, Play, Plus, RefreshCw, RotateCcw, Save, Shield, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CodeDiffViewer } from '@/components/code-diff-viewer';
 import { CodeEditor } from '@/components/code-editor';
 import { ConfirmDialog } from '@/components/confirm-dialog';
@@ -41,6 +41,10 @@ import {
 import { Panel, SpecList, StatCluster } from '@/components/console/panel';
 import { DeployScriptEnvReference } from '@/components/deploy-script-env-reference';
 import InputError from '@/components/input-error';
+import {
+    SearchableCombobox,
+    type SearchableComboboxOption,
+} from '@/components/searchable-combobox';
 import { CommandLogViewer } from '@/components/sites/command-log-viewer';
 import { DeployButton } from '@/components/sites/deploy-button';
 import { StatusBadge } from '@/components/status-badge';
@@ -862,6 +866,22 @@ function SettingsTab({
         !useManualRepository &&
         selectedRepository.includes('/');
     const visibleBranches = canLoadBranches ? branches : [];
+    const repositoryOptions = useMemo<SearchableComboboxOption[]>(
+        () =>
+            repositories.map((repository) => ({
+                value: repository.full_name,
+                label: repository.full_name,
+            })),
+        [repositories],
+    );
+    const branchOptions = useMemo<SearchableComboboxOption[]>(
+        () =>
+            visibleBranches.map((branch) => ({
+                value: branch,
+                label: branch,
+            })),
+        [visibleBranches],
+    );
     const { errors: pageErrors } = usePage().props as {
         errors: Record<string, string>;
     };
@@ -1121,48 +1141,28 @@ function SettingsTab({
                                 {settings.github.connected &&
                                 !useManualRepository ? (
                                     <>
-                                        <div className="grid gap-2">
-                                            <Label htmlFor="github_repository">
-                                                Repository
-                                            </Label>
-                                            <Select
-                                                value={
-                                                    selectedRepository ||
-                                                    undefined
-                                                }
+                                        <Field
+                                            htmlFor="github_repository"
+                                            label="Repository"
+                                            error={errors.github_repository}
+                                        >
+                                            <SearchableCombobox
+                                                id="github_repository"
+                                                value={selectedRepository}
                                                 onValueChange={
                                                     handleRepositoryChange
                                                 }
+                                                options={repositoryOptions}
+                                                loading={repoLoading}
                                                 disabled={repoLoading}
-                                            >
-                                                <SelectTrigger id="github_repository">
-                                                    <SelectValue
-                                                        placeholder={
-                                                            repoLoading
-                                                                ? 'Loading repositories…'
-                                                                : 'Select a repository'
-                                                        }
-                                                    />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {repositories.map(
-                                                        (repository) => (
-                                                            <SelectItem
-                                                                key={
-                                                                    repository.id
-                                                                }
-                                                                value={
-                                                                    repository.full_name
-                                                                }
-                                                            >
-                                                                {
-                                                                    repository.full_name
-                                                                }
-                                                            </SelectItem>
-                                                        ),
-                                                    )}
-                                                </SelectContent>
-                                            </Select>
+                                                mono
+                                                placeholder={
+                                                    repoLoading
+                                                        ? 'Loading repositories…'
+                                                        : 'Search repositories…'
+                                                }
+                                                emptyMessage="No repositories found"
+                                            />
                                             <input
                                                 type="hidden"
                                                 name="github_repository"
@@ -1173,57 +1173,41 @@ function SettingsTab({
                                                 name="github_repo_id"
                                                 value={selectedRepoId ?? ''}
                                             />
-                                            <InputError
-                                                message={
-                                                    errors.github_repository
-                                                }
-                                            />
-                                        </div>
+                                        </Field>
 
-                                        <div className="grid gap-2">
-                                            <Label htmlFor="repository_branch">
-                                                Branch
-                                            </Label>
-                                            <Select
+                                        <Field
+                                            htmlFor="repository_branch"
+                                            label="Branch"
+                                            error={errors.repository_branch}
+                                        >
+                                            <SearchableCombobox
+                                                id="repository_branch"
                                                 value={repositoryBranch}
                                                 onValueChange={
                                                     setRepositoryBranch
                                                 }
-                                                disabled={branchLoading}
-                                            >
-                                                <SelectTrigger id="repository_branch">
-                                                    <SelectValue
-                                                        placeholder={
-                                                            branchLoading
-                                                                ? 'Loading branches…'
-                                                                : 'Select a branch'
-                                                        }
-                                                    />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {visibleBranches.map(
-                                                        (branch) => (
-                                                            <SelectItem
-                                                                key={branch}
-                                                                value={branch}
-                                                            >
-                                                                {branch}
-                                                            </SelectItem>
-                                                        ),
-                                                    )}
-                                                </SelectContent>
-                                            </Select>
+                                                options={branchOptions}
+                                                loading={branchLoading}
+                                                disabled={
+                                                    branchLoading ||
+                                                    !selectedRepository.includes(
+                                                        '/',
+                                                    )
+                                                }
+                                                mono
+                                                placeholder={
+                                                    branchLoading
+                                                        ? 'Loading branches…'
+                                                        : 'Search branches…'
+                                                }
+                                                emptyMessage="No branches found"
+                                            />
                                             <input
                                                 type="hidden"
                                                 name="repository_branch"
                                                 value={repositoryBranch}
                                             />
-                                            <InputError
-                                                message={
-                                                    errors.repository_branch
-                                                }
-                                            />
-                                        </div>
+                                        </Field>
 
                                         <input
                                             type="hidden"

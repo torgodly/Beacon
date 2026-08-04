@@ -4,10 +4,7 @@ function Skeleton({ className, ...props }: React.ComponentProps<'div'>) {
     return (
         <div
             data-slot="skeleton"
-            className={cn(
-                'animate-pulse rounded-lg bg-[#E8EEF3] dark:bg-[#263647]',
-                className,
-            )}
+            className={cn('skeleton rounded-lg bg-base-300', className)}
             {...props}
         />
     );
@@ -18,11 +15,11 @@ function PanelSkeleton({ className }: { className?: string }) {
     return (
         <div
             className={cn(
-                'overflow-hidden rounded-xl border border-[#E8EEF3] bg-white dark:border-[#263647] dark:bg-[#1C2D3F]/80',
+                'overflow-hidden rounded-xl border border-base-300 bg-base-100',
                 className,
             )}
         >
-            <div className="space-y-2 border-b border-[var(--bc-border-subtle)] px-6 py-4">
+            <div className="space-y-2 border-b border-base-300 px-6 py-4">
                 <Skeleton className="h-3 w-24" />
                 <Skeleton className="h-5 w-48" />
             </div>

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Copy } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 import { useClipboard } from '@/hooks/use-clipboard';
 import { cn } from '@/lib/utils';
 import { forge } from '@/components/forge/forge-tokens';

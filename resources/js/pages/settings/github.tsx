@@ -76,9 +76,9 @@ export default function GitHubSettings({
                 <InputError message={errors.github} />
 
                 {manifestUrlWarning && (
-                    <p className="rounded-lg border border-warning/30 bg-warning-subtle px-4 py-3 text-sm text-fg-warning">
-                        {manifestUrlWarning}
-                    </p>
+                    <div className="alert alert-warning shadow-sm" role="alert">
+                        <span>{manifestUrlWarning}</span>
+                    </div>
                 )}
 
                 {!installation && (

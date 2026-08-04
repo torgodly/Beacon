@@ -1,5 +1,4 @@
 import { Head, Link } from '@inertiajs/react';
-import { MoreHorizontal } from 'lucide-react';
 import {
     ForgeDividedCard,
     ForgeListRow,
@@ -16,14 +15,9 @@ import {
 } from '@/components/forge/forge-badge';
 import { Button } from '@/components/ui/button';
 import { SiteFrameworkIcon } from '@/components/sites/site-framework-icon';
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { dashboard } from '@/routes';
+import { index as databasesIndex } from '@/routes/databases';
 import { index as sitesIndex, show as siteShow } from '@/routes/sites';
 
 type OverviewSite = {
@@ -94,25 +88,6 @@ function formatDate(iso: string | null): string {
     });
 }
 
-function RowMenu() {
-    return (
-        <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-                <button
-                    type="button"
-                    className="rounded-md p-1.5 text-[#94a3b8] hover:bg-[#f1f5f9] hover:text-[#475569] dark:hover:bg-[#2e3032]"
-                    aria-label="Actions"
-                >
-                    <MoreHorizontal className="size-4" />
-                </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-                <DropdownMenuItem>Manage</DropdownMenuItem>
-            </DropdownMenuContent>
-        </DropdownMenu>
-    );
-}
-
 export default function Dashboard({
     server,
     overview,
@@ -132,6 +107,10 @@ export default function Dashboard({
         activity: OverviewActivity[];
     };
 }) {
+    const connectedSites = overview.sites.filter(
+        (site) => site.repository_connected,
+    ).length;
+
     return (
         <>
             <Head title="Overview" />
@@ -149,33 +128,39 @@ export default function Dashboard({
                         >
                             {overview.sites.length === 0 ? (
                                 <ForgeListRow className="text-[#64748b]">
-                                    No sites yet.
+                                    No sites yet.{' '}
+                                    <Link
+                                        href={sitesIndex()}
+                                        className="link link-primary"
+                                    >
+                                        Create one
+                                    </Link>
                                 </ForgeListRow>
                             ) : (
                                 overview.sites.map((site) => (
                                     <ForgeListRow key={site.id}>
                                         <Link
                                             href={siteShow(site.id)}
-                                            className="flex size-9 shrink-0 items-center justify-center rounded-md bg-[#f1f5f9] dark:bg-[#2e3032]"
+                                            className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#f1f5f9] dark:bg-[#2e3032]"
                                         >
                                             <SiteFrameworkIcon
                                                 type={site.type}
                                                 size="md"
                                             />
                                         </Link>
-                                        <div className="min-w-0 flex-1">
-                                            <Link
-                                                href={siteShow(site.id)}
-                                                className="font-medium text-[#0f172a] hover:text-[#18B69B] dark:text-[#f8fafc]"
-                                            >
+                                        <Link
+                                            href={siteShow(site.id)}
+                                            className="min-w-0 flex-1"
+                                        >
+                                            <p className="font-medium text-[#0f172a] hover:text-primary dark:text-[#f8fafc]">
                                                 {site.name}
-                                            </Link>
+                                            </p>
                                             <p className="truncate font-mono text-xs text-[#64748b]">
                                                 {site.repository_connected
                                                     ? `${site.repository}:${site.repository_branch}`
                                                     : 'No repository connected'}
                                             </p>
-                                        </div>
+                                        </Link>
                                         <div className="hidden items-center gap-2 sm:flex">
                                             {site.php_version && (
                                                 <ForgeRuntimeBadge
@@ -185,16 +170,25 @@ export default function Dashboard({
                                             <ForgeFrameworkBadge type={site.type} />
                                         </div>
                                         <span className="hidden text-xs text-[#64748b] lg:inline">
-                                            Deployed{' '}
                                             {timeAgo(site.last_deployed_at)}
                                         </span>
-                                        <RowMenu />
                                     </ForgeListRow>
                                 ))
                             )}
                         </ForgeDividedCard>
 
-                        <ForgeDividedCard title="Databases">
+                        <ForgeDividedCard
+                            title="Databases"
+                            action={
+                                overview.databases.length > 0 ? (
+                                    <Button variant="ghost" size="sm" asChild>
+                                        <Link href={databasesIndex()}>
+                                            View all
+                                        </Link>
+                                    </Button>
+                                ) : undefined
+                            }
+                        >
                             {overview.databases.length === 0 ? (
                                 <ForgeListRow className="text-[#64748b]">
                                     No databases yet.
@@ -202,11 +196,13 @@ export default function Dashboard({
                             ) : (
                                 overview.databases.map((database) => (
                                     <ForgeListRow key={database.id}>
-                                        <div className="min-w-0 flex-1 font-mono text-sm text-[#0f172a] dark:text-[#f8fafc]">
+                                        <Link
+                                            href={databasesIndex()}
+                                            className="min-w-0 flex-1 font-mono text-sm text-[#0f172a] dark:text-[#f8fafc]"
+                                        >
                                             {database.name}
-                                        </div>
+                                        </Link>
                                         <ForgeStatusBadge label={database.status} />
-                                        <RowMenu />
                                     </ForgeListRow>
                                 ))
                             )}
@@ -215,7 +211,7 @@ export default function Dashboard({
                         <ForgeDividedCard title="Background Processes">
                             {overview.processes.length === 0 ? (
                                 <ForgeListRow className="text-[#64748b]">
-                                    No background processes.
+                                    No background processes configured.
                                 </ForgeListRow>
                             ) : (
                                 overview.processes.map((process) => (
@@ -225,7 +221,9 @@ export default function Dashboard({
                                                 {process.name}
                                             </p>
                                             <p className="truncate font-mono text-xs text-[#64748b]">
-                                                {process.command}
+                                                {process.site_name
+                                                    ? `${process.site_name} · ${process.command}`
+                                                    : process.command}
                                             </p>
                                         </div>
                                         <ForgeStatusBadge
@@ -236,7 +234,6 @@ export default function Dashboard({
                                             }
                                             pulse={process.status === 'running'}
                                         />
-                                        <RowMenu />
                                     </ForgeListRow>
                                 ))
                             )}
@@ -259,15 +256,16 @@ export default function Dashboard({
                                             </p>
                                         </div>
                                         <ForgeStatusBadge
-                                            label={job.enabled ? 'Installed' : 'Disabled'}
+                                            label={
+                                                job.enabled ? 'Active' : 'Paused'
+                                            }
                                         />
-                                        <RowMenu />
                                     </ForgeListRow>
                                 ))
                             )}
                         </ForgeDividedCard>
 
-                        <ForgeDividedCard title="Activity">
+                        <ForgeDividedCard title="Recent Activity">
                             {overview.activity.length === 0 ? (
                                 <ForgeListRow className="text-[#64748b]">
                                     No recent activity.
@@ -280,7 +278,7 @@ export default function Dashboard({
                                     >
                                         <div
                                             className={cn(
-                                                'mt-0.5 size-2 shrink-0 rounded-full bg-[#18B69B]',
+                                                'mt-1 size-2.5 shrink-0 rounded-full bg-primary',
                                             )}
                                         />
                                         <div className="min-w-0 flex-1">
@@ -293,7 +291,7 @@ export default function Dashboard({
                                                 </p>
                                             )}
                                             <p className="mt-0.5 text-xs text-[#94a3b8]">
-                                                {timeAgo(entry.created_at)} by{' '}
+                                                {timeAgo(entry.created_at)} ·{' '}
                                                 {entry.user_name}
                                             </p>
                                         </div>
@@ -305,10 +303,11 @@ export default function Dashboard({
                 }
                 sidebar={
                     <>
-                        <ForgeDetailsSection title="Details">
+                        <ForgeDetailsSection title="Server">
                             <ForgeDetailRow
-                                label="Server ID"
-                                value={String(server.id)}
+                                label="Hostname"
+                                value={server.hostname}
+                                mono
                             />
                             <ForgeDetailRow
                                 label="Site user"
@@ -316,13 +315,23 @@ export default function Dashboard({
                                 mono
                             />
                             <ForgeDetailRow
-                                label="Hostname"
-                                value={server.hostname}
-                                mono
-                            />
-                            <ForgeDetailRow
                                 label="Created"
                                 value={formatDate(server.created_at)}
+                            />
+                        </ForgeDetailsSection>
+
+                        <ForgeDetailsSection title="Summary">
+                            <ForgeDetailRow
+                                label="Sites"
+                                value={String(overview.sites.length)}
+                            />
+                            <ForgeDetailRow
+                                label="Git connected"
+                                value={String(connectedSites)}
+                            />
+                            <ForgeDetailRow
+                                label="Databases"
+                                value={String(overview.databases.length)}
                             />
                         </ForgeDetailsSection>
 

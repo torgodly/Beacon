@@ -1,7 +1,7 @@
 import { router } from '@inertiajs/react';
 import type { Page } from '@inertiajs/core';
 import { useEffect, useRef } from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 import type { FlashToast } from '@/types/ui';
 
 function showFlashToast(data: FlashToast | undefined | null): void {

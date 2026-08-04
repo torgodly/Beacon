@@ -121,13 +121,13 @@
 
     /* ---- Radius: restrained, the mark is blocky -------------------------- */
     --bc-radius-none: 0px;
-    --bc-radius-xs: 3px;
-    --bc-radius-sm: 4px;
-    --bc-radius-md: 6px;
-    --bc-radius-lg: 8px;
-    --bc-radius-xl: 12px;
-    --bc-radius-2xl: 16px;
-    --bc-radius-3xl: 24px;
+    --bc-radius-xs: 4px;
+    --bc-radius-sm: 6px;
+    --bc-radius-md: 8px;
+    --bc-radius-lg: 12px;
+    --bc-radius-xl: 16px;
+    --bc-radius-2xl: 20px;
+    --bc-radius-3xl: 28px;
     --bc-radius-full: 9999px;
 
     /* ---- Shell dimensions ------------------------------------------------ */

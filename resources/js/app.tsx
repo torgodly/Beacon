@@ -1,6 +1,6 @@
 import { createInertiaApp } from '@inertiajs/react';
 import { OperationDock } from '@/components/operations/operation-dock';
-import { Toaster } from '@/components/ui/sonner';
+import { Toaster } from '@/components/ui/toast';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { initializeTheme } from '@/hooks/use-appearance';
 import { OperationsProvider } from '@/hooks/use-operations';
