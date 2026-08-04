@@ -31,6 +31,7 @@ class GitHubSettingsTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->component('settings/github')
                 ->has('manifest')
+                ->has('manifestState')
                 ->where('installation', null));
     }
 
@@ -55,13 +56,36 @@ class GitHubSettingsTest extends TestCase
                 ->component('settings/github')
                 ->where('manifest.url', 'https://beacon.example.com')
                 ->where('manifest.setup_url', 'https://beacon.example.com/settings/github/setup')
-                ->where('manifest.hook_attributes.url', 'https://beacon.example.com/webhooks/github'));
+                ->where('manifest.hook_attributes.url', 'https://beacon.example.com/webhooks/github')
+                ->where('manifest.redirect_url', 'https://beacon.example.com/settings/github/callback'));
 
         $redirectUrl = $response->original->getData()['page']['props']['manifest']['redirect_url'] ?? null;
 
         $this->assertIsString($redirectUrl);
-        $this->assertStringStartsWith('https://beacon.example.com/settings/github/callback?state=', $redirectUrl);
+        $this->assertSame('https://beacon.example.com/settings/github/callback', $redirectUrl);
         $this->assertNotFalse(filter_var($redirectUrl, FILTER_VALIDATE_URL));
+        $this->assertStringNotContainsString('?', $redirectUrl);
+    }
+
+    #[Test]
+    public function manifest_normalizes_panel_domain_with_scheme(): void
+    {
+        Server::factory()->create([
+            'id' => 1,
+            'panel_domain' => 'https://beacon.example.com/',
+            'panel_port' => 443,
+            'panel_url_public' => true,
+            'public_ip' => '203.0.113.10',
+        ]);
+
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->get(route('github.edit'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('manifest.url', 'https://beacon.example.com')
+                ->where('manifest.redirect_url', 'https://beacon.example.com/settings/github/callback'));
     }
 
     #[Test]

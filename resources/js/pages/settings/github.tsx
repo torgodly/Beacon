@@ -38,12 +38,16 @@ type Delivery = {
 
 type Props = {
     manifest: Manifest;
+    manifestState: string;
+    manifestUrlWarning: string | null;
     installation: Installation | null;
     deliveries: Delivery[];
 };
 
 export default function GitHubSettings({
     manifest,
+    manifestState,
+    manifestUrlWarning,
     installation,
     deliveries,
 }: Props) {
@@ -71,6 +75,12 @@ export default function GitHubSettings({
 
                 <InputError message={errors.github} />
 
+                {manifestUrlWarning && (
+                    <p className="rounded-lg border border-warning/30 bg-warning-subtle px-4 py-3 text-sm text-fg-warning">
+                        {manifestUrlWarning}
+                    </p>
+                )}
+
                 {!installation && (
                     <Card>
                         <CardHeader>
@@ -82,26 +92,28 @@ export default function GitHubSettings({
                                 redirects back here to finish setup.
                             </CardDescription>
                         </CardHeader>
-                        <CardContent>
+                        <CardContent className="space-y-3">
                             <form
-                                action="https://github.com/settings/apps/new"
+                                action={`https://github.com/settings/apps/new?state=${encodeURIComponent(manifestState)}`}
                                 method="post"
-                                onSubmit={(event) => {
-                                    const input = event.currentTarget.elements.namedItem(
-                                        'manifest',
-                                    ) as HTMLInputElement | null;
-
-                                    if (input) {
-                                        input.value = JSON.stringify(manifest);
-                                    }
-                                }}
                             >
-                                <input type="hidden" name="manifest" defaultValue="" />
-                                <Button type="submit">
+                                <input
+                                    type="hidden"
+                                    name="manifest"
+                                    value={JSON.stringify(manifest)}
+                                    readOnly
+                                />
+                                <Button type="submit" disabled={manifestUrlWarning !== null}>
                                     <Github className="size-4" />
                                     Connect GitHub
                                 </Button>
                             </form>
+                            <p className="text-caption text-muted-foreground">
+                                GitHub will redirect back to{' '}
+                                <span className="font-mono text-foreground">
+                                    {String(manifest.redirect_url)}
+                                </span>
+                            </p>
                         </CardContent>
                     </Card>
                 )}

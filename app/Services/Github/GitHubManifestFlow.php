@@ -14,9 +14,9 @@ class GitHubManifestFlow
     public function __construct(private readonly GitHubAppClient $client) {}
 
     /**
-     * @return array<string, mixed>
+     * @return array{state: string, manifest: array<string, mixed>}
      */
-    public function manifestPayload(User $user): array
+    public function manifestRegistration(User $user): array
     {
         $state = Str::random(40);
         Cache::put($this->stateKey($state), $user->id, now()->addHour());
@@ -24,22 +24,27 @@ class GitHubManifestFlow
         $baseUrl = Server::current()->panelBaseUrl();
 
         return [
-            'name' => config('beacon.github.app_name'),
-            'url' => $baseUrl,
-            'hook_attributes' => [
-                'url' => $this->absoluteRoute('webhooks.github', $baseUrl),
-            ],
-            'redirect_url' => $this->absoluteRoute('github.callback', $baseUrl, ['state' => $state]),
-            'setup_url' => $this->absoluteRoute('github.setup', $baseUrl),
-            'public' => false,
-            'default_permissions' => [
-                'contents' => 'read',
-                'metadata' => 'read',
-                'deployments' => 'write',
-            ],
-            'default_events' => [
-                'push',
-                'ping',
+            'state' => $state,
+            'manifest' => [
+                'name' => config('beacon.github.app_name'),
+                'url' => $baseUrl,
+                'hook_attributes' => [
+                    'url' => $this->absoluteRoute('webhooks.github', $baseUrl),
+                ],
+                // GitHub validates redirect_url without query params; state is sent
+                // separately on the form action per their manifest flow docs.
+                'redirect_url' => $this->absoluteRoute('github.callback', $baseUrl),
+                'setup_url' => $this->absoluteRoute('github.setup', $baseUrl),
+                'public' => false,
+                'default_permissions' => [
+                    'contents' => 'read',
+                    'metadata' => 'read',
+                    'deployments' => 'write',
+                ],
+                'default_events' => [
+                    'push',
+                    'ping',
+                ],
             ],
         ];
     }

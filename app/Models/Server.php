@@ -171,12 +171,14 @@ class Server extends Model
      */
     public function panelBaseUrl(): string
     {
-        if (filled($this->panel_domain)) {
+        $domain = $this->normalizedPanelDomain();
+
+        if ($domain !== null) {
             $portSuffix = in_array($this->panel_port, [80, 443], true)
                 ? ''
                 : ":{$this->panel_port}";
 
-            return "https://{$this->panel_domain}{$portSuffix}";
+            return "https://{$domain}{$portSuffix}";
         }
 
         $configured = rtrim((string) config('app.url'), '/');
@@ -198,5 +200,19 @@ class Server extends Model
         $host = parse_url($url, PHP_URL_HOST);
 
         return is_string($scheme) && $scheme !== '' && is_string($host) && $host !== '';
+    }
+
+    private function normalizedPanelDomain(): ?string
+    {
+        if (blank($this->panel_domain)) {
+            return null;
+        }
+
+        $domain = trim($this->panel_domain);
+        $domain = (string) preg_replace('#^https?://#i', '', $domain);
+        $domain = rtrim($domain, '/');
+        $domain = explode('/', $domain)[0] ?? '';
+
+        return $domain !== '' ? $domain : null;
     }
 }

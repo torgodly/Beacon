@@ -39,8 +39,13 @@ class GitHubController extends Controller
                 ])
             : collect();
 
+        $registration = app(GitHubManifestFlow::class)->manifestRegistration($request->user());
+        $redirectUrl = (string) ($registration['manifest']['redirect_url'] ?? '');
+
         return Inertia::render('settings/github', [
-            'manifest' => app(GitHubManifestFlow::class)->manifestPayload($request->user()),
+            'manifest' => $registration['manifest'],
+            'manifestState' => $registration['state'],
+            'manifestUrlWarning' => $this->manifestUrlWarning($redirectUrl),
             'installation' => $installation ? [
                 'app_slug' => $installation->app_slug,
                 'account_login' => $installation->account_login,
@@ -148,5 +153,32 @@ class GitHubController extends Controller
             'type' => 'success',
             'message' => 'Webhook delivery redelivered.',
         ]);
+    }
+
+    private function manifestUrlWarning(string $redirectUrl): ?string
+    {
+        if ($redirectUrl === '' || filter_var($redirectUrl, FILTER_VALIDATE_URL) === false) {
+            return 'Set a public panel domain under Settings → Server before connecting GitHub.';
+        }
+
+        $host = parse_url($redirectUrl, PHP_URL_HOST);
+
+        if (! is_string($host) || $host === '') {
+            return 'Set a public panel domain under Settings → Server before connecting GitHub.';
+        }
+
+        if (
+            in_array($host, ['localhost', '127.0.0.1', '0.0.0.0'], true)
+            || filter_var($host, FILTER_VALIDATE_IP) !== false
+            || str_contains($host, '__APP_URL__')
+        ) {
+            return 'GitHub requires a public HTTPS domain. Attach your panel domain under Settings → Server first.';
+        }
+
+        if (str_starts_with($redirectUrl, 'http://')) {
+            return 'GitHub requires HTTPS callback URLs. Attach your panel domain under Settings → Server.';
+        }
+
+        return null;
     }
 }
