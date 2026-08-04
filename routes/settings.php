@@ -45,6 +45,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('settings/updates/{update:uuid}/log', [UpdatesController::class, 'log'])->name('updates.log');
 
     Route::get('settings/server', [ServerSettingsController::class, 'edit'])->name('server.edit');
+    Route::patch('settings/server/deploy-polling', [ServerSettingsController::class, 'updateDeployPolling'])
+        ->name('server.deploy-polling.update');
     Route::post('settings/server/domain', [ServerSettingsController::class, 'attachDomain'])
         ->middleware(RequirePassword::class)
         ->name('server.domain.attach');

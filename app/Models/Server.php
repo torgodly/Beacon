@@ -150,4 +150,19 @@ class Server extends Model
             ],
         );
     }
+
+    public function deployPollIntervalSeconds(): int
+    {
+        $min = (int) config('beacon.deployments.min_poll_interval_seconds', 30);
+        $max = (int) config('beacon.deployments.max_poll_interval_seconds', 3600);
+        $default = (int) config('beacon.deployments.default_poll_interval_seconds', 60);
+
+        $configured = $this->settings['deploy_poll_interval_seconds'] ?? null;
+
+        if (! is_int($configured)) {
+            return max($min, min($max, $default));
+        }
+
+        return max($min, min($max, $configured));
+    }
 }

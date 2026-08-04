@@ -25,6 +25,7 @@ import {
     ForgeEmptyState,
 } from '@/components/forge/forge-empty-state';
 import InputError from '@/components/input-error';
+import { SiteFrameworkIcon } from '@/components/sites/site-framework-icon';
 import {
     SearchableCombobox,
     type SearchableComboboxOption,
@@ -395,39 +396,48 @@ export default function SitesIndex({
                                                         <label
                                                             key={type.value}
                                                             className={cn(
-                                                                'flex cursor-pointer flex-col gap-1 rounded-md border p-3 transition-colors duration-[--bc-duration-fast]',
+                                                                'flex cursor-pointer gap-3 rounded-md border p-3 transition-colors duration-[--bc-duration-fast]',
                                                                 siteType ===
                                                                     type.value
                                                                     ? 'border-border-brand bg-brand-subtle'
                                                                     : 'border-[var(--bc-border-default)] hover:border-border-hover',
                                                             )}
                                                         >
-                                                            <span className="flex items-center gap-2">
-                                                                <input
-                                                                    type="radio"
-                                                                    name="type"
-                                                                    value={
-                                                                        type.value
-                                                                    }
-                                                                    checked={
-                                                                        siteType ===
-                                                                        type.value
-                                                                    }
-                                                                    onChange={() =>
-                                                                        setSiteType(
-                                                                            type.value,
-                                                                        )
-                                                                    }
-                                                                    className="size-3.5 accent-[var(--bc-bg-brand)]"
-                                                                />
-                                                                <span className="text-[14px] leading-5 font-medium text-fg">
-                                                                    {type.label}
+                                                            <SiteFrameworkIcon
+                                                                type={type.value}
+                                                                size="lg"
+                                                                className="mt-0.5"
+                                                            />
+                                                            <span className="flex min-w-0 flex-1 flex-col gap-1">
+                                                                <span className="flex items-center gap-2">
+                                                                    <input
+                                                                        type="radio"
+                                                                        name="type"
+                                                                        value={
+                                                                            type.value
+                                                                        }
+                                                                        checked={
+                                                                            siteType ===
+                                                                            type.value
+                                                                        }
+                                                                        onChange={() =>
+                                                                            setSiteType(
+                                                                                type.value,
+                                                                            )
+                                                                        }
+                                                                        className="size-3.5 accent-[var(--bc-bg-brand)]"
+                                                                    />
+                                                                    <span className="text-[14px] leading-5 font-medium text-fg">
+                                                                        {
+                                                                            type.label
+                                                                        }
+                                                                    </span>
                                                                 </span>
-                                                            </span>
-                                                            <span className="text-[13px] leading-5 text-fg-muted">
-                                                                {
-                                                                    type.description
-                                                                }
+                                                                <span className="text-[13px] leading-5 text-fg-muted">
+                                                                    {
+                                                                        type.description
+                                                                    }
+                                                                </span>
                                                             </span>
                                                         </label>
                                                     ))}
@@ -969,11 +979,9 @@ export default function SitesIndex({
                         <ForgeListRow key={site.id}>
                             <Link
                                 href={show(site.name)}
-                                className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#f1f5f9] font-mono text-xs font-semibold text-[#475569] dark:bg-[#2e3032] dark:text-[#cbd5e1]"
+                                className="flex size-9 shrink-0 items-center justify-center rounded-md bg-[#f1f5f9] dark:bg-[#2e3032]"
                             >
-                                {(site.primary_domain || site.name)
-                                    .slice(0, 2)
-                                    .toUpperCase()}
+                                <SiteFrameworkIcon type={site.type} size="md" />
                             </Link>
                             <Link
                                 href={show(site.name)}

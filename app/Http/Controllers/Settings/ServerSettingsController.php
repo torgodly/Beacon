@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AttachPanelDomainRequest;
+use App\Http\Requests\UpdateDeployPollingRequest;
 use App\Models\Server;
 use App\Services\Server\PanelDomainService;
 use Illuminate\Http\RedirectResponse;
@@ -28,6 +29,33 @@ class ServerSettingsController extends Controller
                     || blank($server->panel_domain)
                     || filter_var($server->panel_domain, FILTER_VALIDATE_IP) !== false,
             ],
+            'deployPolling' => [
+                'configured_interval_seconds' => $server->settings['deploy_poll_interval_seconds'] ?? null,
+                'effective_interval_seconds' => $server->deployPollIntervalSeconds(),
+                'default_interval_seconds' => (int) config('beacon.deployments.default_poll_interval_seconds', 60),
+                'min_interval_seconds' => (int) config('beacon.deployments.min_poll_interval_seconds', 30),
+                'max_interval_seconds' => (int) config('beacon.deployments.max_poll_interval_seconds', 3600),
+            ],
+        ]);
+    }
+
+    public function updateDeployPolling(UpdateDeployPollingRequest $request): RedirectResponse
+    {
+        $server = Server::current();
+        $settings = $server->settings ?? [];
+        $interval = $request->validated('deploy_poll_interval_seconds');
+
+        if ($interval === null) {
+            unset($settings['deploy_poll_interval_seconds']);
+        } else {
+            $settings['deploy_poll_interval_seconds'] = (int) $interval;
+        }
+
+        $server->update(['settings' => $settings === [] ? null : $settings]);
+
+        return back()->with('toast', [
+            'type' => 'success',
+            'message' => 'Deploy polling interval saved.',
         ]);
     }
 

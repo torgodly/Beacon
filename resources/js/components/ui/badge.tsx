@@ -1,7 +1,9 @@
 import { Slot } from '@radix-ui/react-slot';
 import { cva, type VariantProps } from 'class-variance-authority';
 import * as React from 'react';
+import { SiteFrameworkIcon } from '@/components/sites/site-framework-icon';
 import { StatusIndicator, type StatusIndicatorTone } from '@/components/status-indicator';
+import { siteFrameworkLabel } from '@/lib/site-framework';
 import { cn } from '@/lib/utils';
 
 const badgeVariants = cva(
@@ -84,13 +86,7 @@ export function FrameworkBadge({
     type: string;
     className?: string;
 }) {
-    const label =
-        {
-            laravel: 'Laravel',
-            nextjs: 'Next.js',
-            nuxt: 'Nuxt',
-            static: 'Static',
-        }[type] ?? type;
+    const label = siteFrameworkLabel(type);
 
     const frameworkClasses: Record<string, string> = {
         laravel:
@@ -105,12 +101,13 @@ export function FrameworkBadge({
     return (
         <span
             className={cn(
-                'inline-flex w-fit shrink-0 items-center rounded-sm border px-2 py-0.5 text-[12px] leading-[18px] font-medium',
+                'inline-flex w-fit shrink-0 items-center gap-1.5 rounded-sm border px-2 py-0.5 text-[12px] leading-[18px] font-medium',
                 frameworkClasses[type] ??
                     'border-[var(--bc-border-default)] bg-[var(--bc-bg-neutral-subtle)] text-fg-muted',
                 className,
             )}
         >
+            <SiteFrameworkIcon type={type} size="sm" />
             {label}
         </span>
     );

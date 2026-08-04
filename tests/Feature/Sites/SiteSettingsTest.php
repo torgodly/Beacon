@@ -38,6 +38,49 @@ class SiteSettingsTest extends TestCase
         $this->assertSame('poll', $site->deploy_trigger);
     }
 
+    public function test_update_persists_poll_interval_override(): void
+    {
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+        $site = $this->createSiteWithDomain('poll.example.com');
+
+        $this->actingAs($user)->patch(route('sites.settings.update', $site), [
+            'repository' => 'git@github.com:acme/app.git',
+            'repository_branch' => 'main',
+            'repository_provider' => 'custom',
+            'auto_deploy' => true,
+            'deploy_trigger' => 'poll',
+            'poll_interval_seconds' => 120,
+        ])->assertRedirect();
+
+        $this->assertSame(120, $site->fresh()->poll_interval_seconds);
+    }
+
+    public function test_update_shows_success_toast_in_inertia_flash(): void
+    {
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+        $site = $this->createSiteWithDomain('toast.example.com');
+
+        $this->actingAs($user)
+            ->from(route('sites.show', ['site' => $site, 'tab' => 'settings']))
+            ->patch(route('sites.settings.update', $site), [
+                'repository' => 'git@github.com:acme/app.git',
+                'repository_branch' => 'main',
+                'repository_provider' => 'custom',
+                'auto_deploy' => false,
+                'deploy_trigger' => 'manual',
+            ])
+            ->assertRedirect();
+
+        $this->actingAs($user)
+            ->get(route('sites.show', ['site' => $site, 'tab' => 'settings']))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('flash.toast.type', 'success')
+                ->where('flash.toast.message', 'Site settings saved.'));
+    }
+
     public function test_clearing_repository_disables_auto_deploy(): void
     {
         $user = User::factory()->create();

@@ -41,6 +41,7 @@ use Illuminate\Support\Str;
  * @property string $deploy_trigger
  * @property string|null $last_polled_sha
  * @property Carbon|null $last_polled_at
+ * @property int|null $poll_interval_seconds
  * @property string|null $deploy_script
  * @property string $deployment_status
  * @property Carbon|null $last_deployed_at
@@ -89,6 +90,7 @@ class Site extends Model
         'deploy_trigger',
         'last_polled_sha',
         'last_polled_at',
+        'poll_interval_seconds',
         'deploy_script',
         'deployment_status',
         'last_deployed_at',
@@ -111,6 +113,7 @@ class Site extends Model
             'open_basedir_extra_paths' => 'array',
             'strict_functions' => 'boolean',
             'auto_deploy' => 'boolean',
+            'poll_interval_seconds' => 'integer',
             'last_polled_at' => 'datetime',
             'last_deployed_at' => 'datetime',
             'nginx_customized' => 'boolean',
@@ -239,5 +242,17 @@ class Site extends Model
     public function envPath(): string
     {
         return "{$this->path}/.env";
+    }
+
+    public function effectivePollIntervalSeconds(): int
+    {
+        $min = (int) config('beacon.deployments.min_poll_interval_seconds', 30);
+        $max = (int) config('beacon.deployments.max_poll_interval_seconds', 3600);
+
+        if ($this->poll_interval_seconds !== null) {
+            return max($min, min($max, $this->poll_interval_seconds));
+        }
+
+        return Server::current()->deployPollIntervalSeconds();
     }
 }

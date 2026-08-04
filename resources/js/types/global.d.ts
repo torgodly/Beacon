@@ -15,6 +15,10 @@ declare module '@inertiajs/core' {
             auth: Auth;
             sidebarOpen: boolean;
             commandPalette: CommandPalettePayload | null;
+            flash?: {
+                toast?: import('@/types/ui').FlashToast | null;
+                database_user_password?: string | null;
+            };
             [key: string]: unknown;
         };
     }

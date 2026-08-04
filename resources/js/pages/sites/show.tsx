@@ -43,7 +43,6 @@ import { DeployScriptEnvReference } from '@/components/deploy-script-env-referen
 import InputError from '@/components/input-error';
 import { CommandLogViewer } from '@/components/sites/command-log-viewer';
 import { DeployButton } from '@/components/sites/deploy-button';
-import { DeploymentStream } from '@/components/sites/deployment-stream';
 import { StatusBadge } from '@/components/status-badge';
 import type { Status } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
@@ -132,6 +131,8 @@ type SiteSettingsPayload = {
     repository_provider: string;
     auto_deploy: boolean;
     deploy_trigger: string;
+    poll_interval_seconds: number | null;
+    default_poll_interval_seconds: number;
     deploy_key_public: string | null;
     github: {
         connected: boolean;
@@ -167,6 +168,10 @@ type SiteDetail = SiteSummary &
         repository: string | null;
         repository_branch: string;
         repository_connected: boolean;
+        auto_deploy: boolean;
+        deploy_trigger: string;
+        poll_interval_seconds: number | null;
+        effective_poll_interval_seconds: number;
         system_user?: string;
         created_at?: string | null;
     };
@@ -308,13 +313,11 @@ function sslStatus(status: string): Status {
 
 function OverviewTab({
     site,
-    activeDeployment,
     deployments,
     supervisorProcesses,
     cronJobs,
 }: {
     site: SiteDetail;
-    activeDeployment: DeploymentRow | null;
     deployments: DeploymentRow[];
     supervisorProcesses: SupervisorProcessRow[];
     cronJobs: CronJobRow[];
@@ -335,13 +338,6 @@ function OverviewTab({
         <ForgePageLayout
             main={
                 <>
-                    {activeDeployment && (
-                        <DeploymentStream
-                            siteId={site.id}
-                            deployment={activeDeployment}
-                        />
-                    )}
-
                     <ForgeDividedCard title="Repository">
                         <ForgeListRow>
                             <div className="min-w-0 flex-1">
@@ -840,6 +836,9 @@ function SettingsTab({
 }) {
     const [autoDeploy, setAutoDeploy] = useState(settings.auto_deploy);
     const [deployTrigger, setDeployTrigger] = useState(settings.deploy_trigger);
+    const [pollIntervalSeconds, setPollIntervalSeconds] = useState(
+        settings.poll_interval_seconds?.toString() ?? '',
+    );
     const [repositories, setRepositories] = useState<GitHubRepositoryOption[]>(
         [],
     );
@@ -1341,6 +1340,35 @@ function SettingsTab({
                                     />
                                 </div>
 
+                                <div className="grid gap-2">
+                                    <Label htmlFor="poll_interval_seconds">
+                                        Poll interval (seconds)
+                                    </Label>
+                                    <Input
+                                        id="poll_interval_seconds"
+                                        name="poll_interval_seconds"
+                                        type="number"
+                                        min={30}
+                                        max={3600}
+                                        step={30}
+                                        value={pollIntervalSeconds}
+                                        onChange={(event) =>
+                                            setPollIntervalSeconds(
+                                                event.target.value,
+                                            )
+                                        }
+                                        placeholder={`Panel default · ${settings.default_poll_interval_seconds}s`}
+                                    />
+                                    <p className="text-sm text-muted-foreground">
+                                        Leave blank to use the panel default (
+                                        {settings.default_poll_interval_seconds}
+                                        s). Used when deploy trigger is poll.
+                                    </p>
+                                    <InputError
+                                        message={errors.poll_interval_seconds}
+                                    />
+                                </div>
+
                                 <Button
                                     type="submit"
                                     disabled={processing}
@@ -1703,13 +1731,11 @@ function DeploymentsTab({
     deployments,
     deployScript,
     deployEnvReference,
-    activeDeployment,
 }: {
     site: SiteDetail;
     deployments: DeploymentRow[];
     deployScript: string;
     deployEnvReference: EnvReferenceRow[];
-    activeDeployment: DeploymentRow | null;
 }) {
     const scriptForm = useForm({
         deploy_script: deployScript,
@@ -1717,13 +1743,6 @@ function DeploymentsTab({
 
     return (
         <ForgePageContent>
-            {activeDeployment && (
-                <DeploymentStream
-                    siteId={site.id}
-                    deployment={activeDeployment}
-                />
-            )}
-
             <ForgeDeploymentsSection
                 siteId={site.id}
                 deployments={deployments}
@@ -2643,7 +2662,6 @@ export default function SiteShow({
                 <Head title={`${site.name} — Overview`} />
                 <OverviewTab
                     site={site}
-                    activeDeployment={activeDeployment}
                     deployments={deployments ?? []}
                     supervisorProcesses={supervisorProcesses ?? []}
                     cronJobs={cronJobs ?? []}
@@ -2694,7 +2712,6 @@ export default function SiteShow({
                     deployments={deployments}
                     deployScript={deployScript}
                     deployEnvReference={deployEnvReference}
-                    activeDeployment={activeDeployment}
                 />
             </>
         );

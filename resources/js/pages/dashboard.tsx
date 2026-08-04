@@ -1,5 +1,5 @@
 import { Head, Link } from '@inertiajs/react';
-import { Globe, MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal } from 'lucide-react';
 import {
     ForgeDividedCard,
     ForgeListRow,
@@ -15,6 +15,7 @@ import {
     ForgeStatusBadge,
 } from '@/components/forge/forge-badge';
 import { Button } from '@/components/ui/button';
+import { SiteFrameworkIcon } from '@/components/sites/site-framework-icon';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -155,9 +156,12 @@ export default function Dashboard({
                                     <ForgeListRow key={site.id}>
                                         <Link
                                             href={siteShow(site.id)}
-                                            className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#f1f5f9] text-[#475569] dark:bg-[#2e3032] dark:text-[#cbd5e1]"
+                                            className="flex size-9 shrink-0 items-center justify-center rounded-md bg-[#f1f5f9] dark:bg-[#2e3032]"
                                         >
-                                            <Globe className="size-4" />
+                                            <SiteFrameworkIcon
+                                                type={site.type}
+                                                size="md"
+                                            />
                                         </Link>
                                         <div className="min-w-0 flex-1">
                                             <Link

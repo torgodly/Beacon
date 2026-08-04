@@ -25,6 +25,12 @@ class UpdateSiteSettingsRequest extends FormRequest
             'github_repository' => ['nullable', 'string', 'max:500'],
             'auto_deploy' => ['required', 'boolean'],
             'deploy_trigger' => ['required', Rule::in(['manual', 'poll', 'webhook'])],
+            'poll_interval_seconds' => [
+                'nullable',
+                'integer',
+                'min:'.config('beacon.deployments.min_poll_interval_seconds', 30),
+                'max:'.config('beacon.deployments.max_poll_interval_seconds', 3600),
+            ],
         ];
     }
 
@@ -33,5 +39,9 @@ class UpdateSiteSettingsRequest extends FormRequest
         $this->merge([
             'auto_deploy' => filter_var($this->input('auto_deploy'), FILTER_VALIDATE_BOOLEAN),
         ]);
+
+        if ($this->input('poll_interval_seconds') === '') {
+            $this->merge(['poll_interval_seconds' => null]);
+        }
     }
 }

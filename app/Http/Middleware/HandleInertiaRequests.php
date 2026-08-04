@@ -52,6 +52,7 @@ class HandleInertiaRequests extends Middleware
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'flash' => [
                 'database_user_password' => fn () => $request->session()->get('database_user_password'),
+                'toast' => fn () => $request->session()->pull('toast'),
             ],
             'beacon' => [
                 'health' => $health,

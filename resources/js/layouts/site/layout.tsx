@@ -1,6 +1,11 @@
 import { usePage } from '@inertiajs/react';
 import type { PropsWithChildren } from 'react';
 import { ForgeSiteChrome } from '@/components/forge/forge-site-header';
+import {
+    DeploymentStream,
+    type DeploymentStreamPayload,
+} from '@/components/sites/deployment-stream';
+import { useSiteLiveUpdates } from '@/hooks/use-site-live-updates';
 
 export type SiteSummary = {
     id: string;
@@ -10,6 +15,9 @@ export type SiteSummary = {
     repository_branch?: string;
     repository_connected?: boolean;
     deployment_status?: string;
+    auto_deploy?: boolean;
+    deploy_trigger?: string;
+    effective_poll_interval_seconds?: number;
     ssl_status?: string;
     status?: string;
     type?: string;
@@ -21,11 +29,22 @@ export default function SiteLayout({
     tab = 'overview',
     children,
 }: PropsWithChildren<{ site?: SiteSummary; tab?: string }>) {
-    usePage();
+    const page = usePage<{ activeDeployment?: DeploymentStreamPayload | null }>();
+    const activeDeployment = page.props.activeDeployment ?? null;
+
+    useSiteLiveUpdates(site, tab);
 
     return (
         <>
             {site && <ForgeSiteChrome site={site} tab={tab} />}
+            {site && activeDeployment && (
+                <div className="mb-6">
+                    <DeploymentStream
+                        siteId={site.id}
+                        deployment={activeDeployment}
+                    />
+                </div>
+            )}
             {children}
         </>
     );

@@ -157,6 +157,9 @@ return [
     'deployments' => [
         'script_timeout' => (int) env('BEACON_DEPLOY_SCRIPT_TIMEOUT', 1800),
         'output_tail_kb' => (int) env('BEACON_DEPLOY_OUTPUT_TAIL_KB', 256),
+        'default_poll_interval_seconds' => (int) env('BEACON_DEFAULT_POLL_INTERVAL_SECONDS', 60),
+        'min_poll_interval_seconds' => 30,
+        'max_poll_interval_seconds' => 3600,
     ],
 
     /*

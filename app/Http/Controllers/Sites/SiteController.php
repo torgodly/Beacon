@@ -229,12 +229,16 @@ class SiteController extends Controller
                 ->whereNotNull('installation_id')
                 ->first();
 
+            $server = Server::current();
+
             $siteSettings = [
                 'repository' => $site->repository,
                 'repository_branch' => $site->repository_branch ?? 'main',
                 'repository_provider' => $site->repository_provider ?? 'custom',
                 'auto_deploy' => $site->auto_deploy,
                 'deploy_trigger' => $site->deploy_trigger,
+                'poll_interval_seconds' => $site->poll_interval_seconds,
+                'default_poll_interval_seconds' => $server->deployPollIntervalSeconds(),
                 'deploy_key_public' => $site->deploy_key_public,
                 'github' => [
                     'connected' => $installation !== null,
@@ -245,8 +249,6 @@ class SiteController extends Controller
                         : null,
                 ],
             ];
-
-            $server = Server::current();
 
             $runtimeOptions = [
                 'php_versions' => PhpVersion::query()
@@ -491,6 +493,10 @@ class SiteController extends Controller
             'repository' => $site->repository,
             'repository_branch' => $site->repository_branch ?? 'main',
             'repository_connected' => filled($site->repository),
+            'auto_deploy' => $site->auto_deploy,
+            'deploy_trigger' => $site->deploy_trigger,
+            'poll_interval_seconds' => $site->poll_interval_seconds,
+            'effective_poll_interval_seconds' => $site->effectivePollIntervalSeconds(),
         ];
     }
 }

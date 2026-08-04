@@ -36,7 +36,27 @@ class ServerSettingsTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->component('settings/server')
                 ->has('panel')
+                ->has('deployPolling')
                 ->where('panel.can_attach_domain', true));
+    }
+
+    #[Test]
+    public function deploy_polling_interval_can_be_updated(): void
+    {
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+
+        $this->actingAs($user)
+            ->from(route('server.edit'))
+            ->patch(route('server.deploy-polling.update'), [
+                'deploy_poll_interval_seconds' => 120,
+            ])
+            ->assertRedirect(route('server.edit'));
+
+        $server = Server::current();
+
+        $this->assertSame(120, $server->settings['deploy_poll_interval_seconds']);
+        $this->assertSame(120, $server->deployPollIntervalSeconds());
     }
 
     #[Test]

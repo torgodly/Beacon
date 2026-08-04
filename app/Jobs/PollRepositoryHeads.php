@@ -19,6 +19,13 @@ class PollRepositoryHeads implements ShouldQueue
             ->where('deploy_trigger', 'poll')
             ->whereNotNull('repository')
             ->each(function (Site $site) use ($git): void {
+                $interval = $site->effectivePollIntervalSeconds();
+
+                if ($site->last_polled_at !== null
+                    && $site->last_polled_at->addSeconds($interval)->isFuture()) {
+                    return;
+                }
+
                 $sha = $git->remoteHead($site);
 
                 if ($sha === null) {

@@ -6,6 +6,7 @@ import {
     Search,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { SiteFrameworkIcon } from '@/components/sites/site-framework-icon';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -83,8 +84,11 @@ export function ForgeHeader({
                                     </span>
                                     <span className="truncate">{site.name}</span>
                                     {site.type && (
-                                        <span className="hidden rounded-md border border-[#e2e8f0] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[#64748b] sm:inline dark:border-[#2e3032]">
-                                            {site.type}
+                                        <span className="hidden sm:inline-flex">
+                                            <SiteFrameworkIcon
+                                                type={site.type}
+                                                size="sm"
+                                            />
                                         </span>
                                     )}
                                 </span>
