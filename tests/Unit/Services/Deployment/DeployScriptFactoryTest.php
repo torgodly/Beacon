@@ -157,6 +157,11 @@ BASH;
 
         $this->assertStringContainsString('cp .env.example .env', $script);
         $this->assertStringContainsString('$BEACON_PM ci || $BEACON_PM install', $script);
+        $this->assertStringNotContainsString('fiif [', $script);
+        $this->assertDoesNotMatchRegularExpression(
+            '/cd "\$BEACON_SITE_DIR"[^\n]/',
+            $script,
+        );
     }
 
     public function test_refresh_legacy_default_rewrites_nextjs_script_without_env_bootstrap(): void
@@ -185,6 +190,43 @@ BASH;
 
         $this->assertTrue($refreshed);
         $this->assertStringContainsString('cp .env.example .env', (string) $site->fresh()->deploy_script);
+    }
+
+    public function test_refresh_legacy_default_rewrites_nextjs_script_with_broken_line_breaks(): void
+    {
+        $broken = <<<'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$BEACON_SITE_DIR"# broken bootstrap
+if [ ! -f .env ] && [ -f .env.example ]; then
+  cp .env.example .env
+  echo "Created .env from .env.example — review values under the Env tab."
+fiif [ ! -f package.json ]; then
+  exit 1
+fi
+BASH;
+
+        $site = Site::factory()->create([
+            'type' => 'nextjs',
+            'deploy_script' => $broken,
+        ]);
+
+        $this->mock(SiteFilesystem::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('write')->once();
+        });
+
+        $refreshed = app(DeployScriptFactory::class)->refreshLegacyDefault(
+            $site,
+            app(SiteFilesystem::class),
+        );
+
+        $this->assertTrue($refreshed);
+        $updated = (string) $site->fresh()->deploy_script;
+        $this->assertStringNotContainsString('fiif [', $updated);
+        $this->assertDoesNotMatchRegularExpression(
+            '/cd "\$BEACON_SITE_DIR"[^\n]/',
+            $updated,
+        );
     }
 
     public function test_refresh_legacy_default_rewrites_nextjs_script_with_frozen_lockfile_flag(): void

@@ -252,6 +252,10 @@ class DeploymentService
 set -euo pipefail
 find "$BEACON_SITE_DIR" -type d -exec chmod 2775 {} +
 find "$BEACON_SITE_DIR" -type f -exec chmod 0664 {} +
+# npm/yarn bin stubs lose +x under the blanket 0664 pass; SSR launchers exec them.
+if [ -d "$BEACON_SITE_DIR/node_modules/.bin" ]; then
+  chmod -R ug+x "$BEACON_SITE_DIR/node_modules/.bin"
+fi
 chmod -R ug+rwX "$BEACON_SITE_DIR"/storage "$BEACON_SITE_DIR"/bootstrap/cache 2>/dev/null || true
 chmod 0640 "$BEACON_SITE_DIR/.env" 2>/dev/null || true
 chmod 0700 "$BEACON_SITE_DIR"/storage/tmp "$BEACON_SITE_DIR"/storage/sessions 2>/dev/null || true

@@ -68,8 +68,8 @@ class SsrLauncher
         // Next.js honours -H/-p; Nuxt's Nitro output reads HOST/PORT from the
         // environment, which is already exported above the exec line.
         $exec = $site->type === 'nextjs'
-            ? 'exec node_modules/.bin/next start -H "$HOST" -p "$PORT"'
-            : 'exec node .output/server/index.mjs';
+            ? 'exec "$BEACON_NODE" node_modules/next/dist/bin/next start -H "$HOST" -p "$PORT"'
+            : 'exec "$BEACON_NODE" .output/server/index.mjs';
 
         return <<<BASH
         #!/usr/bin/env bash
@@ -77,7 +77,9 @@ class SsrLauncher
         set -euo pipefail
         umask 0002
 
-        cd {$site->path}
+        cd "{$site->path}"
+
+        export BEACON_NODE="{$nodeBin}/node"
 
         # Load site env files (Next.js / Nuxt convention). Beacon's Env tab writes
         # to .env; .env.local is optional and usually gitignored.

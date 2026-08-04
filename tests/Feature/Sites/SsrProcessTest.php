@@ -96,13 +96,14 @@ class SsrProcessTest extends TestCase
 
         $site = $this->createSite('nextjs');
         $next = $launcher->script($site);
-        $this->assertStringContainsString('exec node_modules/.bin/next start', $next);
+        $this->assertStringContainsString('exec "$BEACON_NODE" node_modules/next/dist/bin/next start', $next);
+        $this->assertStringContainsString('export BEACON_NODE="/usr/local/node/v22/bin/node"', $next);
         $this->assertStringContainsString("export PORT={$site->proxy_port}", $next);
         $this->assertStringContainsString('export HOST=127.0.0.1', $next);
         $this->assertStringContainsString('/usr/local/node/v22/bin', $next);
 
         $nuxt = $launcher->script($this->createSite('nuxt', 'nuxt.example.com'));
-        $this->assertStringContainsString('exec node .output/server/index.mjs', $nuxt);
+        $this->assertStringContainsString('exec "$BEACON_NODE" .output/server/index.mjs', $nuxt);
     }
 
     public function test_launcher_sources_site_env_files_before_exec(): void
