@@ -1,4 +1,11 @@
-import { Form, Head, router, useForm, usePage } from '@inertiajs/react';
+import {
+    Form,
+    Head,
+    router,
+    setLayoutProps,
+    useForm,
+    usePage,
+} from '@inertiajs/react';
 import { Play, RotateCcw, Save, Shield, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { CodeDiffViewer } from '@/components/code-diff-viewer';
@@ -115,23 +122,24 @@ type GitHubRepositoryOption = {
     default_branch: string | null;
 };
 
-type SiteDetail = SiteSummary & ServingFields & {
-    path: string;
-    web_directory: string;
-    php_version: string | null;
-    node_version: string | null;
-    proxy_port: number | null;
-    nginx_customized: boolean;
-    open_basedir: boolean;
-    strict_functions: boolean;
-    open_basedir_extra_paths: string[];
-    domains: DomainRow[];
-    ssl_status: string;
-    status: string;
-    type: string;
-    deployment_status: string;
-    primary_domain: string;
-};
+type SiteDetail = SiteSummary &
+    ServingFields & {
+        path: string;
+        web_directory: string;
+        php_version: string | null;
+        node_version: string | null;
+        proxy_port: number | null;
+        nginx_customized: boolean;
+        open_basedir: boolean;
+        strict_functions: boolean;
+        open_basedir_extra_paths: string[];
+        domains: DomainRow[];
+        ssl_status: string;
+        status: string;
+        type: string;
+        deployment_status: string;
+        primary_domain: string;
+    };
 
 type ServingFields = {
     spa_fallback: boolean;
@@ -1494,7 +1502,9 @@ function ServingPanel({ site }: { site: SiteDetail }) {
                                         <button
                                             key={preset}
                                             type="button"
-                                            onClick={() => setWebDirectory(preset)}
+                                            onClick={() =>
+                                                setWebDirectory(preset)
+                                            }
                                             className={cn(
                                                 'rounded-sm border px-2 py-1 font-mono text-[12px] leading-[18px] transition-colors',
                                                 webDirectory === preset
@@ -1523,8 +1533,9 @@ function ServingPanel({ site }: { site: SiteDetail }) {
                                             SPA fallback
                                         </span>
                                         <span className="block text-[13px] leading-5 text-fg-muted">
-                                            Serve index.html for unknown paths, so
-                                            client-side routes survive a refresh.
+                                            Serve index.html for unknown paths,
+                                            so client-side routes survive a
+                                            refresh.
                                         </span>
                                     </span>
                                 </label>
@@ -1541,7 +1552,9 @@ function ServingPanel({ site }: { site: SiteDetail }) {
                                 id="client_max_body_size"
                                 name="client_max_body_size"
                                 mono
-                                defaultValue={site.client_max_body_size ?? '100M'}
+                                defaultValue={
+                                    site.client_max_body_size ?? '100M'
+                                }
                             />
                         </Field>
 
@@ -1552,7 +1565,9 @@ function ServingPanel({ site }: { site: SiteDetail }) {
                                 size="sm"
                                 disabled={processing}
                             >
-                                {processing ? 'Saving…' : 'Save serving settings'}
+                                {processing
+                                    ? 'Saving…'
+                                    : 'Save serving settings'}
                             </Button>
                             {site.nginx_customized && (
                                 <p className="text-[13px] leading-5 text-fg-warning">
@@ -2457,6 +2472,16 @@ export default function SiteShow({
     consoleCommands,
     activeCommand,
 }: Props) {
+    setLayoutProps({
+        breadcrumbs: [
+            { title: 'Sites', href: sitesIndex() },
+            {
+                title: site.name,
+                href: show(site.id, { query: { tab: 'overview' } }),
+            },
+        ],
+    });
+
     if (tab === 'overview') {
         return (
             <>
@@ -2589,13 +2614,3 @@ export default function SiteShow({
         </>
     );
 }
-
-SiteShow.layout = {
-    breadcrumbs: (props: Props) => [
-        { title: 'Sites', href: sitesIndex() },
-        {
-            title: props.site.name,
-            href: show(props.site.id, { query: { tab: 'overview' } }),
-        },
-    ],
-};
