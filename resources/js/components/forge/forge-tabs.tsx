@@ -94,7 +94,7 @@ export function ForgeSiteTabs({
 }) {
     return (
         <nav
-            className="border-b border-[#e2e8f0] bg-[#f8fafc] dark:border-[#2e3032] dark:bg-[#151718]"
+            className="border-b border-[#e2e8f0] bg-white dark:border-[#2e3032] dark:bg-[#1f2021]"
             aria-label="Site sections"
         >
             <ForgeContainer>

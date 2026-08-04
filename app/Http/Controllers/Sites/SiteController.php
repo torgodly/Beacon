@@ -155,13 +155,17 @@ class SiteController extends Controller
         $consoleCommands = null;
         $activeCommand = null;
 
-        if ($tab === 'deployments') {
+        if ($tab === 'deployments' || $tab === 'overview') {
+            $limit = $tab === 'overview' ? 5 : 20;
+
             $deployments = $site->deployments()
                 ->latest()
-                ->limit(20)
+                ->limit($limit)
                 ->get()
                 ->map(fn (Deployment $deployment): array => DeploymentController::deploymentPayload($deployment));
+        }
 
+        if ($tab === 'deployments') {
             $deployScript = $site->deploy_script;
             $deployEnvReference = DeploymentService::deployEnvironmentReference();
         }

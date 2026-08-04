@@ -97,6 +97,21 @@ class SiteShowTabsTest extends TestCase
             );
     }
 
+    #[DataProvider('siteTypes')]
+    public function test_overview_includes_recent_deployments(string $type): void
+    {
+        $site = $this->createSite($type);
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('sites.show', $site).'?tab=overview')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('sites/show')
+                ->where('tab', 'overview')
+                ->has('deployments')
+            );
+    }
+
     private function createSite(string $type): Site
     {
         return app(CreateSite::class)->handle([

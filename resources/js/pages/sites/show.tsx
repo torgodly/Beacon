@@ -26,6 +26,8 @@ import {
     ForgeRuntimeBadge,
     ForgeStatusBadge,
 } from '@/components/forge/forge-badge';
+import { ForgeDeploymentsSection } from '@/components/forge/forge-deployments-list';
+import { ForgeFormCard, ForgePageContent } from '@/components/forge/forge-form-card';
 import { Panel, SpecList, StatCluster } from '@/components/console/panel';
 import { DeployScriptEnvReference } from '@/components/deploy-script-env-reference';
 import InputError from '@/components/input-error';
@@ -298,13 +300,13 @@ function sslStatus(status: string): Status {
 function OverviewTab({
     site,
     activeDeployment,
-    latestDeployment,
+    deployments,
     supervisorProcesses,
     cronJobs,
 }: {
     site: SiteDetail;
     activeDeployment: DeploymentRow | null;
-    latestDeployment: DeploymentRow | null;
+    deployments: DeploymentRow[];
     supervisorProcesses: SupervisorProcessRow[];
     cronJobs: CronJobRow[];
 }) {
@@ -331,17 +333,7 @@ function OverviewTab({
                         />
                     )}
 
-                    <ForgeDividedCard
-                        title="Repository"
-                        action={
-                            <DeployButton
-                                siteId={site.id}
-                                repository={site.repository}
-                                deploymentStatus={site.deployment_status}
-                                size="sm"
-                            />
-                        }
-                    >
+                    <ForgeDividedCard title="Repository">
                         <ForgeListRow>
                             <div className="min-w-0 flex-1">
                                 <p className="font-medium text-[#0f172a] dark:text-[#f8fafc]">
@@ -368,37 +360,13 @@ function OverviewTab({
                                 }
                             />
                         </ForgeListRow>
-                        {latestDeployment && !activeDeployment && (
-                            <ForgeListRow>
-                                <div className="min-w-0 flex-1">
-                                    <button
-                                        type="button"
-                                        className="text-left text-sm font-medium text-[#0f172a] hover:text-[#18B69B] dark:text-[#f8fafc]"
-                                        onClick={() =>
-                                            router.get(
-                                                show.url(site.id, {
-                                                    query: {
-                                                        tab: 'deployments',
-                                                        deployment:
-                                                            latestDeployment.uuid,
-                                                    },
-                                                }),
-                                            )
-                                        }
-                                    >
-                                        Last deployment: {latestDeployment.status}
-                                    </button>
-                                    <p className="text-xs text-[#64748b]">
-                                        {latestDeployment.created_at
-                                            ? new Date(
-                                                  latestDeployment.created_at,
-                                              ).toLocaleString()
-                                            : 'Unknown time'}
-                                    </p>
-                                </div>
-                            </ForgeListRow>
-                        )}
                     </ForgeDividedCard>
+
+                    <ForgeDeploymentsSection
+                        siteId={site.id}
+                        deployments={deployments}
+                        limit={5}
+                    />
 
                     <ForgeDividedCard title="Background Processes">
                         {supervisorProcesses.length === 0 ? (
@@ -1725,20 +1693,7 @@ function DeploymentsTab({
     });
 
     return (
-        <div className="flex flex-col gap-6">
-            <Panel
-                eyebrow="deploy // pipeline"
-                title="Run deployment"
-                description="Clone the repository, execute the deploy script as the site user, and restart workers."
-                actions={
-                    <DeployButton
-                        siteId={site.id}
-                        repository={site.repository}
-                        deploymentStatus={site.deployment_status}
-                    />
-                }
-            />
-
+        <ForgePageContent>
             {activeDeployment && (
                 <DeploymentStream
                     siteId={site.id}
@@ -1746,7 +1701,16 @@ function DeploymentsTab({
                 />
             )}
 
-            <Panel eyebrow="deploy // script" title="Deploy script">
+            <ForgeDeploymentsSection
+                siteId={site.id}
+                deployments={deployments}
+                linkToTab={false}
+            />
+
+            <ForgeFormCard
+                title="Deploy script"
+                description="Runs as the site user after each clone. Restart workers at the end of the script."
+            >
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
                     <form
                         onSubmit={(event) => {
@@ -1777,68 +1741,8 @@ function DeploymentsTab({
                     </form>
                     <DeployScriptEnvReference variables={deployEnvReference} />
                 </div>
-            </Panel>
-
-            <Panel eyebrow="deploy // history" title="Recent deployments" flush>
-                {deployments.length === 0 ? (
-                    <p className="px-6 py-5 text-[14px] text-fg-muted">
-                        No deployments yet. Connect a repository and press
-                        Deploy.
-                    </p>
-                ) : (
-                    <ul className="divide-y divide-[var(--bc-border-subtle)]">
-                        {deployments.map((deployment) => (
-                            <li
-                                key={deployment.uuid}
-                                className="flex flex-wrap items-center justify-between gap-3 px-6 py-3 text-sm"
-                            >
-                                <div className="flex flex-col gap-1">
-                                    <button
-                                        type="button"
-                                        className="text-left font-medium hover:underline"
-                                        onClick={() =>
-                                            router.get(
-                                                show.url(site.id, {
-                                                    query: {
-                                                        tab: 'deployments',
-                                                        deployment:
-                                                            deployment.uuid,
-                                                    },
-                                                }),
-                                                { preserveScroll: true },
-                                            )
-                                        }
-                                    >
-                                        {deployment.trigger} ·{' '}
-                                        {deployment.created_at
-                                            ? new Date(
-                                                  deployment.created_at,
-                                              ).toLocaleString()
-                                            : 'Unknown time'}
-                                    </button>
-                                    {deployment.commit_sha && (
-                                        <span className="font-mono text-xs text-muted-foreground">
-                                            {deployment.commit_sha.slice(0, 7)}
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <span className="text-xs text-muted-foreground">
-                                        {formatDuration(deployment.duration_ms)}
-                                    </span>
-                                    <StatusBadge
-                                        status={deploymentStatus(
-                                            deployment.status,
-                                        )}
-                                        label={deployment.status}
-                                    />
-                                </div>
-                            </li>
-                        ))}
-                    </ul>
-                )}
-            </Panel>
-        </div>
+            </ForgeFormCard>
+        </ForgePageContent>
     );
 }
 
@@ -2508,7 +2412,7 @@ export default function SiteShow({
                 <OverviewTab
                     site={site}
                     activeDeployment={activeDeployment}
-                    latestDeployment={latestDeployment}
+                    deployments={deployments ?? []}
                     supervisorProcesses={supervisorProcesses ?? []}
                     cronJobs={cronJobs ?? []}
                 />
