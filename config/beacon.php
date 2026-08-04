@@ -195,7 +195,7 @@ return [
     */
 
     'panel' => [
-        'repo' => env('BEACON_PANEL_REPO', 'https://github.com/beacon-org/beacon.git'),
+        'repo' => env('BEACON_PANEL_REPO', 'https://github.com/torgodly/beacon.git'),
         'keep_releases' => (int) env('BEACON_PANEL_KEEP_RELEASES', 3),
     ],
 

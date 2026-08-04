@@ -7,7 +7,7 @@ Production-oriented reference for installing, operating, and securing a Beacon p
 ### One-line install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/beacon-org/beacon/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/torgodly/beacon/master/install.sh | sudo bash
 ```
 
 The installer is a guided wizard. It runs its preflight checks first, then asks:

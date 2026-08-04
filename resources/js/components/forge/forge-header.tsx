@@ -120,7 +120,7 @@ export function ForgeHeader({
                     </button>
 
                     <a
-                        href="https://github.com/beacon-org/beacon"
+                        href="https://github.com/torgodly/beacon"
                         target="_blank"
                         rel="noreferrer"
                         className="hidden rounded-md p-2 text-[#64748b] hover:bg-[#f8fafc] hover:text-[#0f172a] sm:inline-flex dark:text-[#94a3b8] dark:hover:bg-[#151718] dark:hover:text-[#f8fafc]"

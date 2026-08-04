@@ -23,7 +23,7 @@
 On Ubuntu 22.04 or 24.04 as root:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/beacon-org/beacon/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/torgodly/beacon/master/install.sh | sudo bash
 ```
 
 The installer is interactive. It asks how you want to reach the panel, creates your administrator account, and lets you pick PHP and Node versions. It shows the full plan and waits for confirmation before changing anything on the server.
@@ -35,7 +35,7 @@ Without a domain, the panel is available at `https://YOUR_IP:8443` with a self-s
 Every question can be answered up front. Add `--yes` to run with no interaction:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/beacon-org/beacon/main/install.sh | sudo bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/torgodly/beacon/master/install.sh | sudo bash -s -- \
   --domain panel.example.com \
   --email admin@example.com \
   --admin-email admin@example.com \

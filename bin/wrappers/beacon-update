@@ -6,7 +6,7 @@ set -euo pipefail
 
 ROOT="${BEACON_PANEL_ROOT:-/opt/beacon/panel}"
 SHARED="${BEACON_PANEL_SHARED:-${ROOT}/shared}"
-REPO="${BEACON_PANEL_REPO:-https://github.com/beacon-org/beacon.git}"
+REPO="${BEACON_PANEL_REPO:-https://github.com/torgodly/beacon.git}"
 KEEP="${BEACON_PANEL_KEEP_RELEASES:-3}"
 PANEL_USER="${BEACON_PANEL_USER:-beacon-panel}"
 PHP_VERSION="${BEACON_PANEL_PHP_VERSION:-8.4}"

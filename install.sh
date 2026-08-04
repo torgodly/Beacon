@@ -2,7 +2,7 @@
 # Beacon panel installer — interactive, idempotent, Ubuntu 22.04/24.04.
 #
 # Just run it and answer the questions:
-#   curl -fsSL https://beacon.sh/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/torgodly/beacon/master/install.sh | sudo bash
 #   sudo bash install.sh
 #
 # Every answer can also be supplied up front, which skips the matching
