@@ -195,107 +195,99 @@ For deeper architecture (wrappers, isolation, health checks), see [Security arch
 
 ## Security gaps
 
-Beacon is secure **for its intended use** — a single trusted admin on a VPS you control. It is **not** multi-tenant RBAC. The gaps below are known trade-offs or areas worth hardening. Each includes impact and recommended action.
+Concrete issues in the current codebase — things Beacon should fix, not generic admin advice.
 
-### 1. Compromised admin session = full host control
+### Crontab lines built without field validation
 
-**Gap:** Any logged-in, verified user can deploy, edit nginx, run console commands, delete sites, update the panel, and manage databases. There are no roles.
+**Where:** `StoreCronJobRequest` only checks string length. `CronService::buildManagedBlock()` writes `{expression} {command} {output_redirect}` straight into the `beacon` crontab.
 
-**Impact:** Stolen session cookie or shared admin password gives complete server control — equivalent to root via wrappers.
+**Fix:** Validate cron expressions with a parser (e.g. reject invalid fields). Restrict `command` and `output_redirect` to safe character sets; reject unquoted shell metacharacters.
 
-**What to do:** Enable **2FA or passkeys** on your admin account. Use a strong unique password. Do not create extra admins unless necessary. Access the panel only over HTTPS with a real domain. Consider IP allow-listing at the firewall or Nginx if your IP is stable.
+**Impact:** A bad or crafted cron entry runs arbitrary shell as `beacon` on a schedule.
 
-### 2. Web console runs arbitrary shell as `beacon`
+### `open_basedir_extra_paths` accepts any path
 
-**Gap:** The site console executes admin-entered commands through `/bin/bash -lc` as the `beacon` user (rate-limited, but not restricted by command).
+**Where:** `UpdateSiteIsolationRequest` allows any string up to 255 chars. `PhpPoolWriter::extraOpenBasedirPaths()` appends those paths verbatim into `php_admin_value[open_basedir]`.
 
-**Impact:** A compromised admin (or mistake) can run any shell command allowed to `beacon` — read all site files, exfiltrate deploy keys, pivot between sites.
+**Fix:** Allow-list paths (site root subdirs, `/usr/share/php`, etc.). Reject `..`, paths outside `/home/beacon/{site}`, and system paths like `/etc` or `/root`.
 
-**What to do:** Treat the console like SSH. Only run commands you understand. Enable site isolation options. Do not share admin access. Optionally restrict console use via firewall if you rarely need it.
+**Impact:** A site with isolation “enabled” can still widen PHP filesystem access to other tenants or system files.
 
-### 3. Cron jobs accept arbitrary commands
+### `SESSION_SECURE_COOKIE` missing from shipped panel env
 
-**Gap:** Crontab content is written via the panel with limited server-side validation of expressions or commands.
+**Where:** `deploy/env/panel.env` sets `SESSION_ENCRYPT=true` but never sets `SESSION_SECURE_COOKIE`. `config/session.php` falls back to `null` (not Secure).
 
-**Impact:** Malicious or malformed cron entries run on schedule as `beacon`.
+**Fix:** Add `SESSION_SECURE_COOKIE=true` to `deploy/env/panel.env` (and set it when attaching a TLS panel domain).
 
-**What to do:** Review cron entries after changes. Prefer Supervisor for long-running workers. Keep admin access locked down.
+**Impact:** Session cookies are not marked Secure-only; cleartext HTTP panel access can expose them.
 
-### 4. `open_basedir` is PHP-only and optional
+### Database passwords sent to the browser
 
-**Gap:** Filesystem isolation applies to PHP-FPM only. It does not constrain shell, Node SSR, or deploy scripts. `strict_functions` defaults off. Sites share the `beacon` Unix user.
+**Where:** `DatabaseBackupService::connectionStrings()` returns plaintext passwords in Laravel env snippets, URLs, and TablePlus links. `DatabaseController` passes this to Inertia.
 
-**Impact:** A compromised PHP app can still use shell functions (unless strict mode is on). A compromised Node or Laravel app can read other sites under `/home/beacon`.
+**Fix:** Mask by default; reveal or copy via a one-time server action instead of embedding credentials in page props.
 
-**What to do:** Enable **open_basedir** and **strict_functions** per site under **Isolation**. Treat `open_basedir_extra_paths` carefully — only add paths you need. For strong separation between untrusted tenants, run separate servers or separate Unix users (not yet a first-class Beacon feature).
+**Impact:** Passwords sit in Inertia JSON, browser devtools, and any XSS in the panel leaks every DB user on that page load.
 
-### 5. Session cookie may be sent over plain HTTP
+### `MYSQL_PWD` exposed in process list during backups
 
-**Gap:** Production panel env template sets `SESSION_ENCRYPT=true` but does not set `SESSION_SECURE_COOKIE=true`. If you reach the panel over HTTP, session cookies are not marked Secure-only.
+**Where:** `DatabaseBackupService` passes the admin password through the `MYSQL_PWD` environment variable when running `mysqldump`.
 
-**Impact:** Session hijack on untrusted networks if the panel is accessed without TLS.
+**Fix:** Use `mysqldump --defaults-extra-file=` with a mode-`0600` temp file (or socket auth where possible).
 
-**What to do:** **Always use HTTPS** with a valid certificate (attach a panel domain in Settings). After install, avoid the `:8443` self-signed fallback except for bootstrap. Optionally add `SESSION_SECURE_COOKIE=true` to panel `.env` once TLS is working.
+**Impact:** Anyone who can run `ps` on the host sees MySQL credentials while a backup job runs.
 
-### 6. No Content-Security-Policy on the panel
+### Console runs not in the activity log
 
-**Gap:** Panel Nginx configs set X-Frame-Options and related headers but not CSP.
+**Where:** `SiteCommandService` stores commands in `site_commands` but never calls `$site->activity()->log()`. Cron, nginx, deploy, and env changes are logged; console is not.
 
-**Impact:** Slightly weaker defense-in-depth against XSS in the panel UI (Laravel/React still escape output by default).
+**Fix:** Log `console.ran` (command text or a hash) when a command starts or finishes.
 
-**What to do:** Low priority for a self-hosted admin tool. If you harden further, add a strict CSP to panel Nginx configs.
+**Impact:** The Activity feed is incomplete for forensics; console use is only in per-command log files.
 
-### 7. Destructive actions lack password re-confirmation
+### GitHub webhook verifies against every installation
 
-**Gap:** Site delete, panel update, env editor, nginx editor, and service restarts do not require typing your password again mid-session.
+**Where:** `VerifyGitHubSignature::matchingInstallation()` loops all `GithubInstallation` rows and HMAC-compares each secret on every webhook.
 
-**Impact:** Faster accidental or session-hijack damage — one authenticated session is enough for destructive ops.
+**Fix:** Parse `installation.id` (or `repository.id`) from the payload first; verify only that installation’s secret.
 
-**What to do:** Keep sessions short (`SESSION_LIFETIME=120` default). Use 2FA. Log out on shared machines. Re-enable password confirmation in Fortify/config if you want that friction back.
+**Impact:** Wasted work on busy hosts; harder to rate-limit per installation; unnecessary secret comparisons on each request.
 
-### 8. Broad MySQL admin grants
+### `strict_functions` off by default
 
-**Gap:** `beacon_admin` can create databases and users (`WITH GRANT OPTION` on `*.*`) — required for the panel, but high blast radius if panel `.env` leaks.
+**Where:** `database/migrations/..._create_beacon_sites_tables.php` defaults `open_basedir` to `true` but `strict_functions` to `false`.
 
-**Impact:** Leaked panel credentials expose MySQL admin, not just one database.
+**Fix:** Default `strict_functions` to `true` for new sites, or enable it automatically when `open_basedir` is on.
 
-**What to do:** Protect `/opt/beacon/panel/shared/.env` and SQLite backups. Restrict panel network access. Rotate MySQL password if `.env` is ever exposed. Backups use `MYSQL_PWD` briefly in the process list — run backups off-peak and restrict who can `ps` on the host.
+**Impact:** PHP sites get directory restrictions but still have `exec`, `shell_exec`, `proc_open`, etc. unless an admin finds and toggles strict mode.
 
-### 9. GitHub webhook triggers deploy without panel login
+### High-impact routes not rate-limited
 
-**Gap:** `POST /webhooks/github` is unauthenticated but HMAC-verified. Anyone with the webhook secret can trigger deploys.
+**Where:** `routes/web.php` throttles deploy (`throttle:deploy`) and console (`throttle:console`) only. Site delete, database delete, nginx write, SSL issue, and panel update have no throttle middleware.
 
-**Impact:** Leaked webhook secret → arbitrary deploy triggers (still runs your deploy script as `beacon`, not arbitrary code unless deploy script is malicious).
+**Fix:** Add a shared `throttle:destructive` (or per-route limits) on destructive endpoints.
 
-**What to do:** Rotate webhook secrets if compromised. Use GitHub's secret per installation. Restrict which repos/branches auto-deploy.
+**Impact:** No application-level backoff on rapid destructive requests.
 
-### 10. Self-signed panel on port 8443
+### Panel Nginx configs have no Content-Security-Policy
 
-**Gap:** Installer opens UFW for `:8443` with a self-signed cert when no domain is set.
+**Where:** `deploy/nginx/beacon-panel.conf` and `beacon-panel-8443.conf` set `X-Frame-Options` / `X-Content-Type-Options` but no `Content-Security-Policy` header.
 
-**Impact:** MITM risk if you use IP-only access long term; users must verify certificate fingerprint manually.
+**Fix:** Add a strict CSP compatible with Vite/Inertia assets.
 
-**What to do:** Attach a real panel domain and Let's Encrypt cert as soon as possible. Close or stop using `:8443` after that.
+**Impact:** Weaker defense-in-depth if a stored-XSS or injected script ever reaches the panel HTML.
 
-### 11. Limited audit coverage for some actions
+### Custom nginx editor only checks length
 
-**Gap:** Web console commands, some service restarts, and panel updates are not always written to the activity log.
+**Where:** `UpdateSiteNginxRequest` validates `contents` with `max:65535` only. The `beacon-nginx` wrapper runs `nginx -t` but does not restrict directive content.
 
-**Impact:** Harder forensic review after an incident.
+**Fix:** Optional: block obvious footguns (`proxy_pass` to metadata IPs, `include /etc/*`, etc.) before apply; at minimum document that custom nginx is full trust.
 
-**What to do:** Check Supervisor, Nginx, and deploy logs under `/var/log/beacon/` and Laravel logs. Consider enabling more verbose logging if you need stronger audit trails (future improvement).
-
-### 12. Panel update accepts any semver tag
-
-**Gap:** Panel self-update validates tag format (`vX.Y.Z`) but not a fixed allow-list of tags.
-
-**Impact:** Any authed admin can deploy any matching tag from the configured repo.
-
-**What to do:** Pin `BEACON_PANEL_REPO` to your fork if you want supply-chain control. Review releases before updating.
+**Impact:** A mistaken config can open internal proxies or break TLS/isolation at the edge — caught by `nginx -t` for syntax, not intent.
 
 ---
 
-**Summary:** Beacon's strength is **wrapper-enforced privilege separation** and **single-admin auth hardening**. Its main risk is **trust in the admin account** and **shared `beacon` user between sites**. Guard the admin login, use TLS, enable 2FA, turn on PHP isolation for untrusted apps, and treat the console like root access to your sites.
+These are tracked gaps for future Beacon releases. PRs welcome on the items above.
 
 ---
 
