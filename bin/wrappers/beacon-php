@@ -60,11 +60,29 @@ fpm_test() {
     local bin
     bin="$(fpm_binary "$ver")"
 
+    fpm_scan_pools "$ver"
+
     if ! "$bin" -t >/dev/null 2>&1; then
         printf 'beacon-php: invalid php-fpm %s configuration:\n' "$ver" >&2
         "$bin" -t 2>&1 >&2 || true
         die "refusing to reload php${ver}-fpm while configuration is invalid"
     fi
+}
+
+fpm_scan_pools() {
+    local ver="$1"
+    local dir="$POOL_DIR/$ver/fpm/pool.d"
+    local file
+
+    [[ -d "$dir" ]] || return 0
+
+    for file in "$dir"/*.conf; do
+        [[ -f "$file" ]] || continue
+
+        if grep -Eq '^user[[:space:]]*=[[:space:]]*(root)?[[:space:]]*$' "$file"; then
+            die "invalid pool user in ${file} — must not be root or empty (php-fpm -t does not catch this)"
+        fi
+    done
 }
 
 ensure_site_pool_paths() {

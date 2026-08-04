@@ -64,7 +64,7 @@ class SiteManagementTest extends TestCase
             'php_version' => '8.4',
         ]);
 
-        $response->assertRedirect(route('sites.show', 'app.example.com'));
+        $response->assertRedirect(route('sites.index'));
 
         $this->assertDatabaseHas('sites', [
             'name' => 'app.example.com',
@@ -95,7 +95,7 @@ class SiteManagementTest extends TestCase
             'repository_branch' => 'main',
         ]);
 
-        $response->assertRedirect(route('sites.show', 'app.example.com').'?tab=overview');
+        $response->assertRedirect(route('sites.index'));
 
         $this->assertDatabaseHas('sites', [
             'name' => 'app.example.com',

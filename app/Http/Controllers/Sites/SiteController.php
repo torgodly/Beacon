@@ -143,12 +143,8 @@ class SiteController extends Controller
             return back()->withErrors(['name' => $e->getMessage()]);
         }
 
-        $query = filled($site->repository)
-            ? ['tab' => 'overview']
-            : [];
-
         return redirect()
-            ->to(route('sites.show', $site).($query !== [] ? '?'.http_build_query($query) : ''))
+            ->route('sites.index')
             ->with('toast', [
                 'type' => 'success',
                 'message' => filled($site->repository)

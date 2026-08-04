@@ -1198,6 +1198,17 @@ configure_panel_runtime() {
     fi
 
     if [[ -n "$fpm_bin" && -x "$fpm_bin" ]]; then
+        local pool_file
+        for pool_file in "/etc/php/${PANEL_PHP}/fpm/pool.d"/*.conf; do
+            [[ -f "$pool_file" ]] || continue
+            if grep -Eq '^user[[:space:]]*=[[:space:]]*(root)?[[:space:]]*$' "$pool_file"; then
+                echo "ERROR: ${pool_file} has an empty or root pool user." >&2
+                echo "       php-fpm -t passes this, but php-fpm refuses to start." >&2
+                echo "       Fix with: sudo sed -i 's/^user[[:space:]]*=.*/user = beacon/' ${pool_file}" >&2
+                exit 1
+            fi
+        done
+
         if ! "$fpm_bin" -t; then
             echo "ERROR: php-fpm configuration is invalid — the panel cannot start." >&2
             echo "       Diagnose: journalctl -xeu php${PANEL_PHP}-fpm.service" >&2
