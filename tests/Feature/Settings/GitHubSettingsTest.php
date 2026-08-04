@@ -57,7 +57,8 @@ class GitHubSettingsTest extends TestCase
                 ->where('manifest.url', 'https://beacon.example.com')
                 ->where('manifest.setup_url', 'https://beacon.example.com/settings/github/setup')
                 ->where('manifest.hook_attributes.url', 'https://beacon.example.com/webhooks/github')
-                ->where('manifest.redirect_url', 'https://beacon.example.com/settings/github/callback'));
+                ->where('manifest.redirect_url', 'https://beacon.example.com/settings/github/callback')
+                ->where('manifest.default_events', ['push']));
 
         $redirectUrl = $response->original->getData()['page']['props']['manifest']['redirect_url'] ?? null;
 

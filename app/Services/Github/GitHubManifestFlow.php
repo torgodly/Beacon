@@ -43,7 +43,6 @@ class GitHubManifestFlow
                 ],
                 'default_events' => [
                     'push',
-                    'ping',
                 ],
             ],
         ];
