@@ -24,7 +24,7 @@ class DeployPreflight
         }
 
         if ($this->deployScripts->refreshLegacyDefault($site, $this->filesystem)) {
-            $stream->append("Updated deploy script for plain static sites.\n");
+            $stream->append("Updated deploy script to the current default.\n");
         }
 
         match ($site->type) {

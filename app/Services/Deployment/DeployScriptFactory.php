@@ -24,15 +24,18 @@ class DeployScriptFactory
      */
     public function refreshLegacyDefault(Site $site, SiteFilesystem $filesystem): bool
     {
-        if ($site->type !== 'static') {
+        $script = match (true) {
+            $site->type === 'static'
+                && $this->normalize($site->deploy_script) === $this->normalize($this->legacyStaticBuild()) => $this->forSite($site),
+            $site->type === 'laravel'
+                && $this->runsArtisanBeforeComposer($site->deploy_script) => $this->forSite($site),
+            default => null,
+        };
+
+        if ($script === null) {
             return false;
         }
 
-        if ($this->normalize($site->deploy_script) !== $this->normalize($this->legacyStaticBuild())) {
-            return false;
-        }
-
-        $script = $this->forSite($site);
         $site->update(['deploy_script' => $script]);
         $filesystem->write($site->deployScriptPath(), $script, 0700);
 
@@ -118,15 +121,14 @@ if [ -n "${BEACON_DB_DATABASE:-}" ]; then
   set_env_var DB_PASSWORD "${BEACON_DB_PASSWORD:-}"
 fi
 
-if ! grep -qE '^APP_KEY=base64:' .env 2>/dev/null; then
-  $BEACON_PHP artisan key:generate --force
-fi
-
 # ── Dependencies & build ──────────────────────────────────────────────
 $BEACON_COMPOSER install --no-interaction --prefer-dist --optimize-autoloader --no-dev
 [ -f package.json ] && { $BEACON_PM ci || $BEACON_PM install; $BEACON_PM run build; }
 
 # ── Laravel housekeeping ──────────────────────────────────────────────
+if ! grep -qE '^APP_KEY=base64:' .env 2>/dev/null; then
+  $BEACON_PHP artisan key:generate --force
+fi
 $BEACON_PHP artisan migrate --force
 $BEACON_PHP artisan storage:link || true
 $BEACON_PHP artisan optimize
@@ -179,5 +181,16 @@ BASH;
     private function normalize(?string $script): string
     {
         return str_replace("\r\n", "\n", trim((string) $script));
+    }
+
+    private function runsArtisanBeforeComposer(?string $script): bool
+    {
+        $script = (string) $script;
+        $artisanPos = strpos($script, 'artisan key:generate');
+        $composerPos = strpos($script, '$BEACON_COMPOSER install');
+
+        return $artisanPos !== false
+            && $composerPos !== false
+            && $artisanPos < $composerPos;
     }
 }

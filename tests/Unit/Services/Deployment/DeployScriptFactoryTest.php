@@ -43,9 +43,41 @@ class DeployScriptFactoryTest extends TestCase
         $this->assertStringContainsString('cp .env.example .env', $script);
         $this->assertStringContainsString('artisan key:generate --force', $script);
         $this->assertStringContainsString('artisan migrate --force', $script);
-        $this->assertLessThan(
+        $this->assertGreaterThan(
             strpos($script, '$BEACON_COMPOSER install'),
             strpos($script, 'artisan key:generate --force'),
+        );
+    }
+
+    public function test_refresh_legacy_default_fixes_laravel_script_with_artisan_before_composer(): void
+    {
+        $broken = <<<'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$BEACON_SITE_DIR"
+$BEACON_PHP artisan key:generate --force
+$BEACON_COMPOSER install --no-interaction --prefer-dist --optimize-autoloader --no-dev
+BASH;
+
+        $site = Site::factory()->create([
+            'type' => 'laravel',
+            'deploy_script' => $broken,
+        ]);
+
+        $this->mock(SiteFilesystem::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('write')->once();
+        });
+
+        $refreshed = app(DeployScriptFactory::class)->refreshLegacyDefault(
+            $site,
+            app(SiteFilesystem::class),
+        );
+
+        $this->assertTrue($refreshed);
+        $updated = (string) $site->fresh()->deploy_script;
+        $this->assertGreaterThan(
+            strpos($updated, '$BEACON_COMPOSER install'),
+            strpos($updated, 'artisan key:generate --force'),
         );
     }
 
