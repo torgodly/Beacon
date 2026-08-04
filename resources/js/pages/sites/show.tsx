@@ -7,7 +7,7 @@ import {
     useForm,
     usePage,
 } from '@inertiajs/react';
-import { Clock, Cog, Eye, History, MoreHorizontal, Pencil, Play, Plus, RefreshCw, RotateCcw, Save, Shield, Trash2 } from 'lucide-react';
+import { Clock, Cog, Cpu, Eye, GitBranch, History, Key, Lock, MoreHorizontal, Pencil, Play, Plus, RefreshCw, RotateCcw, Save, Shield, Terminal, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { CodeDiffViewer } from '@/components/code-diff-viewer';
 import { CodeEditor } from '@/components/code-editor';
@@ -23,7 +23,6 @@ import {
 } from '@/components/forge/forge-details-sidebar';
 import {
     ForgeFrameworkBadge,
-    ForgeRuntimeBadge,
     ForgeStatusBadge,
 } from '@/components/forge/forge-badge';
 import { ForgeDeploymentsSection } from '@/components/forge/forge-deployments-list';
@@ -47,6 +46,7 @@ import {
 } from '@/components/searchable-combobox';
 import { CommandLogViewer } from '@/components/sites/command-log-viewer';
 import { DeployButton } from '@/components/sites/deploy-button';
+import { SiteMetaBadges } from '@/components/sites/site-meta-badges';
 import { StatusBadge } from '@/components/status-badge';
 import type { Status } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
@@ -389,11 +389,7 @@ function OverviewTab({
                                         : site.path}
                                 </p>
                             </div>
-                            {site.php_version && (
-                                <ForgeRuntimeBadge
-                                    label={`PHP ${site.php_version}`}
-                                />
-                            )}
+                            <SiteMetaBadges site={site} />
                             <ForgeStatusBadge
                                 label={
                                     site.repository_connected
@@ -1267,35 +1263,24 @@ function SettingsTab({
     }
 
     return (
-        <ForgePageContent>
-            <ForgeDividedCard
-                title="Runtime"
-                action={
-                    site.type === 'laravel' && site.app_env ? (
-                        <ForgeStatusBadge
-                            label={
-                                site.app_env.charAt(0).toUpperCase() +
-                                site.app_env.slice(1)
-                            }
-                        />
-                    ) : null
-                }
-            >
-                <ForgeListRow className="flex-col items-stretch gap-4">
-                    <p className="text-sm text-[#64748b]">
-                        Changing PHP regenerates the FPM pool and nginx vhost,
-                        then restarts PHP-FPM and Supervisor processes for this
-                        site.
-                    </p>
-                    <form
-                        onSubmit={(event) => {
-                            event.preventDefault();
-                            runtimeForm.patch(updateSiteRuntime.url(site.id), {
-                                preserveScroll: true,
-                            });
-                        }}
-                        className="grid max-w-xl gap-4"
+        <ForgePageLayout
+            main={
+                <>
+                    <Panel
+                        eyebrow="site // runtime"
+                        title="Runtime stack"
+                        description="Changing PHP regenerates the FPM pool and nginx vhost, then restarts PHP-FPM and Supervisor for this site."
+                        icon={Cpu}
                     >
+                        <form
+                            onSubmit={(event) => {
+                                event.preventDefault();
+                                runtimeForm.patch(updateSiteRuntime.url(site.id), {
+                                    preserveScroll: true,
+                                });
+                            }}
+                            className="grid max-w-xl gap-4"
+                        >
 
                         {site.php_version !== null && (
                             <div className="grid gap-2">
@@ -1379,15 +1364,18 @@ function SettingsTab({
                             Save runtime
                         </Button>
                     </form>
-                </ForgeListRow>
-            </ForgeDividedCard>
+                    </Panel>
 
-            <ForgeDividedCard title="Repository & deploy">
-                <ForgeListRow className="flex-col items-stretch gap-4">
-                    <Form
-                        {...updateSiteSettings.form(site.id)}
-                        className="grid max-w-xl gap-4"
+                    <Panel
+                        eyebrow="site // deploy"
+                        title="Repository & deploy"
+                        description="Connect GitHub or enter a repository URL, then configure how Beacon deploys changes."
+                        icon={GitBranch}
                     >
+                        <Form
+                            {...updateSiteSettings.form(site.id)}
+                            className="grid max-w-xl gap-4"
+                        >
                         {({ errors, processing }) => (
                             <>
                                 {settings.github.connected && (
@@ -1644,54 +1632,117 @@ function SettingsTab({
                                     className="w-fit"
                                 >
                                     <Save className="size-3.5" />
-                                    Save settings
+                                    Save deploy settings
                                 </Button>
-
-                                <div className="rounded-lg border p-4">
-                                    <div className="flex flex-wrap items-start justify-between gap-3">
-                                        <div className="grid gap-1">
-                                            <p className="text-sm font-medium">
-                                                SSH deploy key
-                                            </p>
-                                            <p className="text-sm text-muted-foreground">
-                                                Generate a key for private Git
-                                                repositories over SSH.
-                                            </p>
-                                        </div>
-                                        {!settings.deploy_key_public && (
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() =>
-                                                    router.post(
-                                                        generateDeployKey.url(
-                                                            site.id,
-                                                        ),
-                                                        {},
-                                                        {
-                                                            preserveScroll: true,
-                                                        },
-                                                    )
-                                                }
-                                            >
-                                                Generate key
-                                            </Button>
-                                        )}
-                                    </div>
-                                    {settings.deploy_key_public && (
-                                        <pre className="mt-3 overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs">
-                                            {settings.deploy_key_public}
-                                        </pre>
-                                    )}
-                                    <InputError message={errors.deploy_key} />
-                                </div>
                             </>
                         )}
                     </Form>
-                </ForgeListRow>
-            </ForgeDividedCard>
-        </ForgePageContent>
+                    </Panel>
+
+                    <Panel
+                        eyebrow="site // access"
+                        title="SSH deploy key"
+                        description="Generate a key for private Git repositories over SSH."
+                        icon={Key}
+                    >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            {!settings.deploy_key_public ? (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                        router.post(
+                                            generateDeployKey.url(site.id),
+                                            {},
+                                            { preserveScroll: true },
+                                        )
+                                    }
+                                >
+                                    Generate key
+                                </Button>
+                            ) : null}
+                        </div>
+                        {settings.deploy_key_public ? (
+                            <pre className="mt-4 overflow-x-auto rounded-xl border border-[#E8EEF3] bg-[#F5F8FA] p-4 font-mono text-xs dark:border-[#263647] dark:bg-[#05131E]/40">
+                                {settings.deploy_key_public}
+                            </pre>
+                        ) : (
+                            <p className="text-sm text-fg-muted">
+                                No deploy key generated yet.
+                            </p>
+                        )}
+                    </Panel>
+                </>
+            }
+            sidebar={
+                <>
+                    <div className="rounded-2xl border border-[#E8EEF3]/90 bg-white/85 p-4 shadow-[0_8px_30px_rgba(5,19,30,0.04)] backdrop-blur-md dark:border-[#263647] dark:bg-[#1C2D3F]/75">
+                        <p className="mb-3 text-[11px] font-bold tracking-[0.16em] text-[#06C8E0] uppercase">
+                            Site profile
+                        </p>
+                        <SiteMetaBadges site={site} className="mb-4" />
+                        <SpecList
+                            columns={1}
+                            items={[
+                                {
+                                    label: 'Repository',
+                                    value: site.repository_connected
+                                        ? `${site.repository}:${site.repository_branch}`
+                                        : 'Not connected',
+                                },
+                                {
+                                    label: 'Auto deploy',
+                                    value: settings.auto_deploy ? 'On' : 'Off',
+                                },
+                                {
+                                    label: 'Deploy trigger',
+                                    value: settings.deploy_trigger,
+                                },
+                                ...(site.type === 'laravel' &&
+                                site.database_driver
+                                    ? [
+                                          {
+                                              label: 'Database',
+                                              value:
+                                                  site.database_driver ===
+                                                  'sqlite'
+                                                      ? 'SQLite'
+                                                      : 'MySQL',
+                                          },
+                                      ]
+                                    : []),
+                                ...(site.type === 'laravel'
+                                    ? [
+                                          {
+                                              label: 'Redis',
+                                              value: site.redis_enabled
+                                                  ? 'Enabled'
+                                                  : 'Disabled',
+                                          },
+                                      ]
+                                    : []),
+                            ]}
+                        />
+                    </div>
+
+                    <ForgeDetailsSection title="Paths">
+                        <ForgeDetailRow label="Site" value={site.name} mono />
+                        <ForgeDetailRow
+                            label="Root"
+                            value={site.path}
+                            mono
+                            copyable
+                        />
+                        <ForgeDetailRow
+                            label="Web directory"
+                            value={site.web_directory}
+                            mono
+                        />
+                    </ForgeDetailsSection>
+                </>
+            }
+        />
     );
 }
 
@@ -1840,80 +1891,149 @@ function IsolationTab({ site }: { site: SiteDetail }) {
     );
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle className="text-base">PHP isolation</CardTitle>
-            </CardHeader>
-            <CardContent>
-                <Form
-                    {...updateIsolation.form(site.id)}
-                    className="grid max-w-xl gap-4"
-                >
-                    {({ errors, processing }) => (
-                        <>
-                            <div className="flex items-start gap-3">
-                                <Checkbox
-                                    id="open_basedir"
-                                    checked={openBasedir}
-                                    onCheckedChange={(checked) =>
-                                        setOpenBasedir(checked === true)
-                                    }
-                                />
-                                <input
-                                    type="hidden"
-                                    name="open_basedir"
-                                    value={openBasedir ? '1' : '0'}
-                                />
-                                <div className="grid gap-1">
-                                    <Label htmlFor="open_basedir">
-                                        Enable open_basedir
-                                    </Label>
-                                    <p className="text-sm text-muted-foreground">
-                                        Restrict PHP file access to the site
-                                        directory and configured extra paths.
-                                    </p>
-                                </div>
-                            </div>
+        <ForgePageLayout
+            main={
+                <>
+                    <StatCluster
+                        stats={[
+                            {
+                                label: 'open_basedir',
+                                value: openBasedir ? 'Enabled' : 'Off',
+                                tone: openBasedir ? 'success' : 'default',
+                                hint: 'Restricts PHP file access',
+                            },
+                            {
+                                label: 'Strict functions',
+                                value: strictFunctions ? 'Enabled' : 'Off',
+                                tone: strictFunctions ? 'success' : 'default',
+                                hint: 'Blocks dangerous PHP functions',
+                            },
+                            {
+                                label: 'Upload limit',
+                                value: site.client_max_body_size ?? '100M',
+                            },
+                            {
+                                label: 'Web root',
+                                value: site.web_directory,
+                            },
+                        ]}
+                    />
 
-                            <div className="flex items-start gap-3">
-                                <Checkbox
-                                    id="strict_functions"
-                                    checked={strictFunctions}
-                                    onCheckedChange={(checked) =>
-                                        setStrictFunctions(checked === true)
-                                    }
-                                />
-                                <input
-                                    type="hidden"
-                                    name="strict_functions"
-                                    value={strictFunctions ? '1' : '0'}
-                                />
-                                <div className="grid gap-1">
-                                    <Label htmlFor="strict_functions">
-                                        Strict disabled functions
-                                    </Label>
-                                    <p className="text-sm text-muted-foreground">
-                                        Disable dangerous PHP functions in the
-                                        FPM pool for this site.
-                                    </p>
-                                </div>
-                            </div>
+                    <Panel
+                        eyebrow="site // isolation"
+                        title="PHP sandbox"
+                        description="Harden the FPM pool for this site without affecting other sites on the server."
+                        icon={Lock}
+                    >
+                        <Form
+                            {...updateIsolation.form(site.id)}
+                            className="space-y-6"
+                        >
+                            {({ errors, processing }) => (
+                                <>
+                                    <div className="grid gap-4 sm:grid-cols-2">
+                                        <label className="flex gap-3 rounded-xl border border-[#E8EEF3] bg-white/70 p-4 dark:border-[#263647] dark:bg-[#1C2D3F]/50">
+                                            <ToggleSwitch
+                                                id="open_basedir"
+                                                checked={openBasedir}
+                                                onCheckedChange={setOpenBasedir}
+                                            />
+                                            <input
+                                                type="hidden"
+                                                name="open_basedir"
+                                                value={openBasedir ? '1' : '0'}
+                                            />
+                                            <span>
+                                                <span className="block text-sm font-medium text-fg">
+                                                    open_basedir
+                                                </span>
+                                                <span className="mt-1 block text-sm text-fg-muted">
+                                                    Limit file reads to the site
+                                                    tree and configured extra paths.
+                                                </span>
+                                            </span>
+                                        </label>
 
-                            <InputError message={errors.open_basedir} />
-                            <InputError message={errors.strict_functions} />
+                                        <label className="flex gap-3 rounded-xl border border-[#E8EEF3] bg-white/70 p-4 dark:border-[#263647] dark:bg-[#1C2D3F]/50">
+                                            <ToggleSwitch
+                                                id="strict_functions"
+                                                checked={strictFunctions}
+                                                onCheckedChange={
+                                                    setStrictFunctions
+                                                }
+                                            />
+                                            <input
+                                                type="hidden"
+                                                name="strict_functions"
+                                                value={
+                                                    strictFunctions ? '1' : '0'
+                                                }
+                                            />
+                                            <span>
+                                                <span className="block text-sm font-medium text-fg">
+                                                    Strict disabled functions
+                                                </span>
+                                                <span className="mt-1 block text-sm text-fg-muted">
+                                                    Disable exec, shell, and other
+                                                    high-risk PHP functions in this
+                                                    pool.
+                                                </span>
+                                            </span>
+                                        </label>
+                                    </div>
 
-                            <Button
-                                type="submit"
-                                disabled={processing}
-                                className="w-fit"
-                            >
-                                Save isolation settings
-                            </Button>
-                        </>
-                    )}
-                </Form>
-            </CardContent>
-        </Card>
+                                    <InputError message={errors.open_basedir} />
+                                    <InputError message={errors.strict_functions} />
+
+                                    <Button
+                                        type="submit"
+                                        variant="primary"
+                                        disabled={processing}
+                                        className="w-fit"
+                                    >
+                                        <Save className="size-3.5" />
+                                        Save isolation policy
+                                    </Button>
+                                </>
+                            )}
+                        </Form>
+                    </Panel>
+
+                    <ServingPanel site={site} />
+                </>
+            }
+            sidebar={
+                <>
+                    <div className="rounded-2xl border border-[#E8EEF3]/90 bg-white/85 p-4 shadow-[0_8px_30px_rgba(5,19,30,0.04)] backdrop-blur-md dark:border-[#263647] dark:bg-[#1C2D3F]/75">
+                        <SiteMetaBadges site={site} className="mb-4" />
+                    </div>
+
+                    <ForgeDetailsSection title="Policy summary">
+                        <ForgeDetailRow
+                            label="Site path"
+                            value={site.path}
+                            mono
+                            copyable
+                        />
+                        <ForgeDetailRow
+                            label="Nginx customized"
+                            value={site.nginx_customized ? 'Yes' : 'No'}
+                        />
+                        <ForgeDetailRow
+                            label="SPA fallback"
+                            value={site.spa_fallback ? 'On' : 'Off'}
+                        />
+                        {site.open_basedir_extra_paths.length > 0 ? (
+                            <ForgeDetailRow
+                                label="Extra paths"
+                                value={site.open_basedir_extra_paths.join(', ')}
+                                mono
+                            />
+                        ) : null}
+                    </ForgeDetailsSection>
+                </>
+            }
+        />
     );
 }
 
@@ -2964,112 +3084,196 @@ function ConsoleTab({
         defaultConsoleCommand(site),
     );
     const suggestions = consoleSuggestedCommands(site);
+    const successCount = commands.filter((entry) => entry.status === 'success')
+        .length;
+    const failedCount = commands.filter(
+        (entry) => entry.status === 'failed' || entry.status === 'timed_out',
+    ).length;
 
     return (
-        <div className="flex flex-col gap-4">
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-base">Run command</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <Form
-                        {...storeSiteCommand.form(site.id)}
-                        className="grid max-w-3xl gap-4"
+        <ForgePageLayout
+            main={
+                <>
+                    <Panel
+                        eyebrow="site // console"
+                        title="Run a command"
+                        description="Commands execute as the site user in the site directory. Output streams live below."
+                        icon={Terminal}
                     >
-                        {({ errors, processing }) => (
-                            <>
-                                <div className="grid gap-2">
-                                    <Label htmlFor="console_command">
-                                        Command
-                                    </Label>
-                                    <Input
-                                        id="console_command"
-                                        name="command"
-                                        value={command}
-                                        onChange={(event) =>
-                                            setCommand(event.target.value)
-                                        }
-                                        placeholder={consoleCommandPlaceholder(
-                                            site,
-                                        )}
-                                        className="font-mono text-sm"
-                                        autoComplete="off"
-                                    />
-                                    {suggestions.length > 0 && (
-                                        <div className="flex flex-wrap gap-2 pt-1">
-                                            {suggestions.map((suggestion) => (
-                                                <button
-                                                    key={suggestion}
-                                                    type="button"
-                                                    onClick={() =>
-                                                        setCommand(suggestion)
-                                                    }
-                                                    className="rounded-md border border-[#e2e8f0] px-2 py-1 font-mono text-xs text-[#64748b] transition-colors hover:border-[#18B69B]/40 hover:text-[#0f172a] dark:border-[#2e3032] dark:hover:text-[#f8fafc]"
-                                                >
-                                                    {suggestion}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                    <InputError message={errors.command} />
-                                </div>
-                                <Button
-                                    type="submit"
-                                    disabled={processing}
-                                    className="w-fit"
-                                >
-                                    <Play className="size-3.5" />
-                                    Run
-                                </Button>
-                            </>
-                        )}
-                    </Form>
-                </CardContent>
-            </Card>
-
-            {activeCommand && (
-                <CommandLogViewer siteId={site.id} command={activeCommand} />
-            )}
-
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-base">History</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    {commands.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">
-                            No commands run yet.
-                        </p>
-                    ) : (
-                        <ul className="divide-y rounded-lg border">
-                            {commands.map((entry) => (
-                                <li
-                                    key={entry.uuid}
-                                    className="flex flex-wrap items-center justify-between gap-3 px-3 py-3"
-                                >
-                                    <code className="truncate text-xs">
-                                        {entry.command}
-                                    </code>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs text-muted-foreground">
-                                            {formatDuration(entry.duration_ms)}
-                                        </span>
-                                        <StatusBadge
-                                            status={deploymentStatus(
-                                                entry.status === 'timed_out'
-                                                    ? 'failed'
-                                                    : entry.status,
+                        <Form
+                            {...storeSiteCommand.form(site.id)}
+                            className="space-y-4"
+                        >
+                            {({ errors, processing }) => (
+                                <>
+                                    <Field
+                                        htmlFor="console_command"
+                                        label="Command"
+                                        error={errors.command}
+                                    >
+                                        <Input
+                                            id="console_command"
+                                            name="command"
+                                            value={command}
+                                            onChange={(event) =>
+                                                setCommand(event.target.value)
+                                            }
+                                            placeholder={consoleCommandPlaceholder(
+                                                site,
                                             )}
-                                            label={entry.status}
+                                            mono
+                                            autoComplete="off"
+                                            className="text-sm"
                                         />
+                                    </Field>
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <Button
+                                            type="submit"
+                                            variant="primary"
+                                            disabled={processing}
+                                        >
+                                            <Play className="size-3.5" />
+                                            {processing ? 'Running…' : 'Run command'}
+                                        </Button>
+                                        {activeCommand ? (
+                                            <StatusBadge
+                                                status={deploymentStatus(
+                                                    activeCommand.status ===
+                                                        'timed_out'
+                                                        ? 'failed'
+                                                        : activeCommand.status,
+                                                )}
+                                                label={activeCommand.status}
+                                            />
+                                        ) : null}
                                     </div>
-                                </li>
-                            ))}
-                        </ul>
+                                </>
+                            )}
+                        </Form>
+                    </Panel>
+
+                    {activeCommand ? (
+                        <CommandLogViewer
+                            siteId={site.id}
+                            command={activeCommand}
+                        />
+                    ) : (
+                        <Panel
+                            title="Output"
+                            description="Run a command to stream stdout and stderr here."
+                            icon={Terminal}
+                        >
+                            <p className="font-mono text-sm text-fg-muted">
+                                No active command.
+                            </p>
+                        </Panel>
                     )}
-                </CardContent>
-            </Card>
-        </div>
+
+                    <Panel
+                        eyebrow="site // history"
+                        title="Recent commands"
+                        description={`${commands.length} command${commands.length === 1 ? '' : 's'} recorded for this site.`}
+                        icon={History}
+                        flush
+                    >
+                        {commands.length === 0 ? (
+                            <div className="px-6 py-8">
+                                <ForgeEmptyState
+                                    icon={Terminal}
+                                    title="No commands yet"
+                                    description="Your command history will appear here after you run artisan, npm, or other site commands."
+                                />
+                            </div>
+                        ) : (
+                            <ul className="divide-y divide-[#E8EEF3] dark:divide-[#263647]">
+                                {commands.map((entry) => (
+                                    <li
+                                        key={entry.uuid}
+                                        className="flex flex-wrap items-center justify-between gap-3 px-6 py-3.5"
+                                    >
+                                        <code className="min-w-0 flex-1 truncate font-mono text-xs text-[#1C2D3F] dark:text-[#E8EEF3]">
+                                            {entry.command}
+                                        </code>
+                                        <div className="flex shrink-0 items-center gap-2">
+                                            <span className="text-xs tabular-nums text-fg-muted">
+                                                {formatDuration(entry.duration_ms)}
+                                            </span>
+                                            <StatusBadge
+                                                status={deploymentStatus(
+                                                    entry.status === 'timed_out'
+                                                        ? 'failed'
+                                                        : entry.status,
+                                                )}
+                                                label={entry.status}
+                                            />
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </Panel>
+                </>
+            }
+            sidebar={
+                <>
+                    <div className="rounded-2xl border border-[#E8EEF3]/90 bg-white/85 p-4 shadow-[0_8px_30px_rgba(5,19,30,0.04)] backdrop-blur-md dark:border-[#263647] dark:bg-[#1C2D3F]/75">
+                        <SiteMetaBadges site={site} className="mb-4" />
+                        <SpecList
+                            columns={1}
+                            items={[
+                                {
+                                    label: 'Site user',
+                                    value: site.system_user ?? 'beacon',
+                                },
+                                { label: 'Working directory', value: site.path },
+                                {
+                                    label: 'PHP',
+                                    value: site.php_version
+                                        ? `PHP ${site.php_version}`
+                                        : '—',
+                                },
+                            ]}
+                        />
+                    </div>
+
+                    <StatCluster
+                        stats={[
+                            {
+                                label: 'Total runs',
+                                value: commands.length,
+                                tone: 'brand',
+                            },
+                            {
+                                label: 'Succeeded',
+                                value: successCount,
+                                tone: 'success',
+                            },
+                            {
+                                label: 'Failed',
+                                value: failedCount,
+                                tone: failedCount > 0 ? 'danger' : 'default',
+                            },
+                        ]}
+                        className="grid-cols-1!"
+                    />
+
+                    {suggestions.length > 0 ? (
+                        <ForgeDetailsSection title="Quick commands">
+                            {suggestions.map((suggestion) => (
+                                <button
+                                    key={suggestion}
+                                    type="button"
+                                    onClick={() => setCommand(suggestion)}
+                                    className="flex w-full px-4 py-2.5 text-left font-mono text-xs text-[#475569] transition-colors hover:bg-[#f8fafc] dark:text-[#cbd5e1] dark:hover:bg-[#151718]"
+                                >
+                                    {suggestion}
+                                </button>
+                            ))}
+                        </ForgeDetailsSection>
+                    ) : null}
+                </>
+            }
+        />
     );
 }
 
@@ -3134,7 +3338,6 @@ export default function SiteShow({
         return (
             <>
                 <Head title={`${site.name} — Isolation`} />
-                <ServingPanel site={site} />
                 <IsolationTab site={site} />
             </>
         );

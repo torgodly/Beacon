@@ -10,16 +10,14 @@ import {
     ForgeDetailsSection,
     ForgePageLayout,
 } from '@/components/forge/forge-details-sidebar';
-import {
-    ForgeFrameworkBadge,
-    ForgeStatusBadge,
-} from '@/components/forge/forge-badge';
+import { ForgeStatusBadge } from '@/components/forge/forge-badge';
 import {
     ForgeActionsPanel,
     ForgeEmptyState,
 } from '@/components/forge/forge-empty-state';
 import { CreateSiteDialog } from '@/components/sites/create-site-dialog';
 import { SiteFrameworkIcon } from '@/components/sites/site-framework-icon';
+import { SiteMetaBadges } from '@/components/sites/site-meta-badges';
 import { index as sitesIndex, show } from '@/routes/sites';
 
 type SiteRow = {
@@ -32,6 +30,7 @@ type SiteRow = {
     repository: string | null;
     repository_branch: string;
     repository_connected: boolean;
+    php_version: string | null;
     app_env: 'testing' | 'staging' | 'production' | null;
     database_driver: 'mysql' | 'sqlite' | null;
     redis_enabled: boolean;
@@ -48,10 +47,6 @@ type SiteTypeOption = {
 
 type RuntimeOption = { value: string; label: string; is_default: boolean };
 type DatabaseOption = { id: number; name: string };
-
-function formatAppEnv(env: 'testing' | 'staging' | 'production'): string {
-    return env.charAt(0).toUpperCase() + env.slice(1);
-}
 
 export default function SitesIndex({
     sites,
@@ -146,21 +141,8 @@ export default function SitesIndex({
                                                 'No repository connected'
                                             )}
                                         </p>
-                                        {site.type === 'laravel' &&
-                                        site.app_env ? (
-                                            <p className="mt-0.5 text-xs text-[#64748b]">
-                                                {formatAppEnv(site.app_env)} ·{' '}
-                                                {site.database_driver ===
-                                                'sqlite'
-                                                    ? 'SQLite'
-                                                    : 'MySQL'}
-                                                {site.redis_enabled
-                                                    ? ' · Redis'
-                                                    : ''}
-                                            </p>
-                                        ) : null}
                                     </Link>
-                                    <ForgeFrameworkBadge type={site.type} />
+                                    <SiteMetaBadges site={site} />
                                     <ForgeStatusBadge
                                         label={
                                             site.deployment_status === 'success'

@@ -1,10 +1,11 @@
 import { Link } from '@inertiajs/react';
 import { ExternalLink, ShieldAlert } from 'lucide-react';
 import { ForgeContainer } from '@/components/forge/forge-container';
-import { ForgeFrameworkBadge } from '@/components/forge/forge-badge';
 import { DeployButton } from '@/components/sites/deploy-button';
+import { SiteMetaBadges } from '@/components/sites/site-meta-badges';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import type { AppEnv } from '@/lib/site-env';
 import {
     siteHasConsoleTab,
     siteHasSupervisorTab,
@@ -21,6 +22,8 @@ type SiteChromeSite = {
     deployment_status?: string;
     ssl_status?: string;
     type?: string;
+    php_version?: string | null;
+    app_env?: AppEnv | null;
 };
 
 const SITE_TABS = [
@@ -75,9 +78,7 @@ export function ForgeSiteChrome({
             <ForgeContainer>
                 <div className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
-                        {site.type && (
-                            <ForgeFrameworkBadge type={site.type} />
-                        )}
+                        <SiteMetaBadges site={site} />
                         {!tlsIssued && (
                             <Link
                                 href={show.url(site.id, { query: { tab: 'ssl' } })}

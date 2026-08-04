@@ -21,6 +21,8 @@ export type SiteSummary = {
     ssl_status?: string;
     status?: string;
     type?: string;
+    php_version?: string | null;
+    app_env?: 'testing' | 'staging' | 'production' | null;
     [key: string]: unknown;
 };
 

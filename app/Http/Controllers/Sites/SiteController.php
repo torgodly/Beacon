@@ -469,6 +469,7 @@ class SiteController extends Controller
             'repository' => $site->repository,
             'repository_branch' => $site->repository_branch ?? 'main',
             'repository_connected' => filled($site->repository),
+            'php_version' => $site->php_version,
             'app_env' => $site->type === 'laravel' ? $site->app_env : null,
             'database_driver' => $site->type === 'laravel' ? $site->database_driver : null,
             'redis_enabled' => $site->type === 'laravel' ? $site->redis_enabled : false,
