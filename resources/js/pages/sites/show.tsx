@@ -8,7 +8,7 @@ import {
     usePage,
 } from '@inertiajs/react';
 import { Clock, Cog, Play, Plus, RefreshCw, RotateCcw, Save, Shield, Trash2 } from 'lucide-react';
-import { useEffect, useState, type ComponentProps } from 'react';
+import { useEffect, useState } from 'react';
 import { CodeDiffViewer } from '@/components/code-diff-viewer';
 import { CodeEditor } from '@/components/code-editor';
 import { ConfirmDialog } from '@/components/confirm-dialog';
@@ -1767,55 +1767,25 @@ function DeploymentsTab({
     );
 }
 
-function ForgeUnitInput({
-    suffix,
-    className,
-    ...props
-}: React.ComponentProps<typeof Input> & { suffix: string }) {
-    return (
-        <div className="flex">
-            <Input
-                {...props}
-                className={cn('rounded-r-none', className)}
-            />
-            <span className="flex h-9 shrink-0 items-center rounded-r-md border border-l-0 border-[var(--bc-border-default)] bg-[var(--bc-bg-subtle)] px-3 text-sm text-fg-muted">
-                {suffix}
-            </span>
-        </div>
-    );
-}
-
 function SupervisorTab({
     site,
     processes,
-    runtimeOptions,
 }: {
     site: SiteDetail;
     processes: SupervisorProcessRow[];
     runtimeOptions: RuntimeOptionsPayload | null;
 }) {
-    const phpVersions =
-        runtimeOptions?.php_versions ??
-        (site.php_version ? [site.php_version] : ['8.4']);
-    const defaultPhp = site.php_version ?? phpVersions[0] ?? '8.4';
-
     const [dialogOpen, setDialogOpen] = useState(false);
     const [processKind, setProcessKind] = useState<'queue_worker' | 'custom'>(
         'queue_worker',
     );
     const [name, setName] = useState('queue');
-    const [phpVersion, setPhpVersion] = useState(defaultPhp);
     const [connection, setConnection] = useState('redis');
     const [queue, setQueue] = useState('default');
     const [numprocs, setNumprocs] = useState('1');
-    const [backoff, setBackoff] = useState('0');
     const [sleep, setSleep] = useState('3');
-    const [rest, setRest] = useState('0');
+    const [tries, setTries] = useState('3');
     const [jobTimeout, setJobTimeout] = useState('60');
-    const [tries, setTries] = useState('1');
-    const [memory, setMemory] = useState('128');
-    const [appEnv, setAppEnv] = useState('');
-    const [force, setForce] = useState(false);
     const [command, setCommand] = useState(
         site.php_version
             ? `php${site.php_version} ${site.path}/artisan queue:work`
@@ -1824,20 +1794,8 @@ function SupervisorTab({
 
     const managedProcesses = processes.filter((process) => !process.is_system);
 
-    const queuePreviewParts = [
-        `php${phpVersion} artisan queue:work ${connection}`,
-        `--queue=${queue}`,
-        backoff !== '0' ? `--backoff=${backoff}` : null,
-        `--sleep=${sleep}`,
-        rest !== '0' ? `--rest=${rest}` : null,
-        `--timeout=${jobTimeout}`,
-        `--tries=${tries}`,
-        memory ? `--memory=${memory}` : null,
-        appEnv ? `--env=${appEnv}` : null,
-        force ? '--force' : null,
-    ].filter(Boolean);
-
-    const queuePreview = queuePreviewParts.join(' ');
+    const phpBinary = site.php_version ? `php${site.php_version}` : 'php';
+    const queuePreview = `${phpBinary} artisan queue:work ${connection} --queue=${queue} --sleep=${sleep} --tries=${tries} --timeout=${jobTimeout}`;
 
     return (
         <ForgePageContent>
@@ -1851,7 +1809,7 @@ function SupervisorTab({
                                 Add background process
                             </Button>
                         </DialogTrigger>
-                        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+                        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
                             <DialogHeader>
                                 <DialogTitle>New background process</DialogTitle>
                                 <DialogDescription>
@@ -1912,43 +1870,12 @@ function SupervisorTab({
                                         />
 
                                         {processKind === 'queue_worker' ? (
-                                            <div className="overflow-hidden rounded-lg border border-[#e2e8f0] dark:border-[#2e3032]">
-                                                <ForgeFormRows>
-                                                    <ForgeFormRow label="php">
-                                                        <Select
-                                                            value={phpVersion}
-                                                            onValueChange={
-                                                                setPhpVersion
-                                                            }
-                                                        >
-                                                            <SelectTrigger id="php_version">
-                                                                <SelectValue />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                {phpVersions.map(
-                                                                    (
-                                                                        version,
-                                                                    ) => (
-                                                                        <SelectItem
-                                                                            key={
-                                                                                version
-                                                                            }
-                                                                            value={
-                                                                                version
-                                                                            }
-                                                                        >
-                                                                            PHP{' '}
-                                                                            {
-                                                                                version
-                                                                            }
-                                                                        </SelectItem>
-                                                                    ),
-                                                                )}
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </ForgeFormRow>
-
-                                                    <ForgeFormRow label="connection">
+                                            <div className="overflow-hidden rounded-md border border-[var(--bc-border-default)]">
+                                                <ForgeFormRows className="rounded-none border-0">
+                                                    <ForgeFormRow
+                                                        label="connection"
+                                                        htmlFor="connection"
+                                                    >
                                                         <Input
                                                             id="connection"
                                                             name="connection"
@@ -1962,7 +1889,27 @@ function SupervisorTab({
                                                         />
                                                     </ForgeFormRow>
 
-                                                    <ForgeFormRow label="processes">
+                                                    <ForgeFormRow
+                                                        label="queue"
+                                                        htmlFor="queue"
+                                                    >
+                                                        <Input
+                                                            id="queue"
+                                                            name="queue"
+                                                            value={queue}
+                                                            onChange={(event) =>
+                                                                setQueue(
+                                                                    event.target
+                                                                        .value,
+                                                                )
+                                                            }
+                                                        />
+                                                    </ForgeFormRow>
+
+                                                    <ForgeFormRow
+                                                        label="processes"
+                                                        htmlFor="numprocs"
+                                                    >
                                                         <Input
                                                             id="numprocs"
                                                             name="numprocs"
@@ -1978,46 +1925,15 @@ function SupervisorTab({
                                                         />
                                                     </ForgeFormRow>
 
-                                                    <ForgeFormRow label="--queue">
+                                                    <ForgeFormRow
+                                                        label="sleep"
+                                                        htmlFor="sleep"
+                                                    >
                                                         <Input
-                                                            id="queue"
-                                                            name="queue"
-                                                            value={queue}
-                                                            onChange={(event) =>
-                                                                setQueue(
-                                                                    event.target
-                                                                        .value,
-                                                                )
-                                                            }
-                                                        />
-                                                    </ForgeFormRow>
-
-                                                    <ForgeFormRow label="--backoff">
-                                                        <ForgeUnitInput
-                                                            id="backoff"
-                                                            name="backoff"
-                                                            type="number"
-                                                            min={0}
-                                                            placeholder="0"
-                                                            suffix="seconds"
-                                                            value={backoff}
-                                                            onChange={(event) =>
-                                                                setBackoff(
-                                                                    event.target
-                                                                        .value,
-                                                                )
-                                                            }
-                                                        />
-                                                    </ForgeFormRow>
-
-                                                    <ForgeFormRow label="--sleep">
-                                                        <ForgeUnitInput
                                                             id="sleep"
                                                             name="sleep"
                                                             type="number"
                                                             min={1}
-                                                            placeholder="3"
-                                                            suffix="seconds"
                                                             value={sleep}
                                                             onChange={(event) =>
                                                                 setSleep(
@@ -2028,50 +1944,15 @@ function SupervisorTab({
                                                         />
                                                     </ForgeFormRow>
 
-                                                    <ForgeFormRow label="--rest">
-                                                        <ForgeUnitInput
-                                                            id="rest"
-                                                            name="rest"
-                                                            type="number"
-                                                            min={0}
-                                                            placeholder="0"
-                                                            suffix="seconds"
-                                                            value={rest}
-                                                            onChange={(event) =>
-                                                                setRest(
-                                                                    event.target
-                                                                        .value,
-                                                                )
-                                                            }
-                                                        />
-                                                    </ForgeFormRow>
-
-                                                    <ForgeFormRow label="--timeout">
-                                                        <ForgeUnitInput
-                                                            id="job_timeout"
-                                                            name="job_timeout"
-                                                            type="number"
-                                                            min={30}
-                                                            placeholder="60"
-                                                            suffix="seconds"
-                                                            value={jobTimeout}
-                                                            onChange={(event) =>
-                                                                setJobTimeout(
-                                                                    event.target
-                                                                        .value,
-                                                                )
-                                                            }
-                                                        />
-                                                    </ForgeFormRow>
-
-                                                    <ForgeFormRow label="--tries">
-                                                        <ForgeUnitInput
+                                                    <ForgeFormRow
+                                                        label="tries"
+                                                        htmlFor="tries"
+                                                    >
+                                                        <Input
                                                             id="tries"
                                                             name="tries"
                                                             type="number"
                                                             min={1}
-                                                            placeholder="1"
-                                                            suffix="tries"
                                                             value={tries}
                                                             onChange={(event) =>
                                                                 setTries(
@@ -2082,45 +1963,20 @@ function SupervisorTab({
                                                         />
                                                     </ForgeFormRow>
 
-                                                    <ForgeFormRow label="--memory">
-                                                        <ForgeUnitInput
-                                                            id="memory"
-                                                            type="number"
-                                                            placeholder="128"
-                                                            suffix="MB"
-                                                            value={memory}
-                                                            onChange={(event) =>
-                                                                setMemory(
-                                                                    event.target
-                                                                        .value,
-                                                                )
-                                                            }
-                                                        />
-                                                    </ForgeFormRow>
-
-                                                    <ForgeFormRow label="--env">
+                                                    <ForgeFormRow
+                                                        label="timeout"
+                                                        htmlFor="job_timeout"
+                                                    >
                                                         <Input
-                                                            id="app_env"
-                                                            value={appEnv}
+                                                            id="job_timeout"
+                                                            name="job_timeout"
+                                                            type="number"
+                                                            min={30}
+                                                            value={jobTimeout}
                                                             onChange={(event) =>
-                                                                setAppEnv(
+                                                                setJobTimeout(
                                                                     event.target
                                                                         .value,
-                                                                )
-                                                            }
-                                                        />
-                                                    </ForgeFormRow>
-
-                                                    <ForgeFormRow label="--force">
-                                                        <Checkbox
-                                                            id="force"
-                                                            checked={force}
-                                                            onCheckedChange={(
-                                                                checked,
-                                                            ) =>
-                                                                setForce(
-                                                                    checked ===
-                                                                        true,
                                                                 )
                                                             }
                                                         />
@@ -2128,59 +1984,30 @@ function SupervisorTab({
                                                 </ForgeFormRows>
 
                                                 <ForgeFormPreview>
-                                                    <span className="text-[#18B69B]">
-                                                        {queuePreview}
-                                                    </span>
+                                                    {queuePreview}
                                                 </ForgeFormPreview>
                                             </div>
                                         ) : (
-                                            <div className="overflow-hidden rounded-lg border border-[#e2e8f0] dark:border-[#2e3032]">
-                                                <ForgeFormRows>
-                                                    <ForgeFormRow label="command">
-                                                        <Input
-                                                            id="custom_command"
-                                                            name="command"
-                                                            value={command}
-                                                            onChange={(event) =>
-                                                                setCommand(
-                                                                    event.target
-                                                                        .value,
-                                                                )
-                                                            }
-                                                            className="font-mono text-sm"
-                                                        />
-                                                        <InputError
-                                                            message={
-                                                                errors.command
-                                                            }
-                                                        />
-                                                    </ForgeFormRow>
-                                                </ForgeFormRows>
-
-                                                <ForgeFormPreview label="Supervisor configuration">
-                                                    <dl className="space-y-2 text-sm not-italic">
-                                                        <div className="flex justify-between gap-4">
-                                                            <dt className="text-[#64748b]">
-                                                                Working directory
-                                                            </dt>
-                                                            <dd className="truncate font-mono text-xs">
-                                                                {site.path}
-                                                            </dd>
-                                                        </div>
-                                                        <div className="flex justify-between gap-4">
-                                                            <dt className="text-[#64748b]">
-                                                                Processes
-                                                            </dt>
-                                                            <dd>1</dd>
-                                                        </div>
-                                                        <div className="flex justify-between gap-4">
-                                                            <dt className="text-[#64748b]">
-                                                                Graceful shutdown
-                                                            </dt>
-                                                            <dd>15 seconds</dd>
-                                                        </div>
-                                                    </dl>
-                                                </ForgeFormPreview>
+                                            <div className="space-y-4">
+                                                <Field
+                                                    htmlFor="custom_command"
+                                                    label="Command"
+                                                    error={errors.command}
+                                                    help={`Runs in ${site.path} as the beacon user.`}
+                                                >
+                                                    <Input
+                                                        id="custom_command"
+                                                        name="command"
+                                                        mono
+                                                        value={command}
+                                                        onChange={(event) =>
+                                                            setCommand(
+                                                                event.target
+                                                                    .value,
+                                                            )
+                                                        }
+                                                    />
+                                                </Field>
                                             </div>
                                         )}
 
@@ -2903,11 +2730,7 @@ export default function SiteShow({
         return (
             <>
                 <Head title={`${site.name} — Supervisor`} />
-                <SupervisorTab
-                    site={site}
-                    processes={supervisorProcesses}
-                    runtimeOptions={runtimeOptions}
-                />
+                <SupervisorTab site={site} processes={supervisorProcesses} runtimeOptions={runtimeOptions} />
             </>
         );
     }

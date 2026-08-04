@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
+/** Compact label/control rows for settings dialogs — Beacon tokens, not Forge chrome. */
 export function ForgeFormRows({
     children,
     className,
@@ -11,7 +12,7 @@ export function ForgeFormRows({
     return (
         <div
             className={cn(
-                'divide-y divide-[#e2e8f0] rounded-lg border border-[#e2e8f0] dark:divide-[#2e3032] dark:border-[#2e3032]',
+                'divide-y divide-[var(--bc-border-default)] rounded-md border border-[var(--bc-border-default)]',
                 className,
             )}
         >
@@ -22,29 +23,35 @@ export function ForgeFormRows({
 
 export function ForgeFormRow({
     label,
+    htmlFor,
     children,
-    suffix,
     className,
 }: {
     label: string;
+    htmlFor?: string;
     children: ReactNode;
-    suffix?: ReactNode;
     className?: string;
 }) {
     return (
         <div
             className={cn(
-                'flex flex-col items-start justify-between gap-x-3 gap-y-2 px-5 py-4 sm:flex-row sm:items-center sm:gap-y-3',
+                'grid gap-2 px-4 py-3 sm:grid-cols-[6.5rem_minmax(0,1fr)] sm:items-center sm:gap-4',
                 className,
             )}
         >
-            <div className="w-32 shrink-0 font-mono text-sm tracking-tight text-[#0f172a] dark:text-[#f8fafc]">
-                {label}
-            </div>
-            <div className="w-full min-w-0 flex-1">{children}</div>
-            {suffix !== undefined && (
-                <div className="flex w-20 shrink-0 justify-center">{suffix}</div>
+            {htmlFor ? (
+                <label
+                    htmlFor={htmlFor}
+                    className="font-mono text-[13px] leading-5 text-fg-muted"
+                >
+                    {label}
+                </label>
+            ) : (
+                <span className="font-mono text-[13px] leading-5 text-fg-muted">
+                    {label}
+                </span>
             )}
+            <div className="min-w-0">{children}</div>
         </div>
     );
 }
@@ -57,11 +64,11 @@ export function ForgeFormPreview({
     label?: string;
 }) {
     return (
-        <div className="border-t border-[#e2e8f0] bg-[#f8fafc] px-5 py-4 dark:border-[#2e3032] dark:bg-[#151718]/40">
-            <span className="inline-flex items-center rounded-md border border-[#e2e8f0] bg-white px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-[#64748b] dark:border-[#2e3032] dark:bg-[#151718]">
+        <div className="border-t border-[var(--bc-border-default)] bg-[var(--bc-bg-subtle)] px-4 py-3">
+            <p className="text-[12px] font-medium tracking-wide text-fg-muted uppercase">
                 {label}
-            </span>
-            <div className="mt-3 font-mono text-sm text-[#0f172a] dark:text-[#f8fafc]">
+            </p>
+            <div className="mt-2 break-all font-mono text-[13px] leading-5 text-fg-code">
                 {children}
             </div>
         </div>
@@ -78,25 +85,24 @@ export function ForgeFormTabs({
     onChange: (value: string) => void;
 }) {
     return (
-        <nav
-            aria-label="Tabs"
-            className="relative flex gap-6 border-b border-[#e2e8f0] dark:border-[#2e3032]"
-        >
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Process type">
             {tabs.map((tab) => (
                 <button
                     key={tab.value}
                     type="button"
+                    role="tab"
+                    aria-selected={value === tab.value}
                     className={cn(
-                        'relative border-b-2 px-1 py-3 text-sm font-medium transition-colors',
+                        'rounded-md border px-3 py-1.5 text-[13px] font-medium transition-colors duration-[--bc-duration-fast]',
                         value === tab.value
-                            ? 'border-[#18B69B] text-[#0f172a] dark:text-[#f8fafc]'
-                            : 'border-transparent text-[#64748b] hover:text-[#0f172a] dark:hover:text-[#f8fafc]',
+                            ? 'border-border-brand bg-brand-subtle text-fg-brand'
+                            : 'border-[var(--bc-border-default)] text-fg-muted hover:border-border-hover hover:text-fg',
                     )}
                     onClick={() => onChange(tab.value)}
                 >
                     {tab.label}
                 </button>
             ))}
-        </nav>
+        </div>
     );
 }
