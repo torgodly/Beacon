@@ -126,6 +126,30 @@ class DeleteSiteTest extends TestCase
         $this->assertNotNull($cronWrite);
     }
 
+    public function test_destroy_reloads_nginx_after_deleting_vhost(): void
+    {
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+        $site = $this->createSite('app.example.com');
+
+        $this->actingAs($user)->delete(route('sites.destroy', $site), [
+            'confirmation' => $site->name,
+        ])->assertRedirect(route('sites.index'));
+
+        $nginxDelete = collect($this->processFactory->calls)->first(
+            fn (array $call): bool => ($call['command'][2] ?? '') === SudoWrapper::Nginx->path()
+                && ($call['command'][3] ?? '') === 'delete',
+        );
+
+        $nginxReload = collect($this->processFactory->calls)->first(
+            fn (array $call): bool => ($call['command'][2] ?? '') === SudoWrapper::Nginx->path()
+                && ($call['command'][3] ?? '') === 'reload',
+        );
+
+        $this->assertNotNull($nginxDelete);
+        $this->assertNotNull($nginxReload);
+    }
+
     public function test_destroy_deletes_deployment_log_files(): void
     {
         $user = User::factory()->create();

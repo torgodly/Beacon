@@ -285,6 +285,15 @@ class SiteController extends Controller
                 if ($selected !== null) {
                     $activeCommand = ConsoleController::commandPayload($selected);
                 }
+            } elseif ($activeCommand === null) {
+                $inFlight = $site->commands()
+                    ->whereIn('status', ['queued', 'running'])
+                    ->latest()
+                    ->first();
+
+                if ($inFlight !== null) {
+                    $activeCommand = ConsoleController::commandPayload($inFlight);
+                }
             }
         }
 

@@ -89,7 +89,14 @@ class CertbotService
     public function deleteAllForSite(Site $site): void
     {
         foreach ($site->sslCertificates as $certificate) {
-            $this->runner->sudoRoot(SudoWrapper::Certbot, ['delete', $certificate->lineage]);
+            $result = $this->runner->sudoRoot(
+                SudoWrapper::Certbot,
+                ['delete', $certificate->lineage],
+            );
+
+            if ($result->failed()) {
+                throw new RuntimeException(trim($result->errorOutput()) ?: 'Could not delete certificate.');
+            }
         }
 
         $site->sslCertificates()->delete();

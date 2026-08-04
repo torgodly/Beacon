@@ -42,6 +42,7 @@ class DeleteSite
             'deployments',
             'commands',
             'cronJobs',
+            'sslCertificates',
         ]);
 
         DB::transaction(function () use ($site): void {

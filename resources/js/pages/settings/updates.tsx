@@ -1,6 +1,6 @@
 import { Form, Head, router, usePage } from '@inertiajs/react';
 import { ArrowDownCircle, RefreshCw } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback } from 'react';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
@@ -18,6 +18,10 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    isActiveStreamStatus,
+    useLiveLogStream,
+} from '@/hooks/use-live-log-stream';
 import {
     edit as updatesEdit,
     log as updateLog,
@@ -58,63 +62,46 @@ function updateBadgeStatus(status: string): Status {
 }
 
 function UpdateLogViewer({ update }: { update: ActiveUpdate }) {
-    return <UpdateLogViewerContent key={update.uuid} update={update} />;
-}
-
-function UpdateLogViewerContent({ update }: { update: ActiveUpdate }) {
-    const [chunks, setChunks] = useState<string[]>([]);
-    const [status, setStatus] = useState(update.status);
-    const offsetRef = useRef(0);
-
-    useEffect(() => {
-        let cancelled = false;
-
-        async function poll() {
+    const fetchLog = useCallback(
+        async (offset: number) => {
             const response = await fetch(
                 updateLog.url(
                     { update: update.uuid },
-                    { query: { offset: offsetRef.current } },
+                    { query: { offset } },
                 ),
                 { headers: { Accept: 'application/json' } },
             );
 
-            if (!response.ok || cancelled) {
-                return;
+            if (!response.ok) {
+                return null;
             }
 
-            const data = (await response.json()) as {
+            return (await response.json()) as {
                 offset: number;
                 chunk: string;
                 status: string;
             };
+        },
+        [update.uuid],
+    );
 
-            if (data.chunk) {
-                setChunks((previous) => [...previous, data.chunk]);
-            }
-
-            offsetRef.current = data.offset;
-            setStatus(data.status);
-        }
-
-        void poll();
-
-        const interval = setInterval(() => {
-            if (status === 'queued' || status === 'running') {
-                void poll();
-            }
-        }, 1000);
-
-        return () => {
-            cancelled = true;
-            clearInterval(interval);
-        };
-    }, [update.uuid, status]);
+    const { chunks, status } = useLiveLogStream({
+        streamKey: update.uuid,
+        initialStatus: update.status,
+        fetchLog,
+        reloadOnly: ['history', 'activeUpdate', 'currentVersion'],
+    });
 
     return (
         <Terminal
             chunks={chunks}
             status={updateTerminalStatus(status)}
             title={`Panel ${update.action}`}
+            emptyMessage={
+                isActiveStreamStatus(status)
+                    ? 'Waiting for the update worker…'
+                    : 'Fetching update output…'
+            }
         />
     );
 }
@@ -169,7 +156,7 @@ export default function UpdatesSettings({
                         </div>
 
                         <Form {...store.form()} className="grid max-w-sm gap-3">
-                            {({ errors, processing }) => (
+                            {({ errors: formErrors, processing }) => (
                                 <>
                                     <div className="grid gap-2">
                                         <Label htmlFor="tag">Release tag</Label>
@@ -179,7 +166,7 @@ export default function UpdatesSettings({
                                             placeholder="v1.0.0"
                                             autoComplete="off"
                                         />
-                                        <InputError message={errors.tag} />
+                                        <InputError message={formErrors.tag} />
                                     </div>
                                     <Button type="submit" disabled={processing}>
                                         <RefreshCw className="size-4" />
@@ -202,6 +189,7 @@ export default function UpdatesSettings({
                             destructive
                             onConfirm={() => router.post(rollback.url())}
                         />
+
                         <InputError message={errors.update} />
                     </CardContent>
                 </Card>

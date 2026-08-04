@@ -84,7 +84,13 @@ class NginxService
 
     public function delete(Site $site): void
     {
-        $this->runner->sudoRoot(SudoWrapper::Nginx, ['delete', $site->name]);
+        $result = $this->runner->sudoRoot(SudoWrapper::Nginx, ['delete', $site->name]);
+
+        if ($result->failed() && $result->exitCode() !== 66) {
+            throw new RuntimeException("Could not delete nginx config: {$result->errorOutput()}");
+        }
+
+        $this->reload();
     }
 
     public function reload(): void

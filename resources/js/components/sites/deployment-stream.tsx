@@ -1,8 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback } from 'react';
 import { Panel } from '@/components/console/panel';
 import { StatusPill, toStatus } from '@/components/status-pill';
 import { Terminal } from '@/components/terminal';
 import type { TerminalStatus } from '@/components/terminal';
+import {
+    isActiveStreamStatus,
+    useLiveLogStream,
+} from '@/hooks/use-live-log-stream';
 import { log as deploymentLog } from '@/routes/sites/deployments';
 
 export type DeploymentStreamPayload = {
@@ -17,7 +21,7 @@ export type DeploymentStreamPayload = {
 };
 
 function deploymentTerminalStatus(status: string): TerminalStatus {
-    if (status === 'running' || status === 'queued') {
+    if (isActiveStreamStatus(status)) {
         return 'running';
     }
 
@@ -53,60 +57,41 @@ export function DeploymentStream({
     deployment: DeploymentStreamPayload;
     compact?: boolean;
 }) {
-    const [chunks, setChunks] = useState<string[]>([]);
-    const [status, setStatus] = useState(deployment.status);
-    const [durationMs, setDurationMs] = useState(
-        deployment.duration_ms ?? null,
-    );
-    const offsetRef = useRef(0);
-
-    useEffect(() => {
-        let cancelled = false;
-        let currentStatus = deployment.status;
-
-        async function poll() {
+    const fetchLog = useCallback(
+        async (offset: number) => {
             const response = await fetch(
                 deploymentLog.url(
                     { site: siteId, deployment: deployment.uuid },
-                    { query: { offset: offsetRef.current } },
+                    { query: { offset } },
                 ),
                 { headers: { Accept: 'application/json' } },
             );
 
-            if (!response.ok || cancelled) {
-                return;
+            if (!response.ok) {
+                return null;
             }
 
-            const data = (await response.json()) as {
+            return (await response.json()) as {
                 offset: number;
                 chunk: string;
                 status: string;
                 duration_ms: number | null;
             };
+        },
+        [siteId, deployment.uuid],
+    );
 
-            if (data.chunk) {
-                setChunks((previous) => [...previous, data.chunk]);
-            }
-
-            offsetRef.current = data.offset;
-            currentStatus = data.status;
-            setStatus(data.status);
-            setDurationMs(data.duration_ms);
-        }
-
-        void poll();
-
-        const interval = window.setInterval(() => {
-            if (currentStatus === 'queued' || currentStatus === 'running') {
-                void poll();
-            }
-        }, 1000);
-
-        return () => {
-            cancelled = true;
-            window.clearInterval(interval);
-        };
-    }, [deployment.uuid, siteId, deployment.status, deployment.duration_ms]);
+    const { chunks, status, durationMs } = useLiveLogStream({
+        streamKey: deployment.uuid,
+        initialStatus: deployment.status,
+        fetchLog,
+        reloadOnly: [
+            'site',
+            'deployments',
+            'activeDeployment',
+            'latestDeployment',
+        ],
+    });
 
     const title = compact
         ? `Deploy ${deployment.uuid.slice(0, 8)}`
@@ -116,7 +101,7 @@ export function DeploymentStream({
         deployment.trigger && `trigger · ${deployment.trigger}`,
         deployment.branch && `branch · ${deployment.branch}`,
         deployment.commit_sha && deployment.commit_sha.slice(0, 7),
-        formatDuration(durationMs),
+        formatDuration(durationMs ?? deployment.duration_ms),
     ]
         .filter(Boolean)
         .join(' · ');

@@ -1,9 +1,10 @@
 import { Link } from '@inertiajs/react';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, ShieldAlert } from 'lucide-react';
 import { ForgeContainer } from '@/components/forge/forge-container';
-import { ForgeSiteTabs } from '@/components/forge/forge-tabs';
+import { ForgeFrameworkBadge } from '@/components/forge/forge-badge';
 import { DeployButton } from '@/components/sites/deploy-button';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { show } from '@/routes/sites';
 
 type SiteChromeSite = {
@@ -14,6 +15,7 @@ type SiteChromeSite = {
     repository_branch?: string;
     repository_connected?: boolean;
     deployment_status?: string;
+    ssl_status?: string;
     type?: string;
 };
 
@@ -31,6 +33,11 @@ const SITE_TABS = [
     { key: 'settings', title: 'Settings' },
 ] as const;
 
+const tabActive =
+    'border-b-2 border-[#18B69B] text-[#0f172a] dark:text-[#f8fafc]';
+const tabInactive =
+    'border-b-2 border-transparent text-[#64748b] hover:text-[#334155] dark:text-[#94a3b8] dark:hover:text-[#e2e8f0]';
+
 export function ForgeSiteChrome({
     site,
     tab,
@@ -39,62 +46,73 @@ export function ForgeSiteChrome({
     tab: string;
 }) {
     const visitDomain = site.primary_domain || site.name;
-    const visitUrl = `https://${visitDomain}`;
+    const tlsIssued = site.ssl_status === 'issued';
+    const visitUrl = `${tlsIssued ? 'https' : 'http'}://${visitDomain}`;
 
     return (
-        <div className="-mt-6 mb-8">
-            <div className="border-b border-[#e2e8f0] bg-white dark:border-[#2e3032] dark:bg-[#1f2021]">
-                <ForgeContainer className="py-4">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="flex min-w-0 items-center gap-3">
-                            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#18B69B]/10 text-sm font-semibold text-[#18B69B] ring-1 ring-[#18B69B]/20">
-                                {site.name.charAt(0).toUpperCase()}
-                            </span>
-                            <div className="min-w-0">
-                                <h1 className="truncate text-base font-semibold text-[#0f172a] dark:text-[#f8fafc]">
-                                    {site.name}
-                                </h1>
-                                {site.repository_connected && site.repository ? (
-                                    <Link
-                                        href={show.url(site.id, {
-                                            query: { tab: 'settings' },
-                                        })}
-                                        className="mt-0.5 block truncate font-mono text-xs text-[#64748b] hover:text-[#18B69B]"
-                                    >
-                                        {site.repository}@
-                                        {site.repository_branch ?? 'main'}
-                                    </Link>
-                                ) : (
-                                    <p className="mt-0.5 text-xs text-[#64748b]">
-                                        No repository connected
-                                    </p>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2">
-                            <Button variant="secondary" size="sm" asChild>
-                                <a
-                                    href={visitUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                >
-                                    <ExternalLink className="size-3.5" />
-                                    Visit
-                                </a>
-                            </Button>
-                            <DeployButton
-                                siteId={site.id}
-                                repository={site.repository ?? null}
-                                deploymentStatus={site.deployment_status}
-                                size="sm"
-                            />
-                        </div>
+        <div className="mb-6 border-b border-[#e2e8f0] bg-white dark:border-[#2e3032] dark:bg-[#1f2021]">
+            <ForgeContainer>
+                <div className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        {site.type && (
+                            <ForgeFrameworkBadge type={site.type} />
+                        )}
+                        {!tlsIssued && (
+                            <Link
+                                href={show.url(site.id, { query: { tab: 'ssl' } })}
+                                className="inline-flex items-center gap-1 rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-700 hover:border-amber-500/40 dark:text-amber-400"
+                            >
+                                <ShieldAlert className="size-3" />
+                                TLS not configured
+                            </Link>
+                        )}
                     </div>
-                </ForgeContainer>
-            </div>
 
-            <ForgeSiteTabs siteId={site.id} tab={tab} tabs={SITE_TABS} />
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                        <Button variant="secondary" size="sm" asChild>
+                            <a
+                                href={visitUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                <ExternalLink className="size-3.5" />
+                                Visit{tlsIssued ? '' : ' (HTTP)'}
+                            </a>
+                        </Button>
+                        <DeployButton
+                            siteId={site.id}
+                            repository={site.repository ?? null}
+                            deploymentStatus={site.deployment_status}
+                            size="sm"
+                        />
+                    </div>
+                </div>
+
+                <nav
+                    className="-mb-px flex gap-5 overflow-x-auto"
+                    aria-label="Site sections"
+                >
+                    {SITE_TABS.map((item) => {
+                        const active = tab === item.key;
+
+                        return (
+                            <Link
+                                key={item.key}
+                                href={show.url(site.id, {
+                                    query: { tab: item.key },
+                                })}
+                                preserveScroll
+                                className={cn(
+                                    'shrink-0 py-3 text-sm font-medium transition-colors',
+                                    active ? tabActive : tabInactive,
+                                )}
+                            >
+                                {item.title}
+                            </Link>
+                        );
+                    })}
+                </nav>
+            </ForgeContainer>
         </div>
     );
 }

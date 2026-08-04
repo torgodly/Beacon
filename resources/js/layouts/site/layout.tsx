@@ -10,6 +10,7 @@ export type SiteSummary = {
     repository_branch?: string;
     repository_connected?: boolean;
     deployment_status?: string;
+    ssl_status?: string;
     status?: string;
     type?: string;
     [key: string]: unknown;

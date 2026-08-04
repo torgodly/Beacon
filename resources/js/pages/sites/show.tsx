@@ -8,7 +8,7 @@ import {
     usePage,
 } from '@inertiajs/react';
 import { Play, RotateCcw, Save, Shield, Trash2 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CodeDiffViewer } from '@/components/code-diff-viewer';
 import { CodeEditor } from '@/components/code-editor';
 import { ConfirmDialog } from '@/components/confirm-dialog';
@@ -31,12 +31,11 @@ import { ForgeFormCard, ForgePageContent } from '@/components/forge/forge-form-c
 import { Panel, SpecList, StatCluster } from '@/components/console/panel';
 import { DeployScriptEnvReference } from '@/components/deploy-script-env-reference';
 import InputError from '@/components/input-error';
+import { CommandLogViewer } from '@/components/sites/command-log-viewer';
 import { DeployButton } from '@/components/sites/deploy-button';
 import { DeploymentStream } from '@/components/sites/deployment-stream';
 import { StatusBadge } from '@/components/status-badge';
 import type { Status } from '@/components/status-badge';
-import { Terminal } from '@/components/terminal';
-import type { TerminalStatus } from '@/components/terminal';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -63,7 +62,6 @@ import { cn } from '@/lib/utils';
 import { destroy, index as sitesIndex, show } from '@/routes/sites';
 import {
     store as storeSiteCommand,
-    log as commandLog,
 } from '@/routes/sites/commands';
 import {
     store as storeCronJob,
@@ -2276,102 +2274,6 @@ function ConsoleTab({
                 </CardContent>
             </Card>
         </div>
-    );
-}
-
-function commandTerminalStatus(status: string): TerminalStatus {
-    if (status === 'running' || status === 'queued') {
-        return 'running';
-    }
-
-    if (status === 'success') {
-        return 'success';
-    }
-
-    if (status === 'failed' || status === 'timed_out') {
-        return 'failed';
-    }
-
-    return 'idle';
-}
-
-function CommandLogViewer({
-    siteId,
-    command,
-}: {
-    siteId: string;
-    command: ConsoleCommandRow;
-}) {
-    return (
-        <CommandLogViewerContent
-            key={command.uuid}
-            siteId={siteId}
-            command={command}
-        />
-    );
-}
-
-function CommandLogViewerContent({
-    siteId,
-    command,
-}: {
-    siteId: string;
-    command: ConsoleCommandRow;
-}) {
-    const [chunks, setChunks] = useState<string[]>([]);
-    const [status, setStatus] = useState(command.status);
-    const offsetRef = useRef(0);
-
-    useEffect(() => {
-        let cancelled = false;
-
-        async function poll() {
-            const response = await fetch(
-                commandLog.url(
-                    { site: siteId, command: command.uuid },
-                    { query: { offset: offsetRef.current } },
-                ),
-                { headers: { Accept: 'application/json' } },
-            );
-
-            if (!response.ok || cancelled) {
-                return;
-            }
-
-            const data = (await response.json()) as {
-                offset: number;
-                chunk: string;
-                status: string;
-            };
-
-            if (data.chunk) {
-                setChunks((previous) => [...previous, data.chunk]);
-            }
-
-            offsetRef.current = data.offset;
-            setStatus(data.status);
-        }
-
-        void poll();
-
-        const interval = window.setInterval(() => {
-            if (status === 'running' || status === 'queued') {
-                void poll();
-            }
-        }, 1000);
-
-        return () => {
-            cancelled = true;
-            window.clearInterval(interval);
-        };
-    }, [command.uuid, siteId, status]);
-
-    return (
-        <Terminal
-            title={command.command}
-            status={commandTerminalStatus(status)}
-            chunks={chunks}
-        />
     );
 }
 

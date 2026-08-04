@@ -73,6 +73,34 @@ class ConsoleTest extends TestCase
 
         $response->assertOk();
         $response->assertJsonPath('chunk', "hello\n");
+        $response->assertJsonPath('status', 'running');
+    }
+
+    public function test_command_log_endpoint_returns_current_status(): void
+    {
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+        $site = $this->createSite('app.example.com');
+
+        $command = SiteCommand::query()->create([
+            'site_id' => $site->id,
+            'user_id' => $user->id,
+            'command' => 'ls',
+            'status' => 'success',
+            'exit_code' => 0,
+            'duration_ms' => 53,
+            'log_path' => storage_path('framework/testing/commands/done.log'),
+        ]);
+
+        @mkdir(dirname($command->log_path), 0755, true);
+        file_put_contents($command->log_path, "README.md\n");
+
+        $this->actingAs($user)->getJson(
+            route('sites.commands.log', [$site, $command]).'?offset=0',
+        )
+            ->assertOk()
+            ->assertJsonPath('status', 'success')
+            ->assertJsonPath('duration_ms', 53);
     }
 
     private function createSite(string $name): Site
