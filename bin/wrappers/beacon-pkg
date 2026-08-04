@@ -3,12 +3,35 @@
 set -euo pipefail
 
 APT=/usr/bin/apt-get
+SYSTEMD_RUN=/usr/bin/systemd-run
 VERSION_RE='^8\.[1-4]$'
 EXT_RE='^[a-z0-9_]{1,32}$'
 
 die() { printf 'beacon-pkg: %s\n' "$*" >&2; exit 64; }
 
 INSTALLABLE='redis|imagick|gd|bcmath|mysql|pgsql|intl|zip|swoole|mbstring|curl|xml|soap|sqlite3|apcu|memcached|igbinary|xdebug'
+
+# apt runs from the panel PHP-FPM pool, which inherits ProtectSystem=full. sudo
+# raises privileges but not the mount namespace, so dpkg cannot write under
+# /usr. systemd-run starts a transient unit outside that sandbox.
+run_apt() {
+    if [[ "${BEACON_PKG_DIRECT:-}" == 1 ]]; then
+        DEBIAN_FRONTEND=noninteractive "$APT" "$@"
+        return
+    fi
+
+    if [[ -x "$SYSTEMD_RUN" ]]; then
+        "$SYSTEMD_RUN" --wait --pipe --collect \
+            -p ProtectSystem=off \
+            -p ProtectHome=off \
+            -p PrivateTmp=no \
+            --setenv=DEBIAN_FRONTEND=noninteractive \
+            -- "$APT" "$@"
+        return
+    fi
+
+    DEBIAN_FRONTEND=noninteractive "$APT" "$@"
+}
 
 action="${1:-}"; shift || true
 
@@ -18,9 +41,9 @@ case "$action" in
         [[ "$ver" =~ $VERSION_RE ]] || die "invalid PHP version"
         pkg="php${ver}-fpm"
         if [[ "$action" == "php-install" ]]; then
-            DEBIAN_FRONTEND=noninteractive "$APT" install -y "$pkg"
+            run_apt install -y "$pkg"
         else
-            DEBIAN_FRONTEND=noninteractive "$APT" remove -y "$pkg"
+            run_apt remove -y "$pkg"
         fi
         ;;
     ext-install)
@@ -28,7 +51,7 @@ case "$action" in
         [[ "$ver" =~ $VERSION_RE ]] || die "invalid PHP version"
         [[ "$ext" =~ $EXT_RE ]] || die "invalid extension"
         [[ "$ext" =~ ^($INSTALLABLE)$ ]] || die "extension not installable: $ext"
-        DEBIAN_FRONTEND=noninteractive "$APT" install -y "php${ver}-${ext}"
+        run_apt install -y "php${ver}-${ext}"
         ;;
     *)
         die "unknown action: ${action:-<none>}"

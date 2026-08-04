@@ -156,9 +156,9 @@ class PhpExtensionService
     private function formatInstallFailure(string $package, string $output): string
     {
         if (str_contains($output, 'Read-only file system')) {
-            return "Could not install {$package}: the panel PHP sandbox blocks apt from writing "
-                .'extension files under /usr/lib/php. Re-run install.sh or deploy the latest panel '
-                .'release (which refreshes the systemd drop-in), then try again.';
+            return "Could not install {$package}: apt is blocked by the panel PHP-FPM sandbox. "
+                .'Deploy the latest panel release or copy bin/wrappers/beacon-pkg to '
+                .'/opt/beacon/bin/beacon-pkg, then try again.';
         }
 
         $detail = trim($output);

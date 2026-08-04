@@ -681,6 +681,7 @@ done
 # ReadWritePaths is a narrow exemption: everything else stays read-only, which
 # keeps most of the sandbox's value. apt extension installs write .so files to
 # /usr/lib/php (and sometimes pull libs into /usr/lib/<arch>-linux-gnu).
+# beacon-pkg also runs apt via systemd-run so dpkg escapes this sandbox entirely.
 SANDBOX_PATHS_SRC="${SCRIPT_DIR}/bin/lib/beacon-sandbox-paths.sh"
 if [[ -z "$SCRIPT_DIR" || ! -f "$SANDBOX_PATHS_SRC" ]]; then
     SANDBOX_PATHS_SRC="$(pwd)/bin/lib/beacon-sandbox-paths.sh"

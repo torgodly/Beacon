@@ -174,4 +174,12 @@ user = beacon');
         $this->assertSame(64, $code);
         $this->assertStringContainsString('invalid PHP version', $output);
     }
+
+    public function test_beacon_pkg_rejects_unknown_extension(): void
+    {
+        [$code, $output] = $this->runWrapper('pkg', ['ext-install', '8.4', 'evil']);
+
+        $this->assertSame(64, $code);
+        $this->assertStringContainsString('extension not installable', $output);
+    }
 }

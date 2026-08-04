@@ -11,6 +11,7 @@ KEEP="${BEACON_PANEL_KEEP_RELEASES:-3}"
 PANEL_USER="${BEACON_PANEL_USER:-beacon-panel}"
 PHP_VERSION="${BEACON_PANEL_PHP_VERSION:-8.4}"
 PHP_FPM="php${PHP_VERSION}-fpm"
+BEACON_BIN="${BEACON_PANEL_BIN:-/opt/beacon/bin}"
 HEALTH_URL="${BEACON_PANEL_HEALTH_URL:-http://127.0.0.1/up}"
 SUPERVISORCTL="${SUPERVISORCTL:-/usr/bin/supervisorctl}"
 SYSTEMCTL="${SYSTEMCTL:-/usr/bin/systemctl}"
@@ -51,6 +52,19 @@ sync_sandbox_dropins() {
     # shellcheck source=/dev/null
     source "$sandbox_src"
     beacon_sync_sandbox_dropins "$PHP_VERSION"
+}
+
+sync_wrappers() {
+    local wrapper_src="${ROOT}/current/bin/wrappers"
+    local wrapper
+
+    [[ -d "$wrapper_src" ]] || return 0
+
+    install -d -m 0755 "$BEACON_BIN"
+    for wrapper in nginx php supervisor certbot service pkg cron update run fs; do
+        [[ -f "${wrapper_src}/beacon-${wrapper}" ]] || continue
+        install -m 0755 "${wrapper_src}/beacon-${wrapper}" "${BEACON_BIN}/beacon-${wrapper}"
+    done
 }
 
 promote_release() {
@@ -153,6 +167,7 @@ case "$action" in
         chmod -R a+rX,go-w "$rel"
 
         promote_release "$rel"
+        sync_wrappers
         sync_nginx_configs
         sync_sandbox_dropins
         restart_runtime
@@ -199,6 +214,7 @@ case "$action" in
         fi
 
         promote_release "$target"
+        sync_wrappers
         sync_nginx_configs
         sync_sandbox_dropins
         restart_runtime
