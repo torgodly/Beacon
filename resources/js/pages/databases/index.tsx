@@ -623,7 +623,15 @@ export default function DatabasesIndex({
                                     key={database.id}
                                     title={database.name}
                                     action={
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            {database.sites.length > 0 && (
+                                                <span className="text-xs text-[#64748b]">
+                                                    {database.sites.length}{' '}
+                                                    {database.sites.length === 1
+                                                        ? 'site'
+                                                        : 'sites'}
+                                                </span>
+                                            )}
                                             <ForgeStatusBadge
                                                 label={database.status}
                                             />
@@ -687,20 +695,14 @@ export default function DatabasesIndex({
                                         </div>
                                     }
                                 >
-                                    <ForgeListRow className="flex-col items-stretch gap-3">
-                                        <div className="flex w-full items-center justify-between gap-3">
-                                            <h3 className="text-xs font-semibold tracking-wide text-[#64748b] uppercase">
-                                                Sites using this database
-                                            </h3>
-                                            <span className="text-xs text-[#64748b]">
-                                                {database.sites.length}{' '}
-                                                {database.sites.length === 1
-                                                    ? 'site'
-                                                    : 'sites'}
-                                            </span>
-                                        </div>
-                                        <SiteLinks sites={database.sites} />
-                                    </ForgeListRow>
+                                    {database.sites.length > 0 && (
+                                        <ForgeListRow className="flex-col items-stretch gap-2 border-b border-[#e2e8f0] dark:border-[#2e3032]">
+                                            <p className="text-xs font-semibold tracking-wide text-[#64748b] uppercase">
+                                                Linked sites
+                                            </p>
+                                            <SiteLinks sites={database.sites} />
+                                        </ForgeListRow>
+                                    )}
 
                                     <ForgeListRow className="flex-col items-stretch gap-4">
                                         <div className="flex w-full items-center justify-between gap-3">
@@ -809,20 +811,6 @@ export default function DatabasesIndex({
                                                                     }
                                                                 />
                                                             </div>
-
-                                                            {user.sites
-                                                                .length > 0 ? (
-                                                                <div className="space-y-2 border-t border-[#e2e8f0] pt-3 dark:border-[#2e3032]">
-                                                                    <p className="text-xs font-semibold tracking-wide text-[#64748b] uppercase">
-                                                                        Used by
-                                                                    </p>
-                                                                    <SiteLinks
-                                                                        sites={
-                                                                            user.sites
-                                                                        }
-                                                                    />
-                                                                </div>
-                                                            ) : null}
 
                                                             {connection ? (
                                                                 <div className="space-y-2 border-t border-[#e2e8f0] pt-3 dark:border-[#2e3032]">

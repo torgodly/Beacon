@@ -7,7 +7,7 @@ import {
     useForm,
     usePage,
 } from '@inertiajs/react';
-import { Clock, Cog, History, Play, Plus, RefreshCw, RotateCcw, Save, Shield, Trash2 } from 'lucide-react';
+import { Clock, Cog, Eye, History, MoreHorizontal, Pencil, Play, Plus, RefreshCw, RotateCcw, Save, Shield, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { CodeDiffViewer } from '@/components/code-diff-viewer';
 import { CodeEditor } from '@/components/code-editor';
@@ -63,6 +63,12 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Field, Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -94,6 +100,7 @@ import { update as updateDeployScript } from '@/routes/sites/deploy-script';
 import {
     destroy as destroyDomain,
     primary as makePrimaryDomain,
+    settings as updateDomainSettings,
     store as storeDomain,
 } from '@/routes/sites/domains';
 import {
@@ -187,6 +194,8 @@ type SiteDetail = SiteSummary &
         deploy_trigger: string;
         poll_interval_seconds: number | null;
         effective_poll_interval_seconds: number;
+        allow_wildcard_subdomains: boolean;
+        env_cache_on_save: boolean;
         system_user?: string;
         created_at?: string | null;
     };
@@ -247,6 +256,7 @@ type CronJobRow = {
 
 type EnvironmentPayload = {
     contents: string;
+    env_cache_on_save: boolean;
     snapshots: Array<{
         id: number;
         created_at: string | null;
@@ -539,8 +549,168 @@ function OverviewTab({
     );
 }
 
-function DomainsTab({ site }: { site: SiteDetail }) {
+function ToggleSwitch({
+    checked,
+    onCheckedChange,
+    id,
+    disabled,
+}: {
+    checked: boolean;
+    onCheckedChange: (checked: boolean) => void;
+    id: string;
+    disabled?: boolean;
+}) {
+    return (
+        <button
+            id={id}
+            type="button"
+            role="switch"
+            aria-checked={checked}
+            disabled={disabled}
+            onClick={() => onCheckedChange(!checked)}
+            className={cn(
+                'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                checked
+                    ? 'bg-[#18B69B]'
+                    : 'bg-[#e2e8f0] dark:bg-[#3f4244]',
+            )}
+        >
+            <span
+                className={cn(
+                    'pointer-events-none inline-block size-5 rounded-full bg-white shadow transition-transform',
+                    checked ? 'translate-x-5' : 'translate-x-0',
+                )}
+            />
+        </button>
+    );
+}
+
+function NginxConfigDialog({
+    site,
+    nginx,
+}: {
+    site: SiteDetail;
+    nginx: NginxPayload;
+}) {
+    const { errors } = usePage().props as {
+        errors: Record<string, string>;
+    };
+    const errorLine = errors.error_line
+        ? Number.parseInt(errors.error_line, 10)
+        : undefined;
+    const [open, setOpen] = useState(false);
+    const form = useForm({
+        contents: nginx.contents,
+    });
+
+    useEffect(() => {
+        form.setData('contents', nginx.contents);
+    }, [nginx.contents]);
+
+    return (
+        <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+                <Button type="button" variant="outline" size="sm">
+                    <Pencil className="size-3.5" />
+                    Edit Nginx configuration
+                </Button>
+            </DialogTrigger>
+            <DialogContent size="xl">
+                <DialogHeader
+                    tone="default"
+                    eyebrow="Nginx"
+                    icon={<Cog className="size-5" />}
+                >
+                    <DialogTitle>Nginx configuration</DialogTitle>
+                    <DialogDescription>
+                        {nginx.customized
+                            ? 'This configuration has been customized and will not be overwritten automatically.'
+                            : 'Edits mark the config as customized. Reset to regenerate from site settings.'}
+                    </DialogDescription>
+                </DialogHeader>
+                <DialogBody className="space-y-4">
+                    <ConfirmDialog
+                        trigger={
+                            <Button type="button" variant="outline" size="sm">
+                                <RotateCcw className="size-3.5" />
+                                Reset to generated
+                            </Button>
+                        }
+                        title="Reset nginx to generated template?"
+                        description="Review the diff below. Saving will replace your customized configuration."
+                        confirmLabel="Reset configuration"
+                        onConfirm={() =>
+                            router.post(
+                                resetNginxRoute.url(site.id),
+                                {},
+                                {
+                                    preserveScroll: true,
+                                    onSuccess: () => setOpen(false),
+                                },
+                            )
+                        }
+                    >
+                        <CodeDiffViewer
+                            oldValue={form.data.contents}
+                            newValue={nginx.generated}
+                            oldTitle="Current"
+                            newTitle="Generated"
+                        />
+                    </ConfirmDialog>
+                    <form
+                        id="nginx-config-form"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            form.patch(updateNginx.url(site.id), {
+                                preserveScroll: true,
+                                onSuccess: () => setOpen(false),
+                            });
+                        }}
+                        className="space-y-3"
+                    >
+                        <CodeEditor
+                            value={form.data.contents}
+                            onChange={(value) => form.setData('contents', value)}
+                            language="nginx"
+                            errorLine={errorLine}
+                            rows={22}
+                        />
+                        <InputError message={form.errors.contents} />
+                    </form>
+                </DialogBody>
+                <DialogFooter>
+                    <DialogClose asChild>
+                        <Button type="button" variant="ghost">
+                            Cancel
+                        </Button>
+                    </DialogClose>
+                    <Button
+                        type="submit"
+                        form="nginx-config-form"
+                        disabled={form.processing}
+                    >
+                        <Save className="size-3.5" />
+                        Save configuration
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function DomainsTab({
+    site,
+    nginx,
+}: {
+    site: SiteDetail;
+    nginx: NginxPayload;
+}) {
+    const primaryDomain =
+        site.domains.find((domain) => domain.is_primary)?.domain ?? site.name;
     const [redirectWww, setRedirectWww] = useState(false);
+    const [wildcardEnabled, setWildcardEnabled] = useState(
+        site.allow_wildcard_subdomains,
+    );
     const domainForm = useForm({
         domain: '',
         redirect_www: false,
@@ -549,167 +719,219 @@ function DomainsTab({ site }: { site: SiteDetail }) {
         hostnameError(domainForm.data.domain) === undefined;
 
     return (
-        <div className="flex flex-col gap-4">
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-base">Add domain</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <form
-                        onSubmit={(event) => {
-                            event.preventDefault();
+        <ForgePageContent>
+            <ForgeFormCard
+                title="Domains"
+                description="Manage your site's domains and SSL certificates."
+                className="overflow-visible"
+            >
+                <div className="mb-6 flex flex-wrap items-center justify-end gap-2">
+                    <NginxConfigDialog site={site} nginx={nginx} />
+                </div>
 
-                            const error = hostnameError(domainForm.data.domain);
-
-                            if (error) {
-                                domainForm.setError('domain', error);
-                                return;
-                            }
-
-                            domainForm.clearErrors('domain');
-                            domainForm.transform((data) => ({
-                                ...data,
-                                domain: normalizeHostname(data.domain),
-                                redirect_www: redirectWww,
-                            }));
-                            domainForm.post(storeDomain.url(site.id), {
-                                preserveScroll: true,
-                                onSuccess: () => {
-                                    domainForm.reset();
-                                    setRedirectWww(false);
-                                },
-                            });
-                        }}
-                        className="grid max-w-xl gap-4"
-                    >
-                        <div className="grid gap-2">
-                            <Label htmlFor="domain">Domain</Label>
-                            <Input
-                                id="domain"
-                                value={domainForm.data.domain}
-                                onChange={(event) =>
-                                    domainForm.setData(
-                                        'domain',
-                                        normalizeHostname(
-                                            event.target.value,
-                                        ),
-                                    )
-                                }
-                                placeholder="api.example.com"
-                                autoComplete="off"
-                            />
-                            <InputError message={domainForm.errors.domain} />
+                <div className="space-y-6">
+                    <div className="space-y-3">
+                        <div>
+                            <h3 className="text-sm font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                                Custom domains
+                            </h3>
+                            <p className="text-sm text-[#64748b]">
+                                Add domains that should serve this site.
+                            </p>
                         </div>
 
-                        <div className="flex items-start gap-3">
+                        <form
+                            onSubmit={(event) => {
+                                event.preventDefault();
+
+                                const error = hostnameError(
+                                    domainForm.data.domain,
+                                );
+
+                                if (error) {
+                                    domainForm.setError('domain', error);
+                                    return;
+                                }
+
+                                domainForm.clearErrors('domain');
+                                domainForm.transform((data) => ({
+                                    ...data,
+                                    domain: normalizeHostname(data.domain),
+                                    redirect_www: redirectWww,
+                                }));
+                                domainForm.post(storeDomain.url(site.id), {
+                                    preserveScroll: true,
+                                    onSuccess: () => {
+                                        domainForm.reset();
+                                        setRedirectWww(false);
+                                    },
+                                });
+                            }}
+                            className="flex flex-col gap-3 sm:flex-row"
+                        >
+                            <div className="min-w-0 flex-1">
+                                <Input
+                                    id="domain"
+                                    value={domainForm.data.domain}
+                                    onChange={(event) =>
+                                        domainForm.setData(
+                                            'domain',
+                                            normalizeHostname(
+                                                event.target.value,
+                                            ),
+                                        )
+                                    }
+                                    placeholder="your-domain.com"
+                                    autoComplete="off"
+                                />
+                                <InputError message={domainForm.errors.domain} />
+                            </div>
+                            <Button
+                                type="submit"
+                                disabled={domainForm.processing || !domainValid}
+                                className="shrink-0"
+                            >
+                                Add domain
+                            </Button>
+                        </form>
+
+                        <div className="divide-y rounded-lg border border-[#e2e8f0] dark:border-[#2e3032]">
+                            {site.domains.map((domain) => (
+                                <div
+                                    key={domain.id}
+                                    className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                                >
+                                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                        <span className="font-mono text-sm text-[#0f172a] dark:text-[#f8fafc]">
+                                            {domain.domain}
+                                        </span>
+                                        {domain.is_primary && (
+                                            <span className="rounded-full bg-[#f1f5f9] px-2 py-0.5 text-xs font-medium text-[#64748b] dark:bg-[#2e3032]">
+                                                Primary
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {domain.redirect_to ? (
+                                            <span className="text-xs text-[#64748b]">
+                                                Redirects to {domain.redirect_to}
+                                            </span>
+                                        ) : domain.is_primary ? (
+                                            <span className="text-xs text-[#64748b]">
+                                                Redirect from www.
+                                            </span>
+                                        ) : null}
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon-sm"
+                                                    aria-label={`Actions for ${domain.domain}`}
+                                                >
+                                                    <MoreHorizontal className="size-4" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end">
+                                                {!domain.is_primary &&
+                                                    !domain.redirect_to && (
+                                                        <DropdownMenuItem
+                                                            onClick={() =>
+                                                                router.patch(
+                                                                    makePrimaryDomain.url(
+                                                                        {
+                                                                            site: site.id,
+                                                                            domain: domain.domain,
+                                                                        },
+                                                                    ),
+                                                                    {},
+                                                                    {
+                                                                        preserveScroll: true,
+                                                                    },
+                                                                )
+                                                            }
+                                                        >
+                                                            Make primary
+                                                        </DropdownMenuItem>
+                                                    )}
+                                                {!domain.is_primary && (
+                                                    <DropdownMenuItem
+                                                        className="text-destructive focus:text-destructive"
+                                                        onClick={() =>
+                                                            router.delete(
+                                                                destroyDomain.url(
+                                                                    {
+                                                                        site: site.id,
+                                                                        domain: domain.domain,
+                                                                    },
+                                                                ),
+                                                                {
+                                                                    preserveScroll: true,
+                                                                },
+                                                            )
+                                                        }
+                                                    >
+                                                        Remove domain
+                                                    </DropdownMenuItem>
+                                                )}
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <label className="flex items-start gap-3 rounded-lg border border-[#e2e8f0] px-4 py-3 dark:border-[#2e3032]">
                             <Checkbox
                                 id="redirect_www"
                                 checked={redirectWww}
                                 onCheckedChange={(checked) =>
                                     setRedirectWww(checked === true)
                                 }
+                                className="mt-0.5"
                             />
-                            <div className="grid gap-1">
-                                <Label htmlFor="redirect_www">
+                            <span className="grid gap-1">
+                                <span className="text-sm font-medium text-[#0f172a] dark:text-[#f8fafc]">
                                     Redirect www to apex
-                                </Label>
-                                <p className="text-sm text-muted-foreground">
-                                    Creates a www alias that redirects to this
-                                    domain.
-                                </p>
-                            </div>
-                        </div>
-
-                        <Button
-                            type="submit"
-                            disabled={domainForm.processing || !domainValid}
-                            className="w-fit"
-                        >
-                            Add domain
-                        </Button>
-                    </form>
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-base">Domains</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                    {site.domains.map((domain) => (
-                        <div
-                            key={domain.id}
-                            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm"
-                        >
-                            <div className="flex flex-col gap-1">
-                                <span className="font-mono">
-                                    {domain.domain}
                                 </span>
-                                {domain.redirect_to && (
-                                    <span className="text-xs text-muted-foreground">
-                                        Redirects to {domain.redirect_to} (
-                                        {domain.redirect_status_code ?? 301})
-                                    </span>
-                                )}
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                                {domain.is_primary ? (
-                                    <span className="text-xs text-muted-foreground">
-                                        Primary
-                                    </span>
-                                ) : (
-                                    !domain.redirect_to && (
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() =>
-                                                router.patch(
-                                                    makePrimaryDomain.url({
-                                                        site: site.id,
-                                                        domain: domain.domain,
-                                                    }),
-                                                    {},
-                                                    { preserveScroll: true },
-                                                )
-                                            }
-                                        >
-                                            Make primary
-                                        </Button>
-                                    )
-                                )}
-                                {!domain.is_primary && (
-                                    <ConfirmDialog
-                                        trigger={
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="text-destructive"
-                                            >
-                                                Remove
-                                            </Button>
-                                        }
-                                        title={`Remove ${domain.domain}?`}
-                                        description="This domain will be removed from the site and Nginx will be updated."
-                                        confirmLabel="Remove domain"
-                                        destructive
-                                        onConfirm={() =>
-                                            router.delete(
-                                                destroyDomain.url({
-                                                    site: site.id,
-                                                    domain: domain.domain,
-                                                }),
-                                                { preserveScroll: true },
-                                            )
-                                        }
-                                    />
-                                )}
-                            </div>
+                                <span className="text-sm text-[#64748b]">
+                                    Creates a www alias that redirects to the
+                                    domain you add.
+                                </span>
+                            </span>
+                        </label>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4 border-t border-[#e2e8f0] pt-6 dark:border-[#2e3032]">
+                        <div className="space-y-1">
+                            <p className="text-sm font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                                Allow wildcard subdomains
+                            </p>
+                            <p className="text-sm text-[#64748b]">
+                                Allow all subdomains to accept traffic, e.g.{' '}
+                                <code className="font-mono text-xs">
+                                    *.{primaryDomain}
+                                </code>
+                            </p>
                         </div>
-                    ))}
-                </CardContent>
-            </Card>
-        </div>
+                        <ToggleSwitch
+                            id="allow_wildcard_subdomains"
+                            checked={wildcardEnabled}
+                            onCheckedChange={(checked) => {
+                                setWildcardEnabled(checked);
+                                router.patch(
+                                    updateDomainSettings.url(site.id),
+                                    {
+                                        allow_wildcard_subdomains: checked,
+                                    },
+                                    { preserveScroll: true },
+                                );
+                            }}
+                        />
+                    </div>
+                </div>
+            </ForgeFormCard>
+        </ForgePageContent>
     );
 }
 
@@ -1034,12 +1256,26 @@ function SettingsTab({
     }
 
     return (
-        <div className="flex flex-col gap-4">
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-base">Runtime</CardTitle>
-                </CardHeader>
-                <CardContent>
+        <ForgePageContent>
+            <ForgeDividedCard
+                title="Runtime"
+                action={
+                    site.type === 'laravel' && site.app_env ? (
+                        <ForgeStatusBadge
+                            label={
+                                site.app_env.charAt(0).toUpperCase() +
+                                site.app_env.slice(1)
+                            }
+                        />
+                    ) : null
+                }
+            >
+                <ForgeListRow className="flex-col items-stretch gap-4">
+                    <p className="text-sm text-[#64748b]">
+                        Changing PHP regenerates the FPM pool and nginx vhost,
+                        then restarts PHP-FPM and Supervisor processes for this
+                        site.
+                    </p>
                     <form
                         onSubmit={(event) => {
                             event.preventDefault();
@@ -1049,11 +1285,6 @@ function SettingsTab({
                         }}
                         className="grid max-w-xl gap-4"
                     >
-                        <p className="text-sm text-muted-foreground">
-                            Changing PHP regenerates the FPM pool and nginx
-                            vhost, then restarts PHP-FPM and Supervisor
-                            processes for this site.
-                        </p>
 
                         {site.php_version !== null && (
                             <div className="grid gap-2">
@@ -1137,16 +1368,11 @@ function SettingsTab({
                             Save runtime
                         </Button>
                     </form>
-                </CardContent>
-            </Card>
+                </ForgeListRow>
+            </ForgeDividedCard>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-base">
-                        Repository & deploy
-                    </CardTitle>
-                </CardHeader>
-                <CardContent>
+            <ForgeDividedCard title="Repository & deploy">
+                <ForgeListRow className="flex-col items-stretch gap-4">
                     <Form
                         {...updateSiteSettings.form(site.id)}
                         className="grid max-w-xl gap-4"
@@ -1452,87 +1678,9 @@ function SettingsTab({
                             </>
                         )}
                     </Form>
-                </CardContent>
-            </Card>
-        </div>
-    );
-}
-
-function NginxTab({ site, nginx }: { site: SiteDetail; nginx: NginxPayload }) {
-    const { errors } = usePage().props as {
-        errors: Record<string, string>;
-    };
-    const errorLine = errors.error_line
-        ? Number.parseInt(errors.error_line, 10)
-        : undefined;
-
-    const form = useForm({
-        contents: nginx.contents,
-    });
-
-    return (
-        <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-muted-foreground">
-                    {nginx.customized
-                        ? 'This configuration has been customized and will not be overwritten automatically.'
-                        : 'Generated template — edits will mark the config as customized.'}
-                </p>
-                <div className="flex gap-2">
-                    <ConfirmDialog
-                        trigger={
-                            <Button type="button" variant="outline" size="sm">
-                                <RotateCcw className="size-3.5" />
-                                Reset to generated
-                            </Button>
-                        }
-                        title="Reset nginx to generated template?"
-                        description="Review the diff below. Saving will replace your customized configuration."
-                        confirmLabel="Reset configuration"
-                        onConfirm={() =>
-                            router.post(
-                                resetNginxRoute.url(site.id),
-                                {},
-                                { preserveScroll: true },
-                            )
-                        }
-                    >
-                        <CodeDiffViewer
-                            oldValue={form.data.contents}
-                            newValue={nginx.generated}
-                            oldTitle="Current"
-                            newTitle="Generated"
-                        />
-                    </ConfirmDialog>
-                </div>
-            </div>
-
-            <form
-                onSubmit={(event) => {
-                    event.preventDefault();
-                    form.patch(updateNginx.url(site.id), {
-                        preserveScroll: true,
-                    });
-                }}
-                className="flex flex-col gap-3"
-            >
-                <CodeEditor
-                    value={form.data.contents}
-                    onChange={(value) => form.setData('contents', value)}
-                    language="nginx"
-                    errorLine={errorLine}
-                    rows={24}
-                />
-                <InputError message={form.errors.contents} />
-
-                <div className="flex justify-end">
-                    <Button type="submit" disabled={form.processing}>
-                        <Save className="size-3.5" />
-                        Save configuration
-                    </Button>
-                </div>
-            </form>
-        </div>
+                </ForgeListRow>
+            </ForgeDividedCard>
+        </ForgePageContent>
     );
 }
 
@@ -2589,20 +2737,40 @@ function EnvironmentTab({
     site: SiteDetail;
     environment: EnvironmentPayload;
 }) {
-    const form = useForm({ contents: environment.contents });
+    const [revealed, setRevealed] = useState(false);
+    const form = useForm({
+        contents: environment.contents,
+        env_cache_on_save: environment.env_cache_on_save,
+    });
     const { errors } = usePage().props as {
         errors: Record<string, string>;
     };
 
+    useEffect(() => {
+        form.setData({
+            contents: environment.contents,
+            env_cache_on_save: environment.env_cache_on_save,
+        });
+    }, [environment.contents, environment.env_cache_on_save]);
+
     return (
-        <div className="flex flex-col gap-4">
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-base">Site .env</CardTitle>
-                </CardHeader>
-                <CardContent>
+        <ForgePageContent>
+            <ForgeFormCard
+                title="Environment"
+                description="Below you may edit the .env file for your application. If the application is uninstalled, the environment file will also be removed."
+            >
+                <div className="space-y-6">
+                    <div className="space-y-2">
+                        <h3 className="text-sm font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                            Environment variables
+                        </h3>
+                        <p className="text-sm text-[#64748b]">
+                            Your application&apos;s environment variables.
+                        </p>
+                    </div>
+
                     <form
-                        className="grid gap-4"
+                        className="space-y-4"
                         onSubmit={(event) => {
                             event.preventDefault();
                             form.patch(updateEnvironment.url(site.id), {
@@ -2610,121 +2778,169 @@ function EnvironmentTab({
                             });
                         }}
                     >
-                        <CodeEditor
-                            language="env"
-                            value={form.data.contents}
-                            onChange={(value) =>
-                                form.setData('contents', value)
-                            }
-                            rows={20}
-                        />
+                        {!revealed ? (
+                            <div className="relative overflow-hidden rounded-lg border border-[#e2e8f0] dark:border-[#2e3032]">
+                                <div
+                                    className="pointer-events-none select-none px-4 py-16 font-mono text-sm leading-6 text-transparent blur-sm"
+                                    aria-hidden="true"
+                                >
+                                    {environment.contents ||
+                                        'APP_NAME=Example\nAPP_ENV=production\nAPP_KEY=\n'}
+                                </div>
+                                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/80 px-6 text-center dark:bg-[#1f2021]/85">
+                                    <p className="text-sm text-[#64748b]">
+                                        Environment variables should not be
+                                        shared publicly.
+                                    </p>
+                                    <Button
+                                        type="button"
+                                        variant="primary"
+                                        size="sm"
+                                        onClick={() => setRevealed(true)}
+                                    >
+                                        <Eye className="size-3.5" />
+                                        Reveal
+                                    </Button>
+                                </div>
+                            </div>
+                        ) : (
+                            <CodeEditor
+                                language="env"
+                                value={form.data.contents}
+                                onChange={(value) =>
+                                    form.setData('contents', value)
+                                }
+                                rows={20}
+                            />
+                        )}
+
+                        <div className="flex items-center justify-between gap-4 border-t border-[#e2e8f0] pt-4 dark:border-[#2e3032]">
+                            <div className="space-y-1">
+                                <p className="text-sm font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                                    Cache
+                                </p>
+                                <p className="text-sm text-[#64748b]">
+                                    Run{' '}
+                                    <code className="rounded bg-[#f1f5f9] px-1.5 py-0.5 font-mono text-xs dark:bg-[#2e3032]">
+                                        php artisan config:cache
+                                    </code>{' '}
+                                    after updating environment variables.
+                                </p>
+                            </div>
+                            <ToggleSwitch
+                                id="env_cache_on_save"
+                                checked={form.data.env_cache_on_save}
+                                onCheckedChange={(checked) =>
+                                    form.setData('env_cache_on_save', checked)
+                                }
+                            />
+                        </div>
+
                         <InputError message={errors.environment} />
-                        <Button
-                            type="submit"
-                            disabled={form.processing}
-                            className="w-fit"
-                        >
-                            <Save className="size-3.5" />
-                            Save .env
-                        </Button>
+
+                        {revealed && (
+                            <Button
+                                type="submit"
+                                disabled={form.processing}
+                                className="w-fit"
+                            >
+                                <Save className="size-3.5" />
+                                Save .env
+                            </Button>
+                        )}
                     </form>
-                </CardContent>
-            </Card>
+                </div>
+            </ForgeFormCard>
 
             {environment.snapshots.length > 0 && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="text-base">Snapshots</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <ul className="divide-y rounded-lg border">
-                            {environment.snapshots.map((snapshot) => (
-                                <li
-                                    key={snapshot.id}
-                                    className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
-                                >
-                                    <time dateTime={snapshot.created_at ?? ''}>
-                                        {snapshot.created_at
-                                            ? new Date(
-                                                  snapshot.created_at,
-                                              ).toLocaleString()
-                                            : 'Unknown'}
-                                    </time>
-                                    <Dialog>
-                                        <DialogTrigger asChild>
+                <ForgeDividedCard title="Snapshots">
+                    {environment.snapshots.map((snapshot) => (
+                        <ForgeListRow
+                            key={snapshot.id}
+                            className="justify-between"
+                        >
+                            <time
+                                dateTime={snapshot.created_at ?? ''}
+                                className="text-[#64748b]"
+                            >
+                                {snapshot.created_at
+                                    ? new Date(
+                                          snapshot.created_at,
+                                      ).toLocaleString()
+                                    : 'Unknown'}
+                            </time>
+                            <Dialog>
+                                <DialogTrigger asChild>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                    >
+                                        Compare & restore
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent size="xl">
+                                    <DialogHeader
+                                        tone="default"
+                                        eyebrow="Environment"
+                                        icon={
+                                            <History className="size-5" />
+                                        }
+                                    >
+                                        <DialogTitle>
+                                            Environment snapshot
+                                        </DialogTitle>
+                                        <DialogDescription>
+                                            Green lines will be added, red lines
+                                            will be removed when restoring this
+                                            snapshot.
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                    <DialogBody>
+                                        <CodeDiffViewer
+                                            oldValue={form.data.contents}
+                                            newValue={snapshot.contents}
+                                            oldTitle="Current .env"
+                                            newTitle="Snapshot"
+                                        />
+                                    </DialogBody>
+                                    <DialogFooter>
+                                        <DialogClose asChild>
                                             <Button
                                                 type="button"
-                                                variant="outline"
-                                                size="sm"
+                                                variant="ghost"
                                             >
-                                                Compare & restore
+                                                Close
                                             </Button>
-                                        </DialogTrigger>
-                                        <DialogContent size="xl">
-                                            <DialogHeader
-                                                tone="default"
-                                                eyebrow="Environment"
-                                                icon={
-                                                    <History className="size-5" />
-                                                }
-                                            >
-                                                <DialogTitle>
-                                                    Environment snapshot
-                                                </DialogTitle>
-                                                <DialogDescription>
-                                                    Green lines will be added,
-                                                    red lines will be removed
-                                                    when restoring this
-                                                    snapshot.
-                                                </DialogDescription>
-                                            </DialogHeader>
-                                            <DialogBody>
-                                                <CodeDiffViewer
-                                                    oldValue={form.data.contents}
-                                                    newValue={snapshot.contents}
-                                                    oldTitle="Current .env"
-                                                    newTitle="Snapshot"
-                                                />
-                                            </DialogBody>
-                                            <DialogFooter>
-                                                <DialogClose asChild>
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                    >
-                                                        Close
-                                                    </Button>
-                                                </DialogClose>
-                                                <Button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        router.post(
-                                                            restoreEnvironmentSnapshot.url(
-                                                                {
-                                                                    site: site.id,
-                                                                    snapshot:
-                                                                        snapshot.id,
-                                                                },
-                                                            ),
-                                                            {},
-                                                            {
-                                                                preserveScroll: true,
-                                                            },
-                                                        )
-                                                    }
-                                                >
-                                                    Restore snapshot
-                                                </Button>
-                                            </DialogFooter>
-                                        </DialogContent>
-                                    </Dialog>
-                                </li>
-                            ))}
-                        </ul>
-                    </CardContent>
-                </Card>
+                                        </DialogClose>
+                                        <Button
+                                            type="button"
+                                            onClick={() =>
+                                                router.post(
+                                                    restoreEnvironmentSnapshot.url(
+                                                        {
+                                                            site: site.id,
+                                                            snapshot:
+                                                                snapshot.id,
+                                                        },
+                                                    ),
+                                                    {},
+                                                    {
+                                                        preserveScroll: true,
+                                                    },
+                                                )
+                                            }
+                                        >
+                                            Restore snapshot
+                                        </Button>
+                                    </DialogFooter>
+                                </DialogContent>
+                            </Dialog>
+                        </ForgeListRow>
+                    ))}
+                </ForgeDividedCard>
             )}
-        </div>
+        </ForgePageContent>
     );
 }
 
@@ -2872,22 +3088,17 @@ export default function SiteShow({
         );
     }
 
-    if (tab === 'domains') {
+    if (tab === 'domains' && nginx) {
         return (
             <>
                 <Head title={`${site.name} — Domains`} />
-                <DomainsTab site={site} />
+                <DomainsTab site={site} nginx={nginx} />
             </>
         );
     }
 
-    if (tab === 'nginx' && nginx) {
-        return (
-            <>
-                <Head title={`${site.name} — Nginx`} />
-                <NginxTab site={site} nginx={nginx} />
-            </>
-        );
+    if (tab === 'nginx') {
+        return null;
     }
 
     if (tab === 'isolation') {

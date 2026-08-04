@@ -149,17 +149,26 @@ else
 fi
 
 # ── Dependencies & build ──────────────────────────────────────────────
-$BEACON_COMPOSER install --no-interaction --prefer-dist --optimize-autoloader --no-dev
-[ -f package.json ] && { $BEACON_PM ci || $BEACON_PM install; $BEACON_PM run build; }
+$BEACON_COMPOSER install --no-interaction --prefer-dist --optimize-autoloader
+
+if [ -f package.json ]; then
+  $BEACON_PM ci || $BEACON_PM install
+  $BEACON_PM run build
+fi
+
+$BEACON_COMPOSER install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
 # ── Laravel housekeeping ──────────────────────────────────────────────
-if ! grep -qE '^APP_KEY=base64:' .env 2>/dev/null; then
-  $BEACON_PHP artisan key:generate --force
+if [ -f artisan ]; then
+  if ! grep -qE '^APP_KEY=base64:' .env 2>/dev/null; then
+    $BEACON_PHP artisan key:generate --force
+  fi
+  $BEACON_PHP artisan migrate --force
+  $BEACON_PHP artisan storage:link || true
+  $BEACON_PHP artisan optimize:clear
+  $BEACON_PHP artisan optimize
+  $BEACON_PHP artisan queue:restart
 fi
-$BEACON_PHP artisan migrate --force
-$BEACON_PHP artisan storage:link || true
-$BEACON_PHP artisan optimize
-$BEACON_PHP artisan queue:restart
 BASH;
     }
 
@@ -214,10 +223,22 @@ BASH;
     {
         $script = (string) $script;
         $artisanPos = strpos($script, 'artisan key:generate');
-        $composerPos = strpos($script, '$BEACON_COMPOSER install');
+        $firstComposerPos = strpos($script, '$BEACON_COMPOSER install');
 
-        return $artisanPos !== false
-            && $composerPos !== false
-            && $artisanPos < $composerPos;
+        if ($artisanPos === false || $firstComposerPos === false) {
+            return false;
+        }
+
+        $secondComposerPos = strpos(
+            $script,
+            '$BEACON_COMPOSER install --no-dev',
+            $firstComposerPos + 1,
+        );
+
+        $composerPos = $secondComposerPos !== false
+            ? $secondComposerPos
+            : $firstComposerPos;
+
+        return $artisanPos < $composerPos;
     }
 }

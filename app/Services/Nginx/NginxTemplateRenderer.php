@@ -41,9 +41,14 @@ class NginxTemplateRenderer
         $names = $site->domains->pluck('domain')->all();
 
         if ($names === []) {
-            return $site->name;
+            $names = [$site->name];
         }
 
-        return implode(' ', $names);
+        if ($site->allow_wildcard_subdomains) {
+            $primary = $site->domains->firstWhere('is_primary', true)?->domain ?? $site->name;
+            $names[] = "*.{$primary}";
+        }
+
+        return implode(' ', array_unique($names));
     }
 }

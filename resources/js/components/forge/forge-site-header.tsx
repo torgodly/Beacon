@@ -23,7 +23,6 @@ const SITE_TABS = [
     { key: 'overview', title: 'Overview' },
     { key: 'domains', title: 'Domains' },
     { key: 'ssl', title: 'TLS' },
-    { key: 'nginx', title: 'Nginx' },
     { key: 'deployments', title: 'Deployments' },
     { key: 'environment', title: 'Env' },
     { key: 'supervisor', title: 'Workers' },

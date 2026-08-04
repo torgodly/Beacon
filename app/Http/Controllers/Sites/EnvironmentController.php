@@ -22,12 +22,19 @@ class EnvironmentController extends Controller
                 $site,
                 $request->user(),
                 $request->validated('contents'),
+                $request->has('env_cache_on_save')
+                    ? $request->boolean('env_cache_on_save')
+                    : null,
             );
         } catch (RuntimeException $e) {
             return back()->withErrors(['environment' => $e->getMessage()]);
         }
 
-        return back()->with('toast', ['type' => 'success', 'message' => 'Environment file saved.']);
+        $message = $site->fresh()->env_cache_on_save
+            ? 'Environment file saved and configuration cached.'
+            : 'Environment file saved.';
+
+        return back()->with('toast', ['type' => 'success', 'message' => $message]);
     }
 
     public function restore(

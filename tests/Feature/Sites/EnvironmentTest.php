@@ -53,6 +53,68 @@ class EnvironmentTest extends TestCase
         ]);
     }
 
+    public function test_environment_save_runs_config_cache_when_enabled(): void
+    {
+        $this->processFactory->willReturnSequence([0, 0], 'Configuration cached successfully.');
+
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+        $site = $this->createSite('app.example.com');
+        $site->update([
+            'type' => 'laravel',
+            'php_version' => '8.4',
+            'env_cache_on_save' => true,
+        ]);
+
+        $path = storage_path('framework/testing/env-site');
+        if (! is_dir($path)) {
+            mkdir($path, 0777, true);
+        }
+
+        $site->update(['path' => $path]);
+        file_put_contents($path.'/artisan', '');
+
+        $response = $this->actingAs($user)
+            ->withSession(['auth.password_confirmed_at' => time()])
+            ->patch(route('sites.environment.update', $site), [
+                'contents' => "APP_NAME=Updated\nAPP_ENV=production\n",
+                'env_cache_on_save' => true,
+            ]);
+
+        $response->assertRedirect();
+
+        $this->assertTrue(
+            collect($this->processFactory->calls)->contains(
+                fn (array $call): bool => str_contains(
+                    (string) ($call['input'] ?? ''),
+                    'config:cache',
+                ) || str_contains(
+                    implode(' ', $call['command']),
+                    'config:cache',
+                ),
+            ),
+        );
+    }
+
+    public function test_environment_save_persists_cache_toggle(): void
+    {
+        $this->processFactory->willReturn(0, '');
+
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+        $site = $this->createSite('app.example.com');
+
+        $this->actingAs($user)
+            ->withSession(['auth.password_confirmed_at' => time()])
+            ->patch(route('sites.environment.update', $site), [
+                'contents' => "APP_NAME=Updated\n",
+                'env_cache_on_save' => true,
+            ])
+            ->assertRedirect();
+
+        $this->assertTrue($site->fresh()->env_cache_on_save);
+    }
+
     public function test_environment_snapshot_can_be_restored(): void
     {
         $this->processFactory->willReturn(0, '');

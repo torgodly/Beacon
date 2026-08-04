@@ -148,14 +148,6 @@ export function CreateSiteLaravelStack({
 
     return (
         <div className="space-y-3">
-            <input type="hidden" name="app_env" value={appEnv} />
-            <input type="hidden" name="database_driver" value={databaseDriver} />
-            <input
-                type="hidden"
-                name="redis_enabled"
-                value={redisEnabled ? '1' : '0'}
-            />
-
             <ForgeFormRows>
                 <ForgeFormRow label="Environment">
                     <div className="space-y-2">
@@ -194,12 +186,6 @@ export function CreateSiteLaravelStack({
 
                 {databaseDriver === 'mysql' && (
                     <>
-                        <input
-                            type="hidden"
-                            name="database_strategy"
-                            value={databaseStrategy}
-                        />
-
                         <ForgeFormRow label="MySQL">
                             <div className="space-y-3">
                                 <ForgeFormTabs
@@ -229,7 +215,6 @@ export function CreateSiteLaravelStack({
                                     >
                                         <Input
                                             id="database_name"
-                                            name="database_name"
                                             mono
                                             autoComplete="off"
                                             spellCheck={false}
@@ -259,7 +244,6 @@ export function CreateSiteLaravelStack({
                                         <Select
                                             value={databaseId}
                                             onValueChange={setDatabaseId}
-                                            name="database_id"
                                             disabled={databases.length === 0}
                                         >
                                             <SelectTrigger id="database_id">

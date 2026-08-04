@@ -7,8 +7,10 @@ use App\Actions\Site\DetachDomain;
 use App\Actions\Site\SetPrimaryDomain;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreSiteDomainRequest;
+use App\Http\Requests\UpdateSiteDomainSettingsRequest;
 use App\Models\Site;
 use App\Models\SiteDomain;
+use App\Services\Nginx\NginxService;
 use Illuminate\Http\RedirectResponse;
 use RuntimeException;
 
@@ -57,5 +59,21 @@ class DomainController extends Controller
         }
 
         return back()->with('toast', ['type' => 'success', 'message' => 'Primary domain updated.']);
+    }
+
+    public function updateSettings(
+        UpdateSiteDomainSettingsRequest $request,
+        Site $site,
+        NginxService $nginx,
+    ): RedirectResponse {
+        $site->update($request->validated());
+
+        if (! $site->nginx_customized) {
+            $nginx->generateAndApply($site);
+        } else {
+            $nginx->reload();
+        }
+
+        return back()->with('toast', ['type' => 'success', 'message' => 'Domain settings updated.']);
     }
 }

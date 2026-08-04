@@ -62,7 +62,7 @@ class SiteShowTabsTest extends TestCase
         $user = User::factory()->create();
 
         $tabs = [
-            'overview', 'domains', 'ssl', 'nginx', 'deployments',
+            'overview', 'domains', 'ssl', 'deployments',
             'environment', 'supervisor', 'cron', 'console', 'isolation',
             'settings',
         ];
@@ -109,6 +109,31 @@ class SiteShowTabsTest extends TestCase
                 ->component('sites/show')
                 ->where('tab', 'overview')
                 ->has('deployments')
+            );
+    }
+
+    public function test_nginx_tab_redirects_to_domains(): void
+    {
+        $site = $this->createSite('laravel');
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->get(route('sites.show', $site).'?tab=nginx')
+            ->assertRedirect(route('sites.show', ['site' => $site->name, 'tab' => 'domains']));
+    }
+
+    #[DataProvider('siteTypes')]
+    public function test_domains_tab_includes_nginx_payload(string $type): void
+    {
+        $site = $this->createSite($type);
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('sites.show', $site).'?tab=domains')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('tab', 'domains')
+                ->has('nginx.contents')
+                ->has('nginx.generated')
             );
     }
 

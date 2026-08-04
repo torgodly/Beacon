@@ -604,7 +604,6 @@ export function CreateSiteDialog({
                                         >
                                             <Input
                                                 id="name"
-                                                name="name"
                                                 mono
                                                 autoFocus
                                                 autoComplete="off"
@@ -650,7 +649,6 @@ export function CreateSiteDialog({
                                                             <span className="flex items-center gap-2">
                                                                 <input
                                                                     type="radio"
-                                                                    name="type"
                                                                     value={
                                                                         type.value
                                                                     }
@@ -705,7 +703,6 @@ export function CreateSiteDialog({
                                                     <>
                                                         <SearchableCombobox
                                                             id="repository"
-                                                            name="repository"
                                                             value={repository}
                                                             onValueChange={
                                                                 handleRepositoryChange
@@ -719,28 +716,16 @@ export function CreateSiteDialog({
                                                         />
                                                         {githubRepoId !==
                                                             null && (
-                                                            <>
-                                                                <input
-                                                                    type="hidden"
-                                                                    name="github_repo_id"
-                                                                    value={
-                                                                        githubRepoId
-                                                                    }
-                                                                />
-                                                                <input
-                                                                    type="hidden"
-                                                                    name="github_repository"
-                                                                    value={
-                                                                        repository
-                                                                    }
-                                                                />
-                                                            </>
+                                                            <p className="text-xs text-base-content/60">
+                                                                Linked to GitHub
+                                                                repository #
+                                                                {githubRepoId}
+                                                            </p>
                                                         )}
                                                     </>
                                                 ) : (
                                                     <Input
                                                         id="repository"
-                                                        name="repository"
                                                         mono
                                                         autoComplete="off"
                                                         spellCheck={false}
@@ -777,7 +762,6 @@ export function CreateSiteDialog({
                                                 {branches.length > 0 ? (
                                                     <SearchableCombobox
                                                         id="repository_branch"
-                                                        name="repository_branch"
                                                         value={repositoryBranch}
                                                         onValueChange={(
                                                             value,
@@ -800,7 +784,6 @@ export function CreateSiteDialog({
                                                 ) : (
                                                     <Input
                                                         id="repository_branch"
-                                                        name="repository_branch"
                                                         mono
                                                         autoComplete="off"
                                                         spellCheck={false}
@@ -837,15 +820,6 @@ export function CreateSiteDialog({
                                                             )
                                                         }
                                                         className="mt-0.5"
-                                                    />
-                                                    <input
-                                                        type="hidden"
-                                                        name="auto_deploy"
-                                                        value={
-                                                            autoDeploy
-                                                                ? '1'
-                                                                : '0'
-                                                        }
                                                     />
                                                     <label
                                                         htmlFor="auto_deploy"
@@ -891,7 +865,6 @@ export function CreateSiteDialog({
                                                 <Select
                                                     value={phpVersion}
                                                     onValueChange={setPhpVersion}
-                                                    name="php_version"
                                                     disabled={
                                                         phpVersions.length === 0
                                                     }
@@ -936,7 +909,6 @@ export function CreateSiteDialog({
                                                 <Select
                                                     value={nodeVersion}
                                                     onValueChange={setNodeVersion}
-                                                    name="node_version"
                                                     disabled={
                                                         nodeVersions.length ===
                                                         0
@@ -1048,7 +1020,6 @@ export function CreateSiteDialog({
                                                         >
                                                             <Input
                                                                 id="web_directory"
-                                                                name="web_directory"
                                                                 mono
                                                                 autoComplete="off"
                                                                 placeholder={
@@ -1116,8 +1087,7 @@ export function CreateSiteDialog({
                                                         <label className="flex items-start gap-2.5">
                                                             <input
                                                                 type="checkbox"
-                                                                name="spa_fallback"
-                                                                value="1"
+                                                                id="spa_fallback"
                                                                 checked={
                                                                     spaFallback
                                                                 }
@@ -1150,7 +1120,6 @@ export function CreateSiteDialog({
                                                     >
                                                         <Input
                                                             id="client_max_body_size"
-                                                            name="client_max_body_size"
                                                             mono
                                                             autoComplete="off"
                                                             placeholder="100M"
@@ -1177,7 +1146,6 @@ export function CreateSiteDialog({
                                                             label="Package manager"
                                                         >
                                                             <Select
-                                                                name="package_manager"
                                                                 defaultValue={
                                                                     packageManager
                                                                 }
@@ -1216,6 +1184,128 @@ export function CreateSiteDialog({
                                     </div>
                                 )}
                             </DialogBody>
+
+                            <div className="sr-only" aria-hidden="true">
+                                <input
+                                    type="hidden"
+                                    name="name"
+                                    value={siteName}
+                                />
+                                <input
+                                    type="hidden"
+                                    name="type"
+                                    value={siteType}
+                                />
+                                <input
+                                    type="hidden"
+                                    name="repository"
+                                    value={repository}
+                                />
+                                <input
+                                    type="hidden"
+                                    name="repository_branch"
+                                    value={repositoryBranch}
+                                />
+                                {githubRepoId !== null && (
+                                    <>
+                                        <input
+                                            type="hidden"
+                                            name="github_repo_id"
+                                            value={githubRepoId}
+                                        />
+                                        <input
+                                            type="hidden"
+                                            name="github_repository"
+                                            value={repository}
+                                        />
+                                    </>
+                                )}
+                                <input
+                                    type="hidden"
+                                    name="auto_deploy"
+                                    value={autoDeploy ? '1' : '0'}
+                                />
+                                {runtime === 'php' && (
+                                    <input
+                                        type="hidden"
+                                        name="php_version"
+                                        value={phpVersion}
+                                    />
+                                )}
+                                {runtime === 'node' && (
+                                    <input
+                                        type="hidden"
+                                        name="node_version"
+                                        value={nodeVersion}
+                                    />
+                                )}
+                                {siteType === 'laravel' && (
+                                    <>
+                                        <input
+                                            type="hidden"
+                                            name="app_env"
+                                            value={appEnv}
+                                        />
+                                        <input
+                                            type="hidden"
+                                            name="database_driver"
+                                            value={databaseDriver}
+                                        />
+                                        <input
+                                            type="hidden"
+                                            name="database_strategy"
+                                            value={databaseStrategy}
+                                        />
+                                        <input
+                                            type="hidden"
+                                            name="redis_enabled"
+                                            value={redisEnabled ? '1' : '0'}
+                                        />
+                                        {databaseStrategy === 'create' && (
+                                            <input
+                                                type="hidden"
+                                                name="database_name"
+                                                value={databaseName}
+                                            />
+                                        )}
+                                        {databaseStrategy === 'existing' && (
+                                            <input
+                                                type="hidden"
+                                                name="database_id"
+                                                value={databaseId}
+                                            />
+                                        )}
+                                    </>
+                                )}
+                                {servesFromDisk && (
+                                    <>
+                                        <input
+                                            type="hidden"
+                                            name="web_directory"
+                                            value={webDirectory}
+                                        />
+                                        {siteType === 'static' && (
+                                            <input
+                                                type="hidden"
+                                                name="spa_fallback"
+                                                value={spaFallback ? '1' : '0'}
+                                            />
+                                        )}
+                                    </>
+                                )}
+                                <input
+                                    type="hidden"
+                                    name="client_max_body_size"
+                                    value={clientMaxBodySize}
+                                />
+                                {runtime !== 'php' && (
+                                    <input
+                                        type="hidden"
+                                        name="package_manager"
+                                        value={packageManager}
+                                    />
+                                )}
+                            </div>
 
                             <DialogFooter className="justify-between sm:justify-between">
                                 <div>

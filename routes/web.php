@@ -63,6 +63,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('sites/{site:name}/domains', [DomainController::class, 'store'])->name('sites.domains.store');
     Route::delete('sites/{site:name}/domains/{domain}', [DomainController::class, 'destroy'])->name('sites.domains.destroy');
     Route::patch('sites/{site:name}/domains/{domain}/primary', [DomainController::class, 'makePrimary'])->name('sites.domains.primary');
+    Route::patch('sites/{site:name}/domains/settings', [DomainController::class, 'updateSettings'])->name('sites.domains.settings');
     Route::post('sites/{site:name}/ssl/issue', [SslController::class, 'issue'])->name('sites.ssl.issue');
     Route::delete('sites/{site:name}/ssl/{certificate}', [SslController::class, 'destroy'])->name('sites.ssl.destroy');
     Route::patch('sites/{site:name}/settings', [SiteSettingsController::class, 'update'])->name('sites.settings.update');

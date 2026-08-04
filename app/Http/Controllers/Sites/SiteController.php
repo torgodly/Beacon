@@ -168,11 +168,18 @@ class SiteController extends Controller
             ]);
     }
 
-    public function show(Request $request, Site $site, NginxService $nginx): Response
+    public function show(Request $request, Site $site, NginxService $nginx): Response|RedirectResponse
     {
         $site->load(['domains', 'sslCertificates']);
 
         $tab = $request->query('tab', 'overview');
+
+        if ($tab === 'nginx') {
+            return redirect()->route('sites.show', [
+                'site' => $site->name,
+                'tab' => 'domains',
+            ]);
+        }
 
         $deployments = null;
         $deployScript = null;
@@ -319,6 +326,7 @@ class SiteController extends Controller
         if ($tab === 'environment') {
             $environment = [
                 'contents' => app(SiteEnvironmentService::class)->read($site),
+                'env_cache_on_save' => $site->env_cache_on_save,
                 'snapshots' => $site->envSnapshots()
                     ->latest('id')
                     ->limit(10)
@@ -357,7 +365,7 @@ class SiteController extends Controller
         return Inertia::render('sites/show', [
             'site' => $this->siteDetail($site),
             'tab' => $tab,
-            'nginx' => $tab === 'nginx' ? [
+            'nginx' => $tab === 'domains' ? [
                 'contents' => $nginx->read($site),
                 'generated' => $nginx->previewGenerated($site),
                 'customized' => $site->nginx_customized,
@@ -493,6 +501,8 @@ class SiteController extends Controller
             // that would be ignored.
             'serves_from_disk' => in_array($site->type, ['laravel', 'static'], true),
             'nginx_customized' => $site->nginx_customized,
+            'allow_wildcard_subdomains' => $site->allow_wildcard_subdomains,
+            'env_cache_on_save' => $site->env_cache_on_save,
             'open_basedir' => $site->open_basedir,
             'strict_functions' => $site->strict_functions,
             'open_basedir_extra_paths' => $site->open_basedir_extra_paths ?? [],
