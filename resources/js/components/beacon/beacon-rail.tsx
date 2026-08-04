@@ -57,10 +57,10 @@ export function BeaconRail({ className }: { className?: string }) {
             <Link
                 href={dashboard()}
                 prefetch
-                className="mb-6 flex size-11 items-center justify-center rounded-xl bg-[#06C8E0] shadow-[0_0_20px_rgba(6,200,224,0.45)] transition-transform hover:scale-105 active:scale-95"
+                className="mb-6 flex size-11 items-center justify-center overflow-hidden rounded-xl transition-transform hover:scale-105 active:scale-95"
                 aria-label="Beacon home"
             >
-                <AppLogoIcon className="size-6 fill-current text-[#05131E]" />
+                <AppLogoIcon className="size-11" />
             </Link>
 
             <nav className="flex flex-1 flex-col items-center gap-1.5" aria-label="Main">

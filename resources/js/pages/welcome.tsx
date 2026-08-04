@@ -1,5 +1,6 @@
 import { Head, Link, usePage } from '@inertiajs/react';
 import { Globe, Server, Shield, Terminal } from 'lucide-react';
+import AppLogoIcon from '@/components/app-logo-icon';
 import { dashboard, login } from '@/routes';
 
 export default function Welcome() {
@@ -12,9 +13,7 @@ export default function Welcome() {
                 <header className="border-b">
                     <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
                         <div className="flex items-center gap-2 font-semibold tracking-tight">
-                            <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                                B
-                            </span>
+                            <AppLogoIcon className="size-8" />
                             Beacon
                         </div>
                         <nav>
