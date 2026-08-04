@@ -568,22 +568,28 @@ export function CreateSiteDialog({
                         setStep(resolveStepForServerErrors(errors));
                         setFieldErrors({});
                     }}
-                    onSubmit={(event) => {
-                        if (step !== 'configure') {
-                            event.preventDefault();
-
-                            if (step === 'site' && validateSiteStep()) {
+                    onBefore={() => {
+                        if (step === 'site') {
+                            if (validateSiteStep()) {
                                 setStep('git');
-                            } else if (step === 'git' && validateGitStep()) {
+                            }
+
+                            return false;
+                        }
+
+                        if (step === 'git') {
+                            if (validateGitStep()) {
                                 setStep('configure');
                             }
 
-                            return;
+                            return false;
                         }
 
-                        if (!validateConfigureStep()) {
-                            event.preventDefault();
+                        if (step === 'configure') {
+                            return validateConfigureStep();
                         }
+
+                        return false;
                     }}
                     className="flex min-h-0 flex-1 flex-col"
                 >
@@ -602,7 +608,27 @@ export function CreateSiteDialog({
 
                             <CreateSiteStepper step={step} />
 
-                            <DialogBody className="space-y-5 overflow-visible">
+                            <DialogBody
+                                className="space-y-5 overflow-visible"
+                                onKeyDown={(event) => {
+                                    if (event.key !== 'Enter' || step === 'configure') {
+                                        return;
+                                    }
+
+                                    const target = event.target;
+
+                                    if (
+                                        target instanceof HTMLTextAreaElement ||
+                                        (target instanceof HTMLButtonElement &&
+                                            target.type === 'submit')
+                                    ) {
+                                        return;
+                                    }
+
+                                    event.preventDefault();
+                                    goNext();
+                                }}
+                            >
                                 {step === 'site' && (
                                     <div className="space-y-5">
                                         <Field
