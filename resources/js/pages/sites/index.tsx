@@ -32,6 +32,7 @@ import {
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
+    DialogBody,
     DialogContent,
     DialogDescription,
     DialogFooter,
@@ -344,8 +345,12 @@ export default function SitesIndex({
                 </Button>
             </DialogTrigger>
 
-            <DialogContent className="sm:max-w-2xl">
-                <DialogHeader>
+            <DialogContent size="lg">
+                <DialogHeader
+                    tone="brand"
+                    eyebrow="Provisioning"
+                    icon={<Globe className="size-5" />}
+                >
                     <DialogTitle>Create a site</DialogTitle>
                     <DialogDescription>
                         Beacon provisions the directory, Nginx vhost, and
@@ -357,10 +362,11 @@ export default function SitesIndex({
                 <Form
                                     action={store()}
                                     onSuccess={() => setCreateOpen(false)}
-                                    className="space-y-6"
+                                    className="contents"
                                 >
                                     {({ processing, errors }) => (
                                         <>
+                                            <DialogBody className="space-y-6">
                                             <Field
                                                 htmlFor="name"
                                                 label="Domain"
@@ -904,6 +910,8 @@ export default function SitesIndex({
                                                     type.
                                                 </p>
                                             )}
+
+                                            </DialogBody>
 
                                             <DialogFooter>
                                                 <Button

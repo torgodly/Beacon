@@ -7,7 +7,7 @@ import {
     useForm,
     usePage,
 } from '@inertiajs/react';
-import { Clock, Cog, Play, Plus, RefreshCw, RotateCcw, Save, Shield, Trash2 } from 'lucide-react';
+import { Clock, Cog, History, Play, Plus, RefreshCw, RotateCcw, Save, Shield, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { CodeDiffViewer } from '@/components/code-diff-viewer';
 import { CodeEditor } from '@/components/code-editor';
@@ -54,6 +54,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
     Dialog,
+    DialogBody,
+    DialogClose,
     DialogContent,
     DialogDescription,
     DialogFooter,
@@ -1812,8 +1814,12 @@ function SupervisorTab({
                                 Add background process
                             </Button>
                         </DialogTrigger>
-                        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-                            <DialogHeader>
+                        <DialogContent size="md">
+                            <DialogHeader
+                                tone="brand"
+                                eyebrow="Supervisor"
+                                icon={<Cog className="size-5" />}
+                            >
                                 <DialogTitle>New background process</DialogTitle>
                                 <DialogDescription>
                                     Background processes are managed with
@@ -1823,11 +1829,12 @@ function SupervisorTab({
                             </DialogHeader>
                             <Form
                                 {...storeSupervisorProcess.form(site.id)}
-                                className="flex flex-col gap-4"
+                                className="contents"
                                 onSuccess={() => setDialogOpen(false)}
                             >
                                 {({ errors, processing }) => (
                                     <>
+                                        <DialogBody className="space-y-4">
                                         <input
                                             type="hidden"
                                             name="kind"
@@ -2015,7 +2022,16 @@ function SupervisorTab({
                                         )}
 
                                         <InputError message={errors.supervisor} />
+                                        </DialogBody>
                                         <DialogFooter>
+                                            <DialogClose asChild>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                >
+                                                    Cancel
+                                                </Button>
+                                            </DialogClose>
                                             <Button
                                                 type="submit"
                                                 disabled={processing}
@@ -2191,12 +2207,16 @@ function CronTab({ site, jobs }: { site: SiteDetail; jobs: CronJobRow[] }) {
                                 Add scheduled job
                             </Button>
                         </DialogTrigger>
-                        <DialogContent className="sm:max-w-lg">
-                            <DialogHeader>
+                        <DialogContent size="md">
+                            <DialogHeader
+                                tone="brand"
+                                eyebrow="Cron"
+                                icon={<Clock className="size-5" />}
+                            >
                                 <DialogTitle>New scheduled job</DialogTitle>
                                 <DialogDescription>
                                     Create a cron job linked to{' '}
-                                    <span className="font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                                    <span className="font-medium text-base-content">
                                         {site.name}
                                     </span>
                                     . Commands should use fully qualified paths.
@@ -2204,11 +2224,12 @@ function CronTab({ site, jobs }: { site: SiteDetail; jobs: CronJobRow[] }) {
                             </DialogHeader>
                             <Form
                                 {...storeCronJob.form(site.id)}
-                                className="flex flex-col gap-4"
+                                className="contents"
                                 onSuccess={() => setDialogOpen(false)}
                             >
                                 {({ errors, processing }) => (
                                     <>
+                                        <DialogBody className="space-y-4">
                                         <div className="grid gap-2">
                                             <Label htmlFor="cron_name">Name</Label>
                                             <Input
@@ -2295,7 +2316,16 @@ function CronTab({ site, jobs }: { site: SiteDetail; jobs: CronJobRow[] }) {
                                             />
                                         )}
                                         <InputError message={errors.cron} />
+                                        </DialogBody>
                                         <DialogFooter>
+                                            <DialogClose asChild>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                >
+                                                    Cancel
+                                                </Button>
+                                            </DialogClose>
                                             <Button
                                                 type="submit"
                                                 disabled={processing}
@@ -2458,8 +2488,14 @@ function EnvironmentTab({
                                                 Compare & restore
                                             </Button>
                                         </DialogTrigger>
-                                        <DialogContent className="max-w-4xl">
-                                            <DialogHeader>
+                                        <DialogContent size="xl">
+                                            <DialogHeader
+                                                tone="default"
+                                                eyebrow="Environment"
+                                                icon={
+                                                    <History className="size-5" />
+                                                }
+                                            >
                                                 <DialogTitle>
                                                     Environment snapshot
                                                 </DialogTitle>
@@ -2470,13 +2506,23 @@ function EnvironmentTab({
                                                     snapshot.
                                                 </DialogDescription>
                                             </DialogHeader>
-                                            <CodeDiffViewer
-                                                oldValue={form.data.contents}
-                                                newValue={snapshot.contents}
-                                                oldTitle="Current .env"
-                                                newTitle="Snapshot"
-                                            />
+                                            <DialogBody>
+                                                <CodeDiffViewer
+                                                    oldValue={form.data.contents}
+                                                    newValue={snapshot.contents}
+                                                    oldTitle="Current .env"
+                                                    newTitle="Snapshot"
+                                                />
+                                            </DialogBody>
                                             <DialogFooter>
+                                                <DialogClose asChild>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                    >
+                                                        Close
+                                                    </Button>
+                                                </DialogClose>
                                                 <Button
                                                     type="button"
                                                     onClick={() =>

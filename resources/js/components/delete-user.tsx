@@ -1,4 +1,5 @@
 import { Form } from '@inertiajs/react';
+import { Trash2 } from 'lucide-react';
 import { useRef } from 'react';
 import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController';
 import Heading from '@/components/heading';
@@ -7,10 +8,13 @@ import PasswordInput from '@/components/password-input';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
+    DialogBody,
     DialogClose,
     DialogContent,
     DialogDescription,
     DialogFooter,
+    DialogHeader,
+    DialogSection,
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
@@ -43,16 +47,20 @@ export default function DeleteUser() {
                             Delete account
                         </Button>
                     </DialogTrigger>
-                    <DialogContent>
-                        <DialogTitle>
-                            Are you sure you want to delete your account?
-                        </DialogTitle>
-                        <DialogDescription>
-                            Once your account is deleted, all of its resources
-                            and data will also be permanently deleted. Please
-                            enter your password to confirm you would like to
-                            permanently delete your account.
-                        </DialogDescription>
+                    <DialogContent size="sm">
+                        <DialogHeader
+                            tone="danger"
+                            eyebrow="Account deletion"
+                            icon={<Trash2 />}
+                        >
+                            <DialogTitle>
+                                Delete your account permanently?
+                            </DialogTitle>
+                            <DialogDescription>
+                                All of your data and resources will be removed
+                                and cannot be recovered.
+                            </DialogDescription>
+                        </DialogHeader>
 
                         <Form
                             {...ProfileController.destroy.form()}
@@ -61,33 +69,43 @@ export default function DeleteUser() {
                             }}
                             onError={() => passwordInput.current?.focus()}
                             resetOnSuccess
-                            className="space-y-6"
+                            className="contents"
                         >
                             {({ resetAndClearErrors, processing, errors }) => (
                                 <>
-                                    <div className="grid gap-2">
-                                        <Label
-                                            htmlFor="password"
-                                            className="sr-only"
-                                        >
-                                            Password
-                                        </Label>
+                                    <DialogBody className="space-y-4">
+                                        <DialogSection title="Confirm with password">
+                                            <p className="mb-3 text-sm text-base-content/70">
+                                                Enter your current password to
+                                                confirm this is intentional.
+                                            </p>
+                                            <div className="grid gap-2">
+                                                <Label
+                                                    htmlFor="password"
+                                                    className="sr-only"
+                                                >
+                                                    Password
+                                                </Label>
 
-                                        <PasswordInput
-                                            id="password"
-                                            name="password"
-                                            ref={passwordInput}
-                                            placeholder="Password"
-                                            autoComplete="current-password"
-                                        />
+                                                <PasswordInput
+                                                    id="password"
+                                                    name="password"
+                                                    ref={passwordInput}
+                                                    placeholder="Password"
+                                                    autoComplete="current-password"
+                                                />
 
-                                        <InputError message={errors.password} />
-                                    </div>
+                                                <InputError
+                                                    message={errors.password}
+                                                />
+                                            </div>
+                                        </DialogSection>
+                                    </DialogBody>
 
-                                    <DialogFooter className="gap-2">
+                                    <DialogFooter>
                                         <DialogClose asChild>
                                             <Button
-                                                variant="secondary"
+                                                variant="ghost"
                                                 onClick={() =>
                                                     resetAndClearErrors()
                                                 }

@@ -7,6 +7,7 @@ import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
+    DialogBody,
     DialogContent,
     DialogDescription,
     DialogHeader,
@@ -22,32 +23,6 @@ import { useAppearance } from '@/hooks/use-appearance';
 import { useClipboard } from '@/hooks/use-clipboard';
 import { OTP_MAX_LENGTH } from '@/hooks/use-two-factor-auth';
 import { confirm } from '@/routes/two-factor';
-
-function GridScanIcon() {
-    return (
-        <div className="mb-3 rounded-full border border-border bg-card p-0.5 shadow-sm">
-            <div className="relative overflow-hidden rounded-full border border-border bg-muted p-2.5">
-                <div className="absolute inset-0 grid grid-cols-5 opacity-50">
-                    {Array.from({ length: 5 }, (_, i) => (
-                        <div
-                            key={`col-${i + 1}`}
-                            className="border-r border-border last:border-r-0"
-                        />
-                    ))}
-                </div>
-                <div className="absolute inset-0 grid grid-rows-5 opacity-50">
-                    {Array.from({ length: 5 }, (_, i) => (
-                        <div
-                            key={`row-${i + 1}`}
-                            className="border-b border-border last:border-b-0"
-                        />
-                    ))}
-                </div>
-                <ScanLine className="relative z-20 size-6 text-foreground" />
-            </div>
-        </div>
-    );
-}
 
 function TwoFactorSetupStep({
     qrCodeSvg,
@@ -324,16 +299,20 @@ export default function TwoFactorSetupModal({
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-            <DialogContent className="sm:max-w-md">
-                <DialogHeader className="flex items-center justify-center">
-                    <GridScanIcon />
+            <DialogContent size="sm">
+                <DialogHeader
+                    align="center"
+                    tone="brand"
+                    eyebrow="Security"
+                    icon={<ScanLine className="size-5" />}
+                >
                     <DialogTitle>{modalConfig.title}</DialogTitle>
-                    <DialogDescription className="text-center">
+                    <DialogDescription>
                         {modalConfig.description}
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="flex flex-col items-center space-y-5">
+                <DialogBody className="flex flex-col items-center space-y-5">
                     {showVerificationStep ? (
                         <TwoFactorVerificationStep
                             onClose={handleClose}
@@ -348,7 +327,7 @@ export default function TwoFactorSetupModal({
                             errors={errors}
                         />
                     )}
-                </div>
+                </DialogBody>
             </DialogContent>
         </Dialog>
     );

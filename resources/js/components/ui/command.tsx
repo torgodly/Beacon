@@ -1,7 +1,13 @@
 import { Command as CommandPrimitive } from 'cmdk';
-import { SearchIcon } from 'lucide-react';
+import { SearchIcon, Sparkles } from 'lucide-react';
 import * as React from 'react';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import {
+    Dialog,
+    DialogBody,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
 function Command({
@@ -33,16 +39,29 @@ function CommandDialog({
 }) {
     return (
         <Dialog {...props}>
-            <DialogContent
-                showCloseButton={false}
-                className="sm:max-w-xl"
-                innerClassName="p-0"
-            >
+            <DialogContent showCloseButton={false} size="lg">
                 <DialogTitle className="sr-only">{title}</DialogTitle>
                 <p className="sr-only">{description}</p>
-                <Command className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-base-content/60 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input-wrapper]_svg]:size-4 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-2.5 [&_[cmdk-item]_svg]:size-4">
-                    {children}
-                </Command>
+
+                <DialogHeader
+                    tone="brand"
+                    eyebrow="Command palette"
+                    icon={<Sparkles />}
+                    className="pb-4"
+                >
+                    <p className="text-lg font-semibold text-base-content">
+                        Jump anywhere
+                    </p>
+                    <p className="text-sm text-base-content/70">
+                        Search pages, sites, and actions across Beacon.
+                    </p>
+                </DialogHeader>
+
+                <DialogBody className="p-0">
+                    <Command className="rounded-none border-0 bg-base-100 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-2 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-base-content/50 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input-wrapper]_svg]:size-4 [&_[cmdk-item]]:mx-2 [&_[cmdk-item]]:rounded-xl [&_[cmdk-item]]:px-3 [&_[cmdk-item]]:py-2.5 [&_[cmdk-item]_svg]:size-4">
+                        {children}
+                    </Command>
+                </DialogBody>
             </DialogContent>
         </Dialog>
     );
@@ -54,10 +73,10 @@ function CommandInput({
 }: React.ComponentProps<typeof CommandPrimitive.Input>) {
     return (
         <div
-            className="flex items-center border-b border-base-300 bg-base-100 px-3"
+            className="flex items-center border-b border-base-300 bg-base-200/40 px-4 py-3"
             cmdk-input-wrapper=""
         >
-            <SearchIcon className="mr-2 size-4 shrink-0 text-base-content/50" />
+            <SearchIcon className="mr-3 size-4 shrink-0 text-primary" />
             <CommandPrimitive.Input
                 data-slot="command-input"
                 className={cn(

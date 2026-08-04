@@ -39,8 +39,11 @@ import {
 } from '@/components/ui/data-table';
 import {
     Dialog,
+    DialogBody,
+    DialogClose,
     DialogContent,
     DialogDescription,
+    DialogFooter,
     DialogHeader,
     DialogTitle,
     DialogTrigger,
@@ -170,8 +173,12 @@ export default function DatabasesIndex({
                         New user
                     </Button>
                 </DialogTrigger>
-                                <DialogContent>
-                                    <DialogHeader>
+                                <DialogContent size="md">
+                                    <DialogHeader
+                                        tone="brand"
+                                        eyebrow="Access control"
+                                        icon={<Users className="size-5" />}
+                                    >
                                         <DialogTitle>
                                             Create a database user
                                         </DialogTitle>
@@ -185,10 +192,11 @@ export default function DatabasesIndex({
                                     <Form
                                         action={storeDatabaseUser()}
                                         onSuccess={() => setUserOpen(false)}
-                                        className="space-y-4"
+                                        className="contents"
                                     >
                                         {({ processing, errors }) => (
                                             <>
+                                                <DialogBody className="space-y-4">
                                                 <Field
                                                     htmlFor="username"
                                                     label="Username"
@@ -240,17 +248,20 @@ export default function DatabasesIndex({
                                                         message={errors.database_id}
                                                     />
                                                 </div>
+                                                </DialogBody>
 
-                                                <div className="flex justify-end gap-3">
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        onClick={() =>
-                                                            setUserOpen(false)
-                                                        }
-                                                    >
-                                                        Cancel
-                                                    </Button>
+                                                <DialogFooter>
+                                                    <DialogClose asChild>
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            onClick={() =>
+                                                                setUserOpen(false)
+                                                            }
+                                                        >
+                                                            Cancel
+                                                        </Button>
+                                                    </DialogClose>
                                                     <Button
                                                         type="submit"
                                                         variant="primary"
@@ -260,7 +271,7 @@ export default function DatabasesIndex({
                                                             ? 'Creating…'
                                                             : 'Create user'}
                                                     </Button>
-                                                </div>
+                                                </DialogFooter>
                                             </>
                                         )}
                                     </Form>
@@ -274,8 +285,12 @@ export default function DatabasesIndex({
                                         New database
                                     </Button>
                                 </DialogTrigger>
-                                <DialogContent>
-                                    <DialogHeader>
+                                <DialogContent size="sm">
+                                    <DialogHeader
+                                        tone="brand"
+                                        eyebrow="MySQL"
+                                        icon={<Database className="size-5" />}
+                                    >
                                         <DialogTitle>Create a database</DialogTitle>
                                         <DialogDescription>
                                             Created as utf8mb4 with a
@@ -286,10 +301,11 @@ export default function DatabasesIndex({
                                     <Form
                                         action={storeDatabase()}
                                         onSuccess={() => setCreateOpen(false)}
-                                        className="space-y-4"
+                                        className="contents"
                                     >
                                         {({ processing, errors }) => (
                                             <>
+                                                <DialogBody className="space-y-4">
                                                 <Field
                                                     htmlFor="name"
                                                     label="Name"
@@ -306,17 +322,20 @@ export default function DatabasesIndex({
                                                         placeholder="app_production"
                                                     />
                                                 </Field>
+                                                </DialogBody>
 
-                                                <div className="flex justify-end gap-3">
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        onClick={() =>
-                                                            setCreateOpen(false)
-                                                        }
-                                                    >
-                                                        Cancel
-                                                    </Button>
+                                                <DialogFooter>
+                                                    <DialogClose asChild>
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            onClick={() =>
+                                                                setCreateOpen(false)
+                                                            }
+                                                        >
+                                                            Cancel
+                                                        </Button>
+                                                    </DialogClose>
                                                     <Button
                                                         type="submit"
                                                         variant="primary"
@@ -326,7 +345,7 @@ export default function DatabasesIndex({
                                                             ? 'Creating…'
                                                             : 'Create database'}
                                                     </Button>
-                                                </div>
+                                                </DialogFooter>
                                             </>
                                         )}
                                     </Form>

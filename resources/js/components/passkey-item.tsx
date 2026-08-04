@@ -3,10 +3,13 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
+    DialogBody,
     DialogClose,
     DialogContent,
     DialogDescription,
     DialogFooter,
+    DialogHeader,
+    DialogSection,
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
@@ -67,23 +70,39 @@ export default function PasskeyItem({ passkey, onDelete }: Props) {
                         <span className="sr-only">Remove</span>
                     </Button>
                 </DialogTrigger>
-                <DialogContent>
-                    <DialogTitle>Remove passkey</DialogTitle>
-                    <DialogDescription>
-                        Are you sure you want to remove the "{passkey.name}"
-                        passkey? You will no longer be able to use it to sign
-                        in.
-                    </DialogDescription>
-                    <DialogFooter className="gap-2">
+                <DialogContent size="sm">
+                    <DialogHeader
+                        tone="danger"
+                        eyebrow="Security"
+                        icon={<KeyRound />}
+                    >
+                        <DialogTitle>Remove passkey</DialogTitle>
+                        <DialogDescription>
+                            You will no longer be able to sign in with "
+                            {passkey.name}".
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <DialogBody>
+                        <DialogSection title="What happens next">
+                            <p className="text-sm text-base-content/80">
+                                This passkey is removed immediately from your
+                                account. Keep another sign-in method available
+                                so you do not get locked out.
+                            </p>
+                        </DialogSection>
+                    </DialogBody>
+
+                    <DialogFooter>
                         <DialogClose asChild>
-                            <Button variant="secondary">Cancel</Button>
+                            <Button variant="ghost">Cancel</Button>
                         </DialogClose>
                         <Button
                             variant="destructive"
                             onClick={handleDelete}
                             disabled={isDeleting}
                         >
-                            {isDeleting ? 'Removing...' : 'Remove passkey'}
+                            {isDeleting ? 'Removing…' : 'Remove passkey'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
