@@ -7,8 +7,10 @@ use App\Models\Server;
 use App\Models\Site;
 use App\Models\SiteDomain;
 use App\Models\User;
+use App\Services\Database\MySqlService;
 use App\Services\System\ProcessFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Mockery\MockInterface;
 use Tests\Support\FakeProcessFactory;
 use Tests\TestCase;
 
@@ -62,6 +64,7 @@ class SiteManagementTest extends TestCase
             'name' => 'app.example.com',
             'type' => 'laravel',
             'php_version' => '8.4',
+            'database_strategy' => 'none',
         ]);
 
         $response->assertRedirect(route('sites.index'));
@@ -79,6 +82,41 @@ class SiteManagementTest extends TestCase
         ]);
     }
 
+    public function test_store_can_provision_a_mysql_database_for_laravel_sites(): void
+    {
+        $this->processFactory->willReturn(0, "server { listen 80; }\n");
+
+        $this->mock(MySqlService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('createDatabase')->once()->with('app_example_com');
+            $mock->shouldReceive('createUser')->once();
+            $mock->shouldReceive('grant')->once()->with('app_example_com_user', 'app_example_com', 'all');
+        });
+
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+        $this->installPhp('8.4');
+
+        $response = $this->actingAs($user)->post(route('sites.store'), [
+            'name' => 'app.example.com',
+            'type' => 'laravel',
+            'php_version' => '8.4',
+            'database_strategy' => 'create',
+            'database_name' => 'app_example_com',
+        ]);
+
+        $response->assertRedirect(route('sites.index'));
+
+        $this->assertDatabaseHas('databases', [
+            'name' => 'app_example_com',
+            'status' => 'active',
+        ]);
+
+        $site = Site::query()->where('name', 'app.example.com')->firstOrFail();
+
+        $this->assertNotNull($site->database_id);
+        $this->assertNotNull($site->database_user_id);
+    }
+
     public function test_store_persists_an_optional_repository(): void
     {
         $this->processFactory->willReturn(0, "server { listen 80; }\n");
@@ -91,6 +129,7 @@ class SiteManagementTest extends TestCase
             'name' => 'app.example.com',
             'type' => 'laravel',
             'php_version' => '8.4',
+            'database_strategy' => 'none',
             'repository' => 'git@github.com:org/app.git',
             'repository_branch' => 'main',
         ]);
@@ -115,6 +154,7 @@ class SiteManagementTest extends TestCase
             'name' => 'app.example.com',
             'type' => 'laravel',
             'php_version' => '8.4', // supported, but not installed here
+            'database_strategy' => 'none',
         ]);
 
         $response->assertSessionHasErrors('php_version');
@@ -152,6 +192,7 @@ class SiteManagementTest extends TestCase
             'name' => 'beacon.abdo.ly',
             'type' => 'laravel',
             'php_version' => '8.4',
+            'database_strategy' => 'none',
         ]);
 
         $response->assertSessionHasErrors('name');
@@ -168,6 +209,7 @@ class SiteManagementTest extends TestCase
             'name' => 'beacon.panel',
             'type' => 'laravel',
             'php_version' => '8.4',
+            'database_strategy' => 'none',
         ]);
 
         $response->assertSessionHasErrors('name');

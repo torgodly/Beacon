@@ -11,6 +11,7 @@ use App\Http\Requests\UpdateSiteIsolationRequest;
 use App\Http\Requests\UpdateSiteNginxRequest;
 use App\Http\Requests\UpdateSiteServingRequest;
 use App\Models\CronJob;
+use App\Models\Database;
 use App\Models\Deployment;
 use App\Models\EnvSnapshot;
 use App\Models\GithubInstallation;
@@ -74,6 +75,15 @@ class SiteController extends Controller
 
         return Inertia::render('sites/index', [
             'sites' => $sites,
+            'databases' => Database::query()
+                ->where('server_id', $server->id)
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn (Database $database): array => [
+                    'id' => $database->id,
+                    'name' => $database->name,
+                ])
+                ->values(),
             // Each type declares which runtime it actually needs, so the form
             // can hide fields rather than asking for a PHP version on a static
             // site and then ignoring the answer.

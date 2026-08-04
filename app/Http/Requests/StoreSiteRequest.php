@@ -86,6 +86,34 @@ class StoreSiteRequest extends FormRequest
                 'max:500',
                 'required_with:github_repo_id',
             ],
+
+            'database_strategy' => [
+                Rule::requiredIf(fn (): bool => $this->input('type') === 'laravel'),
+                Rule::prohibitedIf(fn (): bool => $this->input('type') !== 'laravel'),
+                Rule::in(['none', 'create', 'existing']),
+            ],
+            'database_id' => [
+                'nullable',
+                'integer',
+                Rule::requiredIf(fn (): bool => $this->input('type') === 'laravel'
+                    && $this->input('database_strategy') === 'existing'),
+                Rule::prohibitedIf(fn (): bool => $this->input('type') !== 'laravel'
+                    || $this->input('database_strategy') !== 'existing'),
+                Rule::exists('databases', 'id')->where(
+                    fn ($query) => $query->where('server_id', Server::current()->id),
+                ),
+            ],
+            'database_name' => [
+                'nullable',
+                'string',
+                'max:64',
+                'regex:/^[A-Za-z0-9_]{1,64}$/',
+                Rule::requiredIf(fn (): bool => $this->input('type') === 'laravel'
+                    && $this->input('database_strategy') === 'create'),
+                Rule::prohibitedIf(fn (): bool => $this->input('type') !== 'laravel'
+                    || $this->input('database_strategy') !== 'create'),
+                Rule::unique('databases', 'name'),
+            ],
         ];
     }
 
@@ -105,11 +133,17 @@ class StoreSiteRequest extends FormRequest
             'php_version.exists' => 'That PHP version is not installed on this server.',
             'php_version.prohibited' => 'Only Laravel sites run under PHP-FPM.',
             'node_version.exists' => 'That Node version is not installed on this server.',
+            'database_strategy.required' => 'Choose how this Laravel site should use MySQL.',
+            'database_id.required' => 'Select an existing database or choose to create a new one.',
+            'database_id.exists' => 'That database does not exist on this server.',
+            'database_name.required' => 'Enter a name for the new database.',
+            'database_name.regex' => 'Database names may only contain letters, numbers, and underscores.',
+            'database_name.unique' => 'That database name is already in use.',
         ];
     }
 
     /**
-     * @return array{name: string, type: string, php_version?: string|null, node_version?: string|null, spa_fallback?: bool, web_directory?: string|null, client_max_body_size?: string|null, package_manager?: string|null, repository?: string|null, repository_branch?: string|null}
+     * @return array{name: string, type: string, php_version?: string|null, node_version?: string|null, spa_fallback?: bool, web_directory?: string|null, client_max_body_size?: string|null, package_manager?: string|null, repository?: string|null, repository_branch?: string|null, database_strategy?: string|null, database_id?: int|null, database_name?: string|null}
      */
     public function siteData(): array
     {
@@ -124,6 +158,9 @@ class StoreSiteRequest extends FormRequest
             'package_manager' => $this->validated('package_manager'),
             'repository' => $this->validated('repository'),
             'repository_branch' => $this->validated('repository_branch'),
+            'database_strategy' => $this->validated('database_strategy'),
+            'database_id' => $this->validated('database_id'),
+            'database_name' => $this->validated('database_name'),
         ];
     }
 }

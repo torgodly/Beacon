@@ -24,6 +24,7 @@ class CreateSite
         private readonly NginxService $nginx,
         private readonly DeployScriptFactory $deployScripts,
         private readonly SupervisorService $supervisor,
+        private readonly ProvisionSiteDatabase $databases,
     ) {}
 
     /**
@@ -80,6 +81,8 @@ class CreateSite
             $this->filesystem->write($site->deployScriptPath(), $script, 0700);
 
             $this->nginx->generateAndApply($site->fresh(['domains', 'sslCertificates']));
+
+            $this->databases->handle($site, $data);
 
             // Next.js / Nuxt sites need a Node process behind the reverse proxy.
             // Registered here (stopped) so the UI can show it; started by the

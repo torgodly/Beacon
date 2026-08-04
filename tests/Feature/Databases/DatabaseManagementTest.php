@@ -62,4 +62,42 @@ class DatabaseManagementTest extends TestCase
             'server_id' => 1,
         ]);
     }
+
+    public function test_store_user_requires_privileges_when_database_is_selected(): void
+    {
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+
+        $database = Database::factory()->create([
+            'server_id' => 1,
+            'name' => 'app_production',
+        ]);
+
+        $response = $this->actingAs($user)->post(route('database-users.store'), [
+            'username' => 'app_user',
+            'database_id' => $database->id,
+        ]);
+
+        $response->assertSessionHasErrors('privileges');
+    }
+
+    public function test_store_user_rejects_databases_from_another_server(): void
+    {
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+        Server::factory()->create(['id' => 2]);
+
+        $foreign = Database::factory()->create([
+            'server_id' => 2,
+            'name' => 'other_server_db',
+        ]);
+
+        $response = $this->actingAs($user)->post(route('database-users.store'), [
+            'username' => 'app_user',
+            'database_id' => $foreign->id,
+            'privileges' => 'all',
+        ]);
+
+        $response->assertSessionHasErrors('database_id');
+    }
 }

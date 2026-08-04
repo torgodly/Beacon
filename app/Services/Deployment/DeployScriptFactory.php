@@ -45,8 +45,88 @@ class DeployScriptFactory
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$BEACON_SITE_DIR"
+
+# ── Environment bootstrap ─────────────────────────────────────────────
+if [ ! -f .env ]; then
+  if [ -f .env.example ]; then
+    cp .env.example .env
+  else
+    cat > .env <<ENV
+APP_NAME="${BEACON_SITE}"
+APP_ENV=production
+APP_KEY=
+APP_DEBUG=false
+APP_URL="https://${BEACON_SITE}"
+
+LOG_CHANNEL=stack
+LOG_LEVEL=error
+
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=
+DB_USERNAME=
+DB_PASSWORD=
+
+BROADCAST_CONNECTION=log
+CACHE_STORE=file
+FILESYSTEM_DISK=local
+QUEUE_CONNECTION=database
+SESSION_DRIVER=file
+SESSION_LIFETIME=120
+ENV
+  fi
+fi
+
+set_env_var() {
+  local key="$1"
+  local value="$2"
+  [ -f .env ] || return 0
+  BEACON_ENV_KEY="$key" BEACON_ENV_VALUE="$value" "$BEACON_PHP" -r '
+    $key = getenv("BEACON_ENV_KEY") ?: "";
+    $value = getenv("BEACON_ENV_VALUE") ?: "";
+    $path = ".env";
+    if ($key === "" || ! is_file($path)) { exit(0); }
+    $lines = file($path, FILE_IGNORE_NEW_LINES);
+    if ($lines === false) { exit(1); }
+    $found = false;
+    foreach ($lines as $index => $line) {
+      if (str_starts_with($line, $key."=")) {
+        $lines[$index] = $key."=".$value;
+        $found = true;
+        break;
+      }
+    }
+    if (! $found) {
+      $lines[] = $key."=".$value;
+    }
+    file_put_contents($path, implode("\n", $lines)."\n");
+  '
+}
+
+if [ -n "${BEACON_SITE:-}" ]; then
+  set_env_var APP_NAME "${BEACON_SITE}"
+  set_env_var APP_URL "https://${BEACON_SITE}"
+fi
+
+if [ -n "${BEACON_DB_DATABASE:-}" ]; then
+  set_env_var DB_CONNECTION mysql
+  set_env_var DB_HOST "${BEACON_DB_HOST:-127.0.0.1}"
+  set_env_var DB_PORT "${BEACON_DB_PORT:-3306}"
+  set_env_var DB_DATABASE "${BEACON_DB_DATABASE}"
+  set_env_var DB_USERNAME "${BEACON_DB_USERNAME:-}"
+  set_env_var DB_PASSWORD "${BEACON_DB_PASSWORD:-}"
+fi
+
+if ! grep -qE '^APP_KEY=base64:' .env 2>/dev/null; then
+  $BEACON_PHP artisan key:generate --force
+fi
+
+# ── Dependencies & build ──────────────────────────────────────────────
 $BEACON_COMPOSER install --no-interaction --prefer-dist --optimize-autoloader --no-dev
 [ -f package.json ] && { $BEACON_PM ci || $BEACON_PM install; $BEACON_PM run build; }
+
+# ── Laravel housekeeping ──────────────────────────────────────────────
 $BEACON_PHP artisan migrate --force
 $BEACON_PHP artisan storage:link || true
 $BEACON_PHP artisan optimize

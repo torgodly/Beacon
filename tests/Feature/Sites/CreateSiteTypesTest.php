@@ -72,6 +72,7 @@ class CreateSiteTypesTest extends TestCase
             'name' => 'app.example.com',
             'type' => 'laravel',
             'php_version' => '8.4',
+            'database_strategy' => 'none',
         ]);
 
         $this->assertSame('/public', $site->web_directory);

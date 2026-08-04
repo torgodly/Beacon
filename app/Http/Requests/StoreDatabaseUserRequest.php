@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Server;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -25,8 +26,17 @@ class StoreDatabaseUserRequest extends FormRequest
                 'regex:/^[A-Za-z0-9_]{1,32}$/',
                 Rule::unique('database_users', 'username')->where('host', 'localhost'),
             ],
-            'database_id' => ['nullable', 'integer', Rule::exists('databases', 'id')],
-            'privileges' => ['required_with:database_id', Rule::in(['all', 'readonly'])],
+            'database_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('databases', 'id')->where(
+                    fn ($query) => $query->where('server_id', Server::current()->id),
+                ),
+            ],
+            'privileges' => [
+                'required_with:database_id',
+                Rule::in(['all', 'readonly']),
+            ],
         ];
     }
 }

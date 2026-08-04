@@ -83,8 +83,15 @@ class DatabaseController extends Controller
     ): RedirectResponse {
         $data = $request->validated();
         $database = isset($data['database_id'])
-            ? Database::query()->whereKey($data['database_id'])->first()
+            ? Database::query()
+                ->where('server_id', Server::current()->id)
+                ->whereKey($data['database_id'])
+                ->first()
             : null;
+
+        if (isset($data['database_id']) && $database === null) {
+            return back()->withErrors(['database_id' => 'That database could not be found on this server.']);
+        }
 
         try {
             $result = $createDatabaseUser->handle(

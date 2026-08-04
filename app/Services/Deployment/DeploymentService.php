@@ -126,6 +126,11 @@ class DeploymentService
             ['name' => 'BEACON_BUN', 'description' => 'Bun binary', 'example' => '/usr/local/bun/default/bin/bun'],
             ['name' => 'BEACON_PM', 'description' => 'Package manager (npm or bun) for this site', 'example' => '/usr/local/node/v22/bin/npm'],
             ['name' => 'BEACON_PORT', 'description' => 'Local proxy port for SSR apps', 'example' => '3001'],
+            ['name' => 'BEACON_DB_HOST', 'description' => 'MySQL host when a database is linked to the site', 'example' => '127.0.0.1'],
+            ['name' => 'BEACON_DB_PORT', 'description' => 'MySQL port when a database is linked to the site', 'example' => '3306'],
+            ['name' => 'BEACON_DB_DATABASE', 'description' => 'Linked database name written into .env on deploy', 'example' => 'app_example_com'],
+            ['name' => 'BEACON_DB_USERNAME', 'description' => 'Linked database user written into .env on deploy', 'example' => 'app_example_com_user'],
+            ['name' => 'BEACON_DB_PASSWORD', 'description' => 'Linked database user password written into .env on deploy', 'example' => null],
             ['name' => 'NODE_OPTIONS', 'description' => 'Node heap cap injected for builds', 'example' => '--max-old-space-size=1024'],
             ['name' => 'PATH', 'description' => 'Process PATH with Node/Bun prefixes', 'example' => null],
             ['name' => 'HOME', 'description' => 'Site user home directory', 'example' => '/home/beacon'],
@@ -145,6 +150,10 @@ class DeploymentService
             ? "/usr/local/node/v{$site->node_version}/bin"
             : '/usr/local/node/default/bin';
 
+        $site->loadMissing(['database', 'databaseUser']);
+
+        $mysql = config('database.connections.mysql_admin');
+
         return array_filter([
             'BEACON_SITE' => $site->name,
             'BEACON_SITE_DIR' => $site->path,
@@ -159,6 +168,11 @@ class DeploymentService
                 ? '/usr/local/bun/default/bin/bun'
                 : "{$node}/npm",
             'BEACON_PORT' => $site->proxy_port ? (string) $site->proxy_port : null,
+            'BEACON_DB_HOST' => $site->database !== null ? ($mysql['host'] ?? '127.0.0.1') : null,
+            'BEACON_DB_PORT' => $site->database !== null ? (string) ($mysql['port'] ?? '3306') : null,
+            'BEACON_DB_DATABASE' => $site->database?->name,
+            'BEACON_DB_USERNAME' => $site->databaseUser?->username,
+            'BEACON_DB_PASSWORD' => $site->databaseUser?->password,
             'NODE_OPTIONS' => '--max-old-space-size='.MemoryBudget::nodeHeapMb(),
             'PATH' => "{$node}:/usr/local/bun/default/bin:/usr/local/bin:/usr/bin:/bin",
             'HOME' => '/home/beacon',

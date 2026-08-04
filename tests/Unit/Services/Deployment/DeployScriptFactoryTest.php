@@ -34,6 +34,21 @@ class DeployScriptFactoryTest extends TestCase
         $this->assertStringContainsString('exit 1', $script);
     }
 
+    public function test_laravel_script_bootstraps_env_before_composer(): void
+    {
+        $site = Site::factory()->create(['type' => 'laravel']);
+
+        $script = app(DeployScriptFactory::class)->forSite($site);
+
+        $this->assertStringContainsString('cp .env.example .env', $script);
+        $this->assertStringContainsString('artisan key:generate --force', $script);
+        $this->assertStringContainsString('artisan migrate --force', $script);
+        $this->assertLessThan(
+            strpos($script, '$BEACON_COMPOSER install'),
+            strpos($script, 'artisan key:generate --force'),
+        );
+    }
+
     public function test_refresh_legacy_default_rewrites_old_static_script(): void
     {
         $legacy = <<<'BASH'

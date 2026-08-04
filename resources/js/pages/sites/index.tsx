@@ -1,6 +1,7 @@
 import { Form, Head, Link } from '@inertiajs/react';
 import {
     ChevronRight,
+    Database,
     GitBranch,
     Globe,
     Plus,
@@ -37,6 +38,7 @@ import {
     DialogDescription,
     DialogFooter,
     DialogHeader,
+    DialogSection,
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
@@ -88,6 +90,21 @@ type SiteTypeOption = {
 
 type RuntimeOption = { value: string; label: string; is_default: boolean };
 
+type DatabaseOption = { id: number; name: string };
+
+type DatabaseStrategy = 'none' | 'create' | 'existing';
+
+function suggestDatabaseName(domain: string): string {
+    const normalized = domain
+        .trim()
+        .toLowerCase()
+        .replace(/[.-]/g, '_')
+        .replace(/[^a-z0-9_]/g, '')
+        .replace(/^_+|_+$/g, '');
+
+    return (normalized || 'site').slice(0, 64);
+}
+
 /** Sensible document roots per type, offered as one-click presets. */
 const WEB_DIRECTORY_PRESETS: Record<string, string[]> = {
     laravel: ['/public'],
@@ -103,6 +120,7 @@ export default function SitesIndex({
     nodeVersions,
     packageManager,
     github,
+    databases,
 }: {
     sites: SiteRow[];
     siteTypes: SiteTypeOption[];
@@ -110,6 +128,7 @@ export default function SitesIndex({
     nodeVersions: RuntimeOption[];
     packageManager: string;
     github: { connected: boolean };
+    databases: DatabaseOption[];
 }) {
     const [createOpen, setCreateOpen] = useState(false);
     const [siteType, setSiteType] = useState('laravel');
@@ -140,6 +159,11 @@ export default function SitesIndex({
     const [repoLoading, setRepoLoading] = useState(false);
     const [branchLoading, setBranchLoading] = useState(false);
     const [branches, setBranches] = useState<string[]>([]);
+    const [siteName, setSiteName] = useState('');
+    const [databaseStrategy, setDatabaseStrategy] =
+        useState<DatabaseStrategy>('create');
+    const [databaseId, setDatabaseId] = useState('');
+    const [databaseName, setDatabaseName] = useState('');
 
     const repositoryOptions = useMemo<SearchableComboboxOption[]>(
         () =>
@@ -323,6 +347,35 @@ export default function SitesIndex({
         }
     }
 
+    function handleSiteNameChange(value: string) {
+        setSiteName(value);
+
+        if (databaseStrategy === 'create') {
+            setDatabaseName(suggestDatabaseName(value));
+        }
+    }
+
+    useEffect(() => {
+        if (!createOpen) {
+            return;
+        }
+
+        setSiteType('laravel');
+        setSiteName('');
+        setRepository('');
+        setRepositoryBranch('');
+        setGithubRepoId(null);
+        setBranches([]);
+        setAdvancedOpen(false);
+        setWebDirectory('');
+        setSpaFallback(true);
+        setDatabaseStrategy('create');
+        setDatabaseId('');
+        setDatabaseName('');
+        setPhpVersion(defaultPhp);
+        setNodeVersion(defaultNode);
+    }, [createOpen, defaultNode, defaultPhp]);
+
     // Reset the document root whenever the type changes so the placeholder
     // always reflects the default that type will actually get.
     const typeDefaultRoot = selected?.web_directory ?? '';
@@ -366,87 +419,125 @@ export default function SitesIndex({
                                 >
                                     {({ processing, errors }) => (
                                         <>
-                                            <DialogBody className="space-y-6">
-                                            <Field
-                                                htmlFor="name"
-                                                label="Domain"
-                                                required
-                                                error={errors.name}
-                                                help="Becomes the directory name, the vhost filename and the primary domain."
+                                            <DialogBody className="space-y-5">
+                                            <DialogSection
+                                                title="Site details"
+                                                description="The domain becomes the site directory, Nginx vhost, and primary URL."
                                             >
-                                                <Input
-                                                    id="name"
-                                                    name="name"
-                                                    mono
-                                                    autoFocus
-                                                    autoComplete="off"
-                                                    spellCheck={false}
-                                                    placeholder="app.example.com"
-                                                />
-                                            </Field>
+                                                <div className="space-y-4">
+                                                    <Field
+                                                        htmlFor="name"
+                                                        label="Domain"
+                                                        required
+                                                        error={errors.name}
+                                                    >
+                                                        <Input
+                                                            id="name"
+                                                            name="name"
+                                                            mono
+                                                            autoFocus
+                                                            autoComplete="off"
+                                                            spellCheck={false}
+                                                            placeholder="app.example.com"
+                                                            value={siteName}
+                                                            onChange={(event) =>
+                                                                handleSiteNameChange(
+                                                                    event.target
+                                                                        .value,
+                                                                )
+                                                            }
+                                                        />
+                                                    </Field>
 
-                                            <fieldset className="space-y-1.5">
-                                                <legend className="text-[14px] leading-5 font-medium text-fg">
-                                                    Application type
-                                                </legend>
+                                                    <fieldset className="space-y-2">
+                                                        <legend className="text-sm font-medium text-base-content">
+                                                            Application type
+                                                        </legend>
 
-                                                <div className="grid gap-2 sm:grid-cols-2">
-                                                    {siteTypes.map((type) => (
-                                                        <label
-                                                            key={type.value}
-                                                            className={cn(
-                                                                'flex cursor-pointer gap-3 rounded-xl border p-3 transition-colors duration-[--bc-duration-fast]',
-                                                                siteType ===
-                                                                    type.value
-                                                                    ? 'border-border-brand bg-brand-subtle'
-                                                                    : 'border-[var(--bc-border-default)] hover:border-border-hover',
-                                                            )}
-                                                        >
-                                                            <SiteFrameworkIcon
-                                                                type={type.value}
-                                                                size="lg"
-                                                                className="mt-0.5"
-                                                            />
-                                                            <span className="flex min-w-0 flex-1 flex-col gap-1">
-                                                                <span className="flex items-center gap-2">
-                                                                    <input
-                                                                        type="radio"
-                                                                        name="type"
-                                                                        value={
+                                                        <div className="grid gap-2 sm:grid-cols-2">
+                                                            {siteTypes.map((type) => (
+                                                                <label
+                                                                    key={type.value}
+                                                                    className={cn(
+                                                                        'flex cursor-pointer gap-3 rounded-xl border p-3 transition-colors duration-[--bc-duration-fast]',
+                                                                        siteType ===
                                                                             type.value
-                                                                        }
-                                                                        checked={
-                                                                            siteType ===
-                                                                            type.value
-                                                                        }
-                                                                        onChange={() =>
-                                                                            setSiteType(
-                                                                                type.value,
-                                                                            )
-                                                                        }
-                                                                        className="size-3.5 accent-[var(--bc-bg-brand)]"
+                                                                            ? 'border-border-brand bg-brand-subtle'
+                                                                            : 'border-[var(--bc-border-default)] hover:border-border-hover',
+                                                                    )}
+                                                                >
+                                                                    <SiteFrameworkIcon
+                                                                        type={type.value}
+                                                                        size="lg"
+                                                                        className="mt-0.5"
                                                                     />
-                                                                    <span className="text-[14px] leading-5 font-medium text-fg">
-                                                                        {
-                                                                            type.label
-                                                                        }
-                                                                    </span>
-                                                                </span>
-                                                                <span className="text-[13px] leading-5 text-fg-muted">
-                                                                    {
-                                                                        type.description
-                                                                    }
-                                                                </span>
-                                                            </span>
-                                                        </label>
-                                                    ))}
-                                                </div>
-                                                <InputError
-                                                    message={errors.type}
-                                                />
-                                            </fieldset>
+                                                                    <span className="flex min-w-0 flex-1 flex-col gap-1">
+                                                                        <span className="flex items-center gap-2">
+                                                                            <input
+                                                                                type="radio"
+                                                                                name="type"
+                                                                                value={
+                                                                                    type.value
+                                                                                }
+                                                                                checked={
+                                                                                    siteType ===
+                                                                                    type.value
+                                                                                }
+                                                                                onChange={() => {
+                                                                                    setSiteType(
+                                                                                        type.value,
+                                                                                    );
 
-                                            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
+                                                                                    if (
+                                                                                        type.value !==
+                                                                                        'laravel'
+                                                                                    ) {
+                                                                                        setDatabaseStrategy(
+                                                                                            'none',
+                                                                                        );
+                                                                                    } else if (
+                                                                                        databaseStrategy ===
+                                                                                        'none'
+                                                                                    ) {
+                                                                                        setDatabaseStrategy(
+                                                                                            'create',
+                                                                                        );
+                                                                                        setDatabaseName(
+                                                                                            suggestDatabaseName(
+                                                                                                siteName,
+                                                                                            ),
+                                                                                        );
+                                                                                    }
+                                                                                }}
+                                                                                className="size-3.5 accent-[var(--bc-bg-brand)]"
+                                                                            />
+                                                                            <span className="text-sm font-medium text-fg">
+                                                                                {
+                                                                                    type.label
+                                                                                }
+                                                                            </span>
+                                                                        </span>
+                                                                        <span className="text-[13px] leading-5 text-fg-muted">
+                                                                            {
+                                                                                type.description
+                                                                            }
+                                                                        </span>
+                                                                    </span>
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                        <InputError
+                                                            message={errors.type}
+                                                        />
+                                                    </fieldset>
+                                                </div>
+                                            </DialogSection>
+
+                                            <DialogSection
+                                                title="Git repository"
+                                                description="Optional. Connect a repo now to deploy right after the site is created."
+                                            >
+                                                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
                                                 <Field
                                                     htmlFor="repository"
                                                     label="Git repository"
@@ -575,121 +666,345 @@ export default function SitesIndex({
                                                     )}
                                                 </Field>
                                             </div>
+                                            </DialogSection>
 
-                                            {/* Only the runtime this type actually
-                                             * uses is asked for — a static site
-                                             * has no FPM pool, so no PHP field. */}
-                                            {runtime === 'php' && (
-                                                <Field
-                                                    htmlFor="php_version"
-                                                    label="PHP version"
-                                                    required
-                                                    error={errors.php_version}
-                                                    help="Only versions installed on this server are listed."
+                                            {(runtime === 'php' ||
+                                                runtime === 'node' ||
+                                                runtime === 'none') && (
+                                                <DialogSection
+                                                    title="Runtime"
+                                                    description={
+                                                        runtime === 'php'
+                                                            ? 'PHP-FPM pool, deploy script, and optional MySQL provisioning.'
+                                                            : runtime === 'node'
+                                                              ? 'Node version for the SSR process behind Nginx.'
+                                                              : 'Static sites are served directly from disk.'
+                                                    }
                                                 >
-                                                    <Select
-                                                        value={phpVersion}
-                                                        onValueChange={
-                                                            setPhpVersion
-                                                        }
-                                                        name="php_version"
-                                                        disabled={
-                                                            phpVersions.length ===
-                                                            0
-                                                        }
-                                                    >
-                                                        <SelectTrigger id="php_version">
-                                                            <SelectValue placeholder="Select a PHP version" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {phpVersions.map(
-                                                                (version) => (
-                                                                    <SelectItem
-                                                                        key={
-                                                                            version.value
+                                                    <div className="space-y-4">
+                                                        {runtime === 'php' && (
+                                                            <Field
+                                                                htmlFor="php_version"
+                                                                label="PHP version"
+                                                                required
+                                                                error={
+                                                                    errors.php_version
+                                                                }
+                                                                help="Only versions installed on this server are listed."
+                                                            >
+                                                                <Select
+                                                                    value={
+                                                                        phpVersion
+                                                                    }
+                                                                    onValueChange={
+                                                                        setPhpVersion
+                                                                    }
+                                                                    name="php_version"
+                                                                    disabled={
+                                                                        phpVersions.length ===
+                                                                        0
+                                                                    }
+                                                                >
+                                                                    <SelectTrigger id="php_version">
+                                                                        <SelectValue placeholder="Select a PHP version" />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent portalled={false}>
+                                                                        {phpVersions.map(
+                                                                            (
+                                                                                version,
+                                                                            ) => (
+                                                                                <SelectItem
+                                                                                    key={
+                                                                                        version.value
+                                                                                    }
+                                                                                    value={
+                                                                                        version.value
+                                                                                    }
+                                                                                >
+                                                                                    {
+                                                                                        version.label
+                                                                                    }
+                                                                                    {version.is_default &&
+                                                                                        ' · default'}
+                                                                                </SelectItem>
+                                                                            ),
+                                                                        )}
+                                                                    </SelectContent>
+                                                                </Select>
+                                                            </Field>
+                                                        )}
+
+                                                        {runtime === 'node' && (
+                                                            <Field
+                                                                htmlFor="node_version"
+                                                                label="Node version"
+                                                                required
+                                                                error={
+                                                                    errors.node_version
+                                                                }
+                                                                help="Runs the SSR server behind an Nginx reverse proxy."
+                                                            >
+                                                                <Select
+                                                                    value={
+                                                                        nodeVersion
+                                                                    }
+                                                                    onValueChange={
+                                                                        setNodeVersion
+                                                                    }
+                                                                    name="node_version"
+                                                                    disabled={
+                                                                        nodeVersions.length ===
+                                                                        0
+                                                                    }
+                                                                >
+                                                                    <SelectTrigger id="node_version">
+                                                                        <SelectValue placeholder="Select a Node version" />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent portalled={false}>
+                                                                        {nodeVersions.map(
+                                                                            (
+                                                                                version,
+                                                                            ) => (
+                                                                                <SelectItem
+                                                                                    key={
+                                                                                        version.value
+                                                                                    }
+                                                                                    value={
+                                                                                        version.value
+                                                                                    }
+                                                                                >
+                                                                                    {
+                                                                                        version.label
+                                                                                    }
+                                                                                    {version.is_default &&
+                                                                                        ' · default'}
+                                                                                </SelectItem>
+                                                                            ),
+                                                                        )}
+                                                                    </SelectContent>
+                                                                </Select>
+                                                            </Field>
+                                                        )}
+
+                                                        {runtime === 'none' && (
+                                                            <p className="rounded-md border border-[var(--bc-border-default)] bg-[var(--bc-bg-subtle)] px-3 py-2.5 text-[13px] leading-5 text-fg-muted">
+                                                                Static sites are
+                                                                served straight
+                                                                from disk. Nginx
+                                                                will point at{' '}
+                                                                <code className="font-mono text-fg-code">
+                                                                    {selected?.web_directory ??
+                                                                        '/'}
+                                                                </code>{' '}
+                                                                — no runtime
+                                                                required.
+                                                            </p>
+                                                        )}
+
+                                                        {runtime === 'php' && (
+                                                            <div className="space-y-3 rounded-xl border border-base-300/80 bg-base-100/60 p-4">
+                                                                <div className="flex items-start gap-3">
+                                                                    <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                                                        <Database className="size-4" />
+                                                                    </span>
+                                                                    <div className="space-y-1">
+                                                                        <p className="text-sm font-medium text-base-content">
+                                                                            MySQL database
+                                                                        </p>
+                                                                        <p className="text-sm text-base-content/70">
+                                                                            Beacon can create a database and user, then write the credentials into{' '}
+                                                                            <code className="font-mono text-xs">.env</code>{' '}
+                                                                            on the first deploy.
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+
+                                                                <input
+                                                                    type="hidden"
+                                                                    name="database_strategy"
+                                                                    value={
+                                                                        databaseStrategy
+                                                                    }
+                                                                />
+
+                                                                <div className="grid gap-2 sm:grid-cols-3">
+                                                                    {(
+                                                                        [
+                                                                            {
+                                                                                value: 'create',
+                                                                                label: 'Create new',
+                                                                                hint: 'Recommended',
+                                                                            },
+                                                                            {
+                                                                                value: 'existing',
+                                                                                label: 'Use existing',
+                                                                                hint: 'Pick from server',
+                                                                            },
+                                                                            {
+                                                                                value: 'none',
+                                                                                label: 'None',
+                                                                                hint: 'Configure later',
+                                                                            },
+                                                                        ] as const
+                                                                    ).map(
+                                                                        (
+                                                                            option,
+                                                                        ) => (
+                                                                            <label
+                                                                                key={
+                                                                                    option.value
+                                                                                }
+                                                                                className={cn(
+                                                                                    'cursor-pointer rounded-xl border px-3 py-2.5 transition-colors',
+                                                                                    databaseStrategy ===
+                                                                                        option.value
+                                                                                        ? 'border-border-brand bg-brand-subtle'
+                                                                                        : 'border-base-300 hover:border-border-hover',
+                                                                                )}
+                                                                            >
+                                                                                <input
+                                                                                    type="radio"
+                                                                                    className="sr-only"
+                                                                                    checked={
+                                                                                        databaseStrategy ===
+                                                                                        option.value
+                                                                                    }
+                                                                                    onChange={() => {
+                                                                                        setDatabaseStrategy(
+                                                                                            option.value,
+                                                                                        );
+
+                                                                                        if (
+                                                                                            option.value ===
+                                                                                            'create'
+                                                                                        ) {
+                                                                                            setDatabaseName(
+                                                                                                suggestDatabaseName(
+                                                                                                    siteName,
+                                                                                                ),
+                                                                                            );
+                                                                                        }
+                                                                                    }}
+                                                                                />
+                                                                                <span className="block text-sm font-medium text-base-content">
+                                                                                    {
+                                                                                        option.label
+                                                                                    }
+                                                                                </span>
+                                                                                <span className="block text-xs text-base-content/60">
+                                                                                    {
+                                                                                        option.hint
+                                                                                    }
+                                                                                </span>
+                                                                            </label>
+                                                                        ),
+                                                                    )}
+                                                                </div>
+
+                                                                <InputError
+                                                                    message={
+                                                                        errors.database_strategy
+                                                                    }
+                                                                />
+
+                                                                {databaseStrategy ===
+                                                                    'create' && (
+                                                                    <Field
+                                                                        htmlFor="database_name"
+                                                                        label="Database name"
+                                                                        required
+                                                                        error={
+                                                                            errors.database_name
                                                                         }
-                                                                        value={
-                                                                            version.value
+                                                                        help="Letters, numbers, and underscores only."
+                                                                    >
+                                                                        <Input
+                                                                            id="database_name"
+                                                                            name="database_name"
+                                                                            mono
+                                                                            autoComplete="off"
+                                                                            spellCheck={
+                                                                                false
+                                                                            }
+                                                                            placeholder="app_example_com"
+                                                                            value={
+                                                                                databaseName
+                                                                            }
+                                                                            onChange={(
+                                                                                event,
+                                                                            ) =>
+                                                                                setDatabaseName(
+                                                                                    event
+                                                                                        .target
+                                                                                        .value,
+                                                                                )
+                                                                            }
+                                                                        />
+                                                                    </Field>
+                                                                )}
+
+                                                                {databaseStrategy ===
+                                                                    'existing' && (
+                                                                    <Field
+                                                                        htmlFor="database_id"
+                                                                        label="Existing database"
+                                                                        required
+                                                                        error={
+                                                                            errors.database_id
+                                                                        }
+                                                                        help={
+                                                                            databases.length ===
+                                                                            0
+                                                                                ? 'No databases yet — create one from the Databases page or choose “Create new”.'
+                                                                                : 'Beacon creates a dedicated user with full access to this database.'
                                                                         }
                                                                     >
-                                                                        {
-                                                                            version.label
-                                                                        }
-                                                                        {version.is_default &&
-                                                                            ' · default'}
-                                                                    </SelectItem>
-                                                                ),
-                                                            )}
-                                                        </SelectContent>
-                                                    </Select>
-                                                </Field>
+                                                                        <Select
+                                                                            value={
+                                                                                databaseId
+                                                                            }
+                                                                            onValueChange={
+                                                                                setDatabaseId
+                                                                            }
+                                                                            name="database_id"
+                                                                            disabled={
+                                                                                databases.length ===
+                                                                                0
+                                                                            }
+                                                                        >
+                                                                            <SelectTrigger id="database_id">
+                                                                                <SelectValue placeholder="Select a database" />
+                                                                            </SelectTrigger>
+                                                                            <SelectContent portalled={false}>
+                                                                                {databases.map(
+                                                                                    (
+                                                                                        database,
+                                                                                    ) => (
+                                                                                        <SelectItem
+                                                                                            key={
+                                                                                                database.id
+                                                                                            }
+                                                                                            value={String(
+                                                                                                database.id,
+                                                                                            )}
+                                                                                        >
+                                                                                            {
+                                                                                                database.name
+                                                                                            }
+                                                                                        </SelectItem>
+                                                                                    ),
+                                                                                )}
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                    </Field>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </DialogSection>
                                             )}
 
-                                            {runtime === 'node' && (
-                                                <Field
-                                                    htmlFor="node_version"
-                                                    label="Node version"
-                                                    required
-                                                    error={errors.node_version}
-                                                    help="Runs the SSR server behind an Nginx reverse proxy."
-                                                >
-                                                    <Select
-                                                        value={nodeVersion}
-                                                        onValueChange={
-                                                            setNodeVersion
-                                                        }
-                                                        name="node_version"
-                                                        disabled={
-                                                            nodeVersions.length ===
-                                                            0
-                                                        }
-                                                    >
-                                                        <SelectTrigger id="node_version">
-                                                            <SelectValue placeholder="Select a Node version" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {nodeVersions.map(
-                                                                (version) => (
-                                                                    <SelectItem
-                                                                        key={
-                                                                            version.value
-                                                                        }
-                                                                        value={
-                                                                            version.value
-                                                                        }
-                                                                    >
-                                                                        {
-                                                                            version.label
-                                                                        }
-                                                                        {version.is_default &&
-                                                                            ' · default'}
-                                                                    </SelectItem>
-                                                                ),
-                                                            )}
-                                                        </SelectContent>
-                                                    </Select>
-                                                </Field>
-                                            )}
-
-                                            {runtime === 'none' && (
-                                                <p className="rounded-md border border-[var(--bc-border-default)] bg-[var(--bc-bg-subtle)] px-3 py-2.5 text-[13px] leading-5 text-fg-muted">
-                                                    Static sites are served
-                                                    straight from disk. Nginx
-                                                    will point at{' '}
-                                                    <code className="font-mono text-fg-code">
-                                                        {selected?.web_directory ??
-                                                            '/'}
-                                                    </code>{' '}
-                                                    — no runtime required.
-                                                </p>
-                                            )}
-
-                                            {/* Advanced settings stay collapsed:
-                                             * the common path is one field and
-                                             * a type, and burying the defaults
-                                             * behind a toggle keeps it that
-                                             * way without hiding them. */}
-                                            <div className="rounded-md border border-[var(--bc-border-default)]">
+                                            <div className="rounded-xl border border-[var(--bc-border-default)]">
                                                 <button
                                                     type="button"
                                                     onClick={() =>
@@ -698,7 +1013,7 @@ export default function SitesIndex({
                                                         )
                                                     }
                                                     aria-expanded={advancedOpen}
-                                                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+                                                    className="flex w-full items-center gap-2 px-4 py-3 text-left"
                                                 >
                                                     <ChevronRight
                                                         aria-hidden="true"
@@ -880,7 +1195,7 @@ export default function SitesIndex({
                                                                     <SelectTrigger id="package_manager">
                                                                         <SelectValue />
                                                                     </SelectTrigger>
-                                                                    <SelectContent>
+                                                                    <SelectContent portalled={false}>
                                                                         <SelectItem value="npm">
                                                                             npm
                                                                         </SelectItem>

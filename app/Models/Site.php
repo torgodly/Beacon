@@ -22,6 +22,8 @@ use Illuminate\Support\Str;
  * @property string $web_directory
  * @property string $system_user
  * @property string|null $php_version
+ * @property int|null $database_id
+ * @property int|null $database_user_id
  * @property string|null $node_version
  * @property string|null $package_manager
  * @property int|null $proxy_port
@@ -71,6 +73,8 @@ class Site extends Model
         'web_directory',
         'system_user',
         'php_version',
+        'database_id',
+        'database_user_id',
         'node_version',
         'package_manager',
         'proxy_port',
@@ -144,6 +148,22 @@ class Site extends Model
     public function githubInstallation(): BelongsTo
     {
         return $this->belongsTo(GithubInstallation::class);
+    }
+
+    /**
+     * @return BelongsTo<Database, $this>
+     */
+    public function database(): BelongsTo
+    {
+        return $this->belongsTo(Database::class);
+    }
+
+    /**
+     * @return BelongsTo<DatabaseUser, $this>
+     */
+    public function databaseUser(): BelongsTo
+    {
+        return $this->belongsTo(DatabaseUser::class);
     }
 
     /**

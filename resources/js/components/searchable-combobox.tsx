@@ -37,6 +37,7 @@ export function SearchableCombobox({
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState(value);
     const containerRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         setQuery(value);
@@ -75,12 +76,20 @@ export function SearchableCombobox({
         };
     }, []);
 
+    function selectOption(option: SearchableComboboxOption) {
+        setQuery(option.label);
+        onValueChange(option.value);
+        setOpen(false);
+        inputRef.current?.blur();
+    }
+
     return (
         <div
             ref={containerRef}
             className={cn('dropdown w-full', open && 'dropdown-open', className)}
         >
             <input
+                ref={inputRef}
                 id={id}
                 name={name}
                 type="text"
@@ -100,6 +109,17 @@ export function SearchableCombobox({
                     setQuery(next);
                     onValueChange(next);
                     setOpen(true);
+                }}
+                onKeyDown={(event) => {
+                    if (event.key === 'Escape') {
+                        setOpen(false);
+                        inputRef.current?.blur();
+                    }
+
+                    if (event.key === 'Enter' && open && filtered.length === 1) {
+                        event.preventDefault();
+                        selectOption(filtered[0]);
+                    }
                 }}
             />
 
@@ -125,10 +145,8 @@ export function SearchableCombobox({
                                 )}
                                 onMouseDown={(event) => {
                                     event.preventDefault();
-                                    setQuery(option.label);
-                                    onValueChange(option.value);
-                                    setOpen(false);
                                 }}
+                                onClick={() => selectOption(option)}
                             >
                                 <span>{option.label}</span>
                                 {option.description && (

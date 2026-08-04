@@ -9,7 +9,7 @@ import {
     Trash2,
     Users,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/console/page-header';
 import {
@@ -27,7 +27,6 @@ import {
     ForgeActionGroup,
     ForgeEmptyState,
 } from '@/components/forge/forge-empty-state';
-import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import {
     DataTable,
@@ -148,7 +147,19 @@ export default function DatabasesIndex({
 }) {
     const [createOpen, setCreateOpen] = useState(false);
     const [userOpen, setUserOpen] = useState(false);
-    const [selectedDatabase, setSelectedDatabase] = useState<string>('');
+    const [selectedDatabase, setSelectedDatabase] = useState('');
+    const [privileges, setPrivileges] = useState<'all' | 'readonly'>('all');
+
+    useEffect(() => {
+        if (!userOpen) {
+            return;
+        }
+
+        setPrivileges('all');
+        setSelectedDatabase(
+            databases.length === 1 ? String(databases[0].id) : '',
+        );
+    }, [userOpen, databases]);
 
     const page = usePage<{
         flash?: { database_user_password?: string | null };
@@ -202,6 +213,7 @@ export default function DatabasesIndex({
                                                     label="Username"
                                                     required
                                                     error={errors.username}
+                                                    help="Letters, numbers, and underscores only."
                                                 >
                                                     <Input
                                                         id="username"
@@ -212,42 +224,89 @@ export default function DatabasesIndex({
                                                     />
                                                 </Field>
 
-                                                <div className="flex flex-col gap-1.5">
-                                                    <label
-                                                        htmlFor="database_id"
-                                                        className="text-[14px] leading-5 font-medium text-fg"
-                                                    >
-                                                        Database
-                                                    </label>
+                                                <Field
+                                                    htmlFor="database_id"
+                                                    label="Database access"
+                                                    required
+                                                    error={errors.database_id}
+                                                    help={
+                                                        databases.length === 0
+                                                            ? 'Create a database first.'
+                                                            : 'Grant this user access to one database.'
+                                                    }
+                                                >
                                                     <Select
-                                                        name="database_id"
                                                         value={selectedDatabase}
                                                         onValueChange={
                                                             setSelectedDatabase
                                                         }
                                                     >
                                                         <SelectTrigger id="database_id">
-                                                            <SelectValue placeholder="Grant access to…" />
+                                                            <SelectValue placeholder="Select a database…" />
                                                         </SelectTrigger>
-                                                        <SelectContent>
+                                                        <SelectContent portalled={false}>
                                                             {databases.map(
                                                                 (database) => (
                                                                     <SelectItem
-                                                                        key={database.id}
+                                                                        key={
+                                                                            database.id
+                                                                        }
                                                                         value={String(
                                                                             database.id,
                                                                         )}
                                                                     >
-                                                                        {database.name}
+                                                                        {
+                                                                            database.name
+                                                                        }
                                                                     </SelectItem>
                                                                 ),
                                                             )}
                                                         </SelectContent>
                                                     </Select>
-                                                    <InputError
-                                                        message={errors.database_id}
+                                                    <input
+                                                        type="hidden"
+                                                        name="database_id"
+                                                        value={selectedDatabase}
                                                     />
-                                                </div>
+                                                </Field>
+
+                                                <Field
+                                                    htmlFor="privileges"
+                                                    label="Privileges"
+                                                    required
+                                                    error={errors.privileges}
+                                                    help="Full access is required for Laravel migrations and writes."
+                                                >
+                                                    <Select
+                                                        value={privileges}
+                                                        onValueChange={(
+                                                            value,
+                                                        ) =>
+                                                            setPrivileges(
+                                                                value as
+                                                                    | 'all'
+                                                                    | 'readonly',
+                                                            )
+                                                        }
+                                                    >
+                                                        <SelectTrigger id="privileges">
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent portalled={false}>
+                                                            <SelectItem value="all">
+                                                                Full access
+                                                            </SelectItem>
+                                                            <SelectItem value="readonly">
+                                                                Read only
+                                                            </SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <input
+                                                        type="hidden"
+                                                        name="privileges"
+                                                        value={privileges}
+                                                    />
+                                                </Field>
                                                 </DialogBody>
 
                                                 <DialogFooter>
@@ -265,7 +324,13 @@ export default function DatabasesIndex({
                                                     <Button
                                                         type="submit"
                                                         variant="primary"
-                                                        disabled={processing}
+                                                        disabled={
+                                                            processing ||
+                                                            databases.length ===
+                                                                0 ||
+                                                            selectedDatabase ===
+                                                                ''
+                                                        }
                                                     >
                                                         {processing
                                                             ? 'Creating…'

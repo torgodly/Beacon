@@ -179,7 +179,7 @@ function DialogContent({
         >
             <div
                 className={cn(
-                    'modal-box flex max-h-[min(92vh,calc(100vh-1.5rem))] max-w-[calc(100%-1.5rem)] flex-col overflow-hidden rounded-2xl border border-base-300 bg-base-100 p-0 text-base-content shadow-2xl',
+                    'modal-box flex max-h-[min(92vh,calc(100vh-1.5rem))] max-w-[calc(100%-1.5rem)] flex-col overflow-visible rounded-2xl border border-base-300 bg-base-100 p-0 text-base-content shadow-2xl',
                     sizeClasses[size],
                     className,
                 )}
