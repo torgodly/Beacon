@@ -106,8 +106,8 @@ function FieldMessage({
         <p
             id={id}
             className={cn(
-                'flex items-start gap-1.5 text-[12px] leading-4',
-                error ? 'text-error' : 'text-base-content/55',
+                'mt-2 flex items-start gap-1.5',
+                error ? 'bc-field-error' : 'bc-field-help',
             )}
         >
             {error && (
@@ -147,14 +147,11 @@ function Field({
     const messageId = `${htmlFor}-message`;
 
     return (
-        <div className={cn('flex w-full flex-col gap-1.5', className)}>
+        <div className={cn('flex w-full flex-col', className)}>
             {(label || hint) && (
                 <div className="flex items-baseline justify-between gap-3">
                     {label && (
-                        <label
-                            htmlFor={htmlFor}
-                            className="text-[13px] leading-5 font-medium text-base-content"
-                        >
+                        <label htmlFor={htmlFor} className="bc-label">
                             {label}
                             {required && (
                                 <>
@@ -168,21 +165,21 @@ function Field({
                                 </>
                             )}
                             {optional && (
-                                <span className="ml-1.5 text-[12px] font-normal text-base-content/45">
+                                <span className="ml-1.5 font-normal text-base-content/45">
                                     Optional
                                 </span>
                             )}
                         </label>
                     )}
                     {hint && (
-                        <span className="text-[12px] leading-4 text-base-content/55">
+                        <span className="text-sm/6 text-base-content/55">
                             {hint}
                         </span>
                     )}
                 </div>
             )}
 
-            {children}
+            <div className="mt-2">{children}</div>
 
             <FieldMessage error={error} help={help} id={messageId} />
         </div>

@@ -1,5 +1,8 @@
 import * as React from 'react';
+import { formControlClassName } from '@/lib/form-control';
 import { cn } from '@/lib/utils';
+
+const controlClassName = `${formControlClassName} aria-invalid:border-error aria-invalid:text-error`;
 
 function Input({
     className,
@@ -12,13 +15,27 @@ function Input({
             type={type}
             data-slot="input"
             className={cn(
-                'input input-bordered w-full rounded-xl bg-base-100 text-base-content',
-                'h-11 min-h-11',
-                'disabled:cursor-not-allowed disabled:bg-base-200 disabled:text-base-content/50',
-                'aria-invalid:border-error aria-invalid:text-error',
-                mono
-                    ? 'font-mono text-sm leading-5 tabular-nums'
-                    : 'text-sm leading-5',
+                controlClassName,
+                mono && 'font-mono tabular-nums',
+                className,
+            )}
+            {...props}
+        />
+    );
+}
+
+function Textarea({
+    className,
+    mono = false,
+    ...props
+}: React.ComponentProps<'textarea'> & { mono?: boolean }) {
+    return (
+        <textarea
+            data-slot="textarea"
+            className={cn(
+                controlClassName,
+                'min-h-[4.5rem] resize-y',
+                mono && 'font-mono tabular-nums',
                 className,
             )}
             {...props}
@@ -47,37 +64,33 @@ function Field({
     const helpId = `${htmlFor}-help`;
 
     return (
-        <div className={cn('form-control w-full gap-1.5', className)}>
-            <label htmlFor={htmlFor} className="label py-0">
-                <span className="label-text font-medium text-base-content">
-                    {label}
-                    {required && (
-                        <>
-                            {' '}
-                            <span className="text-error" aria-hidden="true">
-                                *
-                            </span>
-                            <span className="sr-only">(required)</span>
-                        </>
-                    )}
-                </span>
+        <div className={cn('w-full', className)}>
+            <label htmlFor={htmlFor} className="bc-label">
+                {label}
+                {required && (
+                    <>
+                        {' '}
+                        <span className="text-error" aria-hidden="true">
+                            *
+                        </span>
+                        <span className="sr-only">(required)</span>
+                    </>
+                )}
             </label>
 
-            {children}
+            <div className="mt-2">{children}</div>
 
             {error ? (
-                <label id={errorId} className="label py-0">
-                    <span className="label-text-alt text-error">{error}</span>
-                </label>
+                <p id={errorId} className="bc-field-error mt-2">
+                    {error}
+                </p>
             ) : help ? (
-                <label id={helpId} className="label py-0">
-                    <span className="label-text-alt text-base-content/70">
-                        {help}
-                    </span>
-                </label>
+                <p id={helpId} className="bc-field-help mt-2">
+                    {help}
+                </p>
             ) : null}
         </div>
     );
 }
 
-export { Input, Field };
+export { Field, Input, Textarea };

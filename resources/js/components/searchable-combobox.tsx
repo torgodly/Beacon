@@ -202,7 +202,7 @@ export function SearchableCombobox({
     }
 
     const menuClassName = cn(
-        'max-h-56 overflow-y-auto rounded-2xl border border-base-300 bg-base-100 p-2 shadow-lg',
+        'max-h-56 overflow-y-auto rounded-md border border-base-300 bg-base-100 p-1 shadow-lg',
         !portalled && 'dropdown-content menu mt-1 w-full z-[60]',
     );
 
@@ -242,11 +242,9 @@ export function SearchableCombobox({
                     placeholder={placeholder}
                     disabled={disabled}
                     className={cn(
-                        'input input-bordered w-full rounded-xl bg-base-100 text-base-content shadow-none transition-shadow',
-                        'h-11 min-h-11 focus-visible:outline-none',
-                        mono && 'font-mono text-sm tabular-nums',
-                        open &&
-                            'border-primary/40 ring-2 ring-primary/30',
+                        'bc-control',
+                        mono && 'font-mono tabular-nums',
+                        open && 'outline-2 -outline-offset-2 outline-primary',
                     )}
                     onFocus={() => setOpen(true)}
                     onChange={(event) => {
