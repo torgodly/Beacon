@@ -317,6 +317,77 @@
             opacity: 0.55;
         }
     }
+
+    /* ---- Toasts (Sonner) --------------------------------------------------
+     * The starter kit wired Sonner to shadcn vars (--popover) that Tailwind v4
+     * exposes as --color-popover, so backgrounds were transparent. These rules
+     * map Sonner onto Beacon tokens and sit above the operations dock. */
+    [data-sonner-toaster] {
+        --width: 22rem;
+        font-family: var(--font-sans);
+    }
+
+    [data-sonner-toaster][data-sonner-theme='light'] {
+        --normal-bg: var(--bc-bg-surface-raised);
+        --normal-bg-hover: var(--bc-bg-hover);
+        --normal-border: var(--bc-border-default);
+        --normal-border-hover: var(--bc-border-strong);
+        --normal-text: var(--bc-fg-default);
+
+        --success-bg: var(--bc-bg-success-subtle);
+        --success-border: var(--bc-border-success);
+        --success-text: var(--bc-fg-success);
+
+        --info-bg: var(--bc-bg-brand-subtle);
+        --info-border: var(--bc-border-brand);
+        --info-text: var(--bc-fg-brand);
+
+        --warning-bg: var(--bc-bg-warning-subtle);
+        --warning-border: var(--bc-border-warning);
+        --warning-text: var(--bc-fg-warning);
+
+        --error-bg: var(--bc-bg-danger-subtle);
+        --error-border: var(--bc-border-danger);
+        --error-text: var(--bc-fg-danger);
+    }
+
+    [data-sonner-toaster][data-sonner-theme='dark'] {
+        --normal-bg: var(--bc-bg-surface-raised);
+        --normal-bg-hover: var(--bc-bg-hover);
+        --normal-border: var(--bc-border-strong);
+        --normal-border-hover: var(--bc-border-hover);
+        --normal-text: var(--bc-fg-default);
+
+        --success-bg: var(--bc-bg-success-subtle);
+        --success-border: var(--bc-border-success);
+        --success-text: var(--bc-fg-success);
+
+        --info-bg: var(--bc-bg-brand-subtle);
+        --info-border: var(--bc-border-brand);
+        --info-text: var(--bc-fg-brand);
+
+        --warning-bg: var(--bc-bg-warning-subtle);
+        --warning-border: var(--bc-border-warning);
+        --warning-text: var(--bc-fg-warning);
+
+        --error-bg: var(--bc-bg-danger-subtle);
+        --error-border: var(--bc-border-danger);
+        --error-text: var(--bc-fg-danger);
+    }
+
+    [data-sonner-toast][data-styled='true'].bc-toast,
+    [data-sonner-toast][data-styled='true'] {
+        border-radius: var(--bc-radius-lg);
+        box-shadow: var(--bc-shadow-lg);
+        font-size: 14px;
+        line-height: 22px;
+        padding: 14px 16px;
+    }
+
+    [data-rich-colors='true'][data-sonner-toast][data-styled='true'] [data-description] {
+        color: inherit;
+        opacity: 0.92;
+    }
 }
 
 @layer utilities {
