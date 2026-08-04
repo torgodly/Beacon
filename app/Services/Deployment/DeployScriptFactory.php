@@ -28,7 +28,10 @@ class DeployScriptFactory
             $site->type === 'static'
                 && $this->normalize($site->deploy_script) === $this->normalize($this->legacyStaticBuild()) => $this->forSite($site),
             $site->type === 'laravel'
-                && $this->runsArtisanBeforeComposer($site->deploy_script) => $this->forSite($site),
+                && (
+                    $this->runsArtisanBeforeComposer($site->deploy_script)
+                    || $this->usesUnsafeEnvWriter($site->deploy_script)
+                ) => $this->forSite($site),
             default => null,
         };
 
@@ -83,69 +86,81 @@ fi
 
 set_env_var() {
   local key="$1"
-  local value="$2"
+  local env_source="${2:-}"
+  local literal_value="${3-}"
   [ -f .env ] || return 0
-  BEACON_ENV_KEY="$key" BEACON_ENV_VALUE="$value" "$BEACON_PHP" -r '
+  BEACON_ENV_KEY="$key" BEACON_ENV_SOURCE="$env_source" BEACON_ENV_VALUE="$literal_value" "$BEACON_PHP" -r '
     $key = getenv("BEACON_ENV_KEY") ?: "";
-    $value = getenv("BEACON_ENV_VALUE") ?: "";
-    $path = ".env";
-    if ($key === "" || ! is_file($path)) { exit(0); }
-    $lines = file($path, FILE_IGNORE_NEW_LINES);
+    $source = getenv("BEACON_ENV_SOURCE") ?: "";
+    if ($key === "" || ! is_file(".env")) { exit(0); }
+    if ($source !== "") {
+        $raw = getenv($source);
+        $value = $raw === false ? "" : $raw;
+    } else {
+        $value = getenv("BEACON_ENV_VALUE") ?: "";
+    }
+    $format = static function (string $value): string {
+        if ($value === "") { return "\"\""; }
+        if (preg_match("/^[A-Za-z0-9_.@:-]+$/", $value)) { return $value; }
+        return "\"".addcslashes($value, "\\\"\$\0")."\"";
+    };
+    $lines = file(".env", FILE_IGNORE_NEW_LINES);
     if ($lines === false) { exit(1); }
+    $formatted = $key."=".$format($value);
     $found = false;
     foreach ($lines as $index => $line) {
       if (str_starts_with($line, $key."=")) {
-        $lines[$index] = $key."=".$value;
+        $lines[$index] = $formatted;
         $found = true;
         break;
       }
     }
     if (! $found) {
-      $lines[] = $key."=".$value;
+      $lines[] = $formatted;
     }
-    file_put_contents($path, implode("\n", $lines)."\n");
+    file_put_contents(".env", implode("\n", $lines)."\n");
   '
 }
 
 if [ -n "${BEACON_SITE:-}" ]; then
-  set_env_var APP_NAME "${BEACON_SITE}"
-  set_env_var APP_URL "https://${BEACON_SITE}"
+  set_env_var APP_NAME BEACON_SITE
+  set_env_var APP_URL "" "https://${BEACON_SITE}"
 fi
 
 if [ -n "${BEACON_APP_ENV:-}" ]; then
-  set_env_var APP_ENV "${BEACON_APP_ENV}"
+  set_env_var APP_ENV BEACON_APP_ENV
   if [ "${BEACON_APP_ENV}" = "testing" ]; then
-    set_env_var APP_DEBUG true
+    set_env_var APP_DEBUG "" true
   else
-    set_env_var APP_DEBUG false
+    set_env_var APP_DEBUG "" false
   fi
 fi
 
 if [ "${BEACON_DB_DRIVER:-mysql}" = "sqlite" ]; then
-  set_env_var DB_CONNECTION sqlite
+  set_env_var DB_CONNECTION "" sqlite
   sqlite_path="${BEACON_DB_SQLITE_PATH:-${BEACON_SITE_DIR}/database/database.sqlite}"
-  set_env_var DB_DATABASE "${sqlite_path}"
+  set_env_var DB_DATABASE "" "${sqlite_path}"
   mkdir -p "$(dirname "${sqlite_path}")"
   touch "${sqlite_path}"
 elif [ -n "${BEACON_DB_DATABASE:-}" ]; then
-  set_env_var DB_CONNECTION mysql
-  set_env_var DB_HOST "${BEACON_DB_HOST:-127.0.0.1}"
-  set_env_var DB_PORT "${BEACON_DB_PORT:-3306}"
-  set_env_var DB_DATABASE "${BEACON_DB_DATABASE}"
-  set_env_var DB_USERNAME "${BEACON_DB_USERNAME:-}"
-  set_env_var DB_PASSWORD "${BEACON_DB_PASSWORD:-}"
+  set_env_var DB_CONNECTION "" mysql
+  set_env_var DB_HOST BEACON_DB_HOST
+  set_env_var DB_PORT BEACON_DB_PORT
+  set_env_var DB_DATABASE BEACON_DB_DATABASE
+  set_env_var DB_USERNAME BEACON_DB_USERNAME
+  set_env_var DB_PASSWORD BEACON_DB_PASSWORD
 fi
 
 if [ "${BEACON_REDIS_ENABLED:-false}" = "true" ]; then
-  set_env_var CACHE_STORE redis
-  set_env_var QUEUE_CONNECTION redis
-  set_env_var SESSION_DRIVER redis
-  set_env_var REDIS_HOST "${BEACON_REDIS_HOST:-127.0.0.1}"
-  set_env_var REDIS_PORT "${BEACON_REDIS_PORT:-6379}"
+  set_env_var CACHE_STORE "" redis
+  set_env_var QUEUE_CONNECTION "" redis
+  set_env_var SESSION_DRIVER "" redis
+  set_env_var REDIS_HOST BEACON_REDIS_HOST
+  set_env_var REDIS_PORT BEACON_REDIS_PORT
 else
-  set_env_var CACHE_STORE file
-  set_env_var QUEUE_CONNECTION database
-  set_env_var SESSION_DRIVER file
+  set_env_var CACHE_STORE "" file
+  set_env_var QUEUE_CONNECTION "" database
+  set_env_var SESSION_DRIVER "" file
 fi
 
 # ── Dependencies & build ──────────────────────────────────────────────
@@ -163,6 +178,7 @@ if [ -f artisan ]; then
   if ! grep -qE '^APP_KEY=base64:' .env 2>/dev/null; then
     $BEACON_PHP artisan key:generate --force
   fi
+  $BEACON_PHP artisan config:clear
   $BEACON_PHP artisan migrate --force
   $BEACON_PHP artisan storage:link || true
   $BEACON_PHP artisan optimize:clear
@@ -240,5 +256,16 @@ BASH;
             : $firstComposerPos;
 
         return $artisanPos < $composerPos;
+    }
+
+    private function usesUnsafeEnvWriter(?string $script): bool
+    {
+        $script = (string) $script;
+
+        return str_contains($script, 'set_env_var DB_PASSWORD "${BEACON_DB_PASSWORD')
+            || (
+                str_contains($script, 'set_env_var DB_PASSWORD')
+                && ! str_contains($script, 'set_env_var DB_PASSWORD BEACON_DB_PASSWORD')
+            );
     }
 }

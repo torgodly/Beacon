@@ -54,6 +54,36 @@ class DeployScriptFactoryTest extends TestCase
         );
     }
 
+    public function test_refresh_legacy_default_fixes_laravel_script_with_unsafe_env_writer(): void
+    {
+        $broken = <<<'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+set_env_var DB_PASSWORD "${BEACON_DB_PASSWORD:-}"
+BASH;
+
+        $site = Site::factory()->create([
+            'type' => 'laravel',
+            'deploy_script' => $broken,
+        ]);
+
+        $this->mock(SiteFilesystem::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('write')->once();
+        });
+
+        $refreshed = app(DeployScriptFactory::class)->refreshLegacyDefault(
+            $site,
+            app(SiteFilesystem::class),
+        );
+
+        $this->assertTrue($refreshed);
+        $this->assertStringContainsString(
+            'set_env_var DB_PASSWORD BEACON_DB_PASSWORD',
+            (string) $site->fresh()->deploy_script,
+        );
+        $this->assertStringContainsString('artisan config:clear', (string) $site->fresh()->deploy_script);
+    }
+
     public function test_refresh_legacy_default_fixes_laravel_script_with_artisan_before_composer(): void
     {
         $broken = <<<'BASH'
