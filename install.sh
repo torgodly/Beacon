@@ -1604,7 +1604,7 @@ maybe_create_admin() {
 export DEBIAN_FRONTEND=noninteractive
 apt_update
 apt_install nginx redis-server supervisor certbot gettext-base ufw \
-    openssh-client git curl unzip acl python3 rsync gpg sqlite3
+    openssh-client git curl unzip acl python3 rsync gpg sqlite3 build-essential
 
 if [[ "$SKIP_MYSQL" -eq 0 ]]; then
     apt_install mysql-server

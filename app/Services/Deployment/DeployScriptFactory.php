@@ -32,6 +32,8 @@ class DeployScriptFactory
                     $this->runsArtisanBeforeComposer($site->deploy_script)
                     || $this->usesUnsafeEnvWriter($site->deploy_script)
                 ) => $this->forSite($site),
+            in_array($site->type, ['static', 'nextjs', 'nuxt'], true)
+                && $this->usesFrozenLockfileInstall($site->deploy_script) => $this->forSite($site),
             default => null,
         };
 
@@ -195,7 +197,7 @@ BASH;
 set -euo pipefail
 cd "$BEACON_SITE_DIR"
 if [ -f package.json ]; then
-  $BEACON_PM install --frozen-lockfile || $BEACON_PM install
+  $BEACON_PM ci || $BEACON_PM install
   $BEACON_PM run build
 else
   echo "No package.json — serving checked-out files as-is."
@@ -213,7 +215,7 @@ if [ ! -f package.json ]; then
   echo "Error: package.json not found. Check the repository URL and site type." >&2
   exit 1
 fi
-$BEACON_PM install --frozen-lockfile || $BEACON_PM install
+$BEACON_PM ci || $BEACON_PM install
 $BEACON_PM run build
 BASH;
     }
@@ -225,7 +227,7 @@ BASH;
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$BEACON_SITE_DIR"
-$BEACON_PM install --frozen-lockfile || $BEACON_PM install
+$BEACON_PM ci || $BEACON_PM install
 $BEACON_PM run build
 BASH;
     }
@@ -267,5 +269,10 @@ BASH;
                 str_contains($script, 'set_env_var DB_PASSWORD')
                 && ! str_contains($script, 'set_env_var DB_PASSWORD BEACON_DB_PASSWORD')
             );
+    }
+
+    private function usesFrozenLockfileInstall(?string $script): bool
+    {
+        return str_contains((string) $script, '--frozen-lockfile');
     }
 }

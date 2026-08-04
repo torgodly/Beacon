@@ -31,6 +31,7 @@ class DeployScriptFactoryTest extends TestCase
         $script = app(DeployScriptFactory::class)->forSite($site);
 
         $this->assertStringContainsString('if [ ! -f package.json ]', $script);
+        $this->assertStringContainsString('$BEACON_PM ci || $BEACON_PM install', $script);
         $this->assertStringContainsString('exit 1', $script);
     }
 
@@ -146,6 +147,38 @@ BASH;
 
         $this->assertTrue($refreshed);
         $this->assertStringContainsString('No package.json', (string) $site->fresh()->deploy_script);
+    }
+
+    public function test_refresh_legacy_default_rewrites_nextjs_script_with_frozen_lockfile_flag(): void
+    {
+        $legacy = <<<'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$BEACON_SITE_DIR"
+$BEACON_PM install --frozen-lockfile || $BEACON_PM install
+$BEACON_PM run build
+BASH;
+
+        $site = Site::factory()->create([
+            'type' => 'nextjs',
+            'deploy_script' => $legacy,
+        ]);
+
+        $this->mock(SiteFilesystem::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('write')->once();
+        });
+
+        $refreshed = app(DeployScriptFactory::class)->refreshLegacyDefault(
+            $site,
+            app(SiteFilesystem::class),
+        );
+
+        $this->assertTrue($refreshed);
+        $this->assertStringContainsString(
+            '$BEACON_PM ci || $BEACON_PM install',
+            (string) $site->fresh()->deploy_script,
+        );
+        $this->assertStringNotContainsString('--frozen-lockfile', (string) $site->fresh()->deploy_script);
     }
 
     public function test_refresh_legacy_default_leaves_custom_scripts_alone(): void
