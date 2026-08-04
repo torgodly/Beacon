@@ -152,6 +152,25 @@ class SiteManagementTest extends TestCase
         ]);
     }
 
+    public function test_store_rejects_a_single_character_hostname(): void
+    {
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+        $this->installPhp('8.4');
+
+        $response = $this->actingAs($user)->post(route('sites.store'), [
+            'name' => 's',
+            'type' => 'laravel',
+            'php_version' => '8.4',
+            'app_env' => 'production',
+            'database_driver' => 'mysql',
+            'database_strategy' => 'none',
+        ]);
+
+        $response->assertSessionHasErrors('name');
+        $this->assertDatabaseMissing('sites', ['name' => 's']);
+    }
+
     public function test_store_rejects_an_invalid_hostname(): void
     {
         $user = User::factory()->create();

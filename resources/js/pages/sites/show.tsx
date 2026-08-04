@@ -86,6 +86,18 @@ import {
     requiredTextError,
     supervisorProcessNameError,
 } from '@/lib/validation';
+import {
+    consoleCommandPlaceholder,
+    consoleSuggestedCommands,
+    defaultConsoleCommand,
+    defaultCronCommand,
+    defaultSupervisorCommand,
+    defaultSupervisorProcessKind,
+    phpBinary,
+    siteHasConfigCacheOnSave,
+    siteHasLaravelScheduler,
+    supervisorProcessTabOptions,
+} from '@/lib/site-runtime-commands';
 import { destroy, index as sitesIndex, show } from '@/routes/sites';
 import {
     store as storeSiteCommand,
@@ -720,217 +732,216 @@ function DomainsTab({
 
     return (
         <ForgePageContent>
-            <ForgeFormCard
-                title="Domains"
-                description="Manage your site's domains and SSL certificates."
-                className="overflow-visible"
-            >
-                <div className="mb-6 flex flex-wrap items-center justify-end gap-2">
-                    <NginxConfigDialog site={site} nginx={nginx} />
-                </div>
-
-                <div className="space-y-6">
-                    <div className="space-y-3">
-                        <div>
-                            <h3 className="text-sm font-medium text-[#0f172a] dark:text-[#f8fafc]">
-                                Custom domains
-                            </h3>
-                            <p className="text-sm text-[#64748b]">
-                                Add domains that should serve this site.
-                            </p>
-                        </div>
-
-                        <form
-                            onSubmit={(event) => {
-                                event.preventDefault();
-
-                                const error = hostnameError(
-                                    domainForm.data.domain,
-                                );
-
-                                if (error) {
-                                    domainForm.setError('domain', error);
-                                    return;
-                                }
-
-                                domainForm.clearErrors('domain');
-                                domainForm.transform((data) => ({
-                                    ...data,
-                                    domain: normalizeHostname(data.domain),
-                                    redirect_www: redirectWww,
-                                }));
-                                domainForm.post(storeDomain.url(site.id), {
-                                    preserveScroll: true,
-                                    onSuccess: () => {
-                                        domainForm.reset();
-                                        setRedirectWww(false);
-                                    },
-                                });
-                            }}
-                            className="flex flex-col gap-3 sm:flex-row"
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-1">
+                    <h2 className="text-lg font-semibold text-[#0f172a] dark:text-[#f8fafc]">
+                        Domains
+                    </h2>
+                    <p className="text-sm text-[#64748b]">
+                        Hostnames that serve this site. Configure certificates on
+                        the{' '}
+                        <Link
+                            href={show.url(site.id, { query: { tab: 'ssl' } })}
+                            className="font-medium text-[#18B69B] hover:underline"
                         >
-                            <div className="min-w-0 flex-1">
-                                <Input
-                                    id="domain"
-                                    value={domainForm.data.domain}
-                                    onChange={(event) =>
-                                        domainForm.setData(
-                                            'domain',
-                                            normalizeHostname(
-                                                event.target.value,
-                                            ),
-                                        )
-                                    }
-                                    placeholder="your-domain.com"
-                                    autoComplete="off"
-                                />
-                                <InputError message={domainForm.errors.domain} />
-                            </div>
-                            <Button
-                                type="submit"
-                                disabled={domainForm.processing || !domainValid}
-                                className="shrink-0"
-                            >
-                                Add domain
-                            </Button>
-                        </form>
-
-                        <div className="divide-y rounded-lg border border-[#e2e8f0] dark:border-[#2e3032]">
-                            {site.domains.map((domain) => (
-                                <div
-                                    key={domain.id}
-                                    className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
-                                >
-                                    <div className="flex min-w-0 flex-wrap items-center gap-2">
-                                        <span className="font-mono text-sm text-[#0f172a] dark:text-[#f8fafc]">
-                                            {domain.domain}
-                                        </span>
-                                        {domain.is_primary && (
-                                            <span className="rounded-full bg-[#f1f5f9] px-2 py-0.5 text-xs font-medium text-[#64748b] dark:bg-[#2e3032]">
-                                                Primary
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        {domain.redirect_to ? (
-                                            <span className="text-xs text-[#64748b]">
-                                                Redirects to {domain.redirect_to}
-                                            </span>
-                                        ) : domain.is_primary ? (
-                                            <span className="text-xs text-[#64748b]">
-                                                Redirect from www.
-                                            </span>
-                                        ) : null}
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="icon-sm"
-                                                    aria-label={`Actions for ${domain.domain}`}
-                                                >
-                                                    <MoreHorizontal className="size-4" />
-                                                </Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent align="end">
-                                                {!domain.is_primary &&
-                                                    !domain.redirect_to && (
-                                                        <DropdownMenuItem
-                                                            onClick={() =>
-                                                                router.patch(
-                                                                    makePrimaryDomain.url(
-                                                                        {
-                                                                            site: site.id,
-                                                                            domain: domain.domain,
-                                                                        },
-                                                                    ),
-                                                                    {},
-                                                                    {
-                                                                        preserveScroll: true,
-                                                                    },
-                                                                )
-                                                            }
-                                                        >
-                                                            Make primary
-                                                        </DropdownMenuItem>
-                                                    )}
-                                                {!domain.is_primary && (
-                                                    <DropdownMenuItem
-                                                        className="text-destructive focus:text-destructive"
-                                                        onClick={() =>
-                                                            router.delete(
-                                                                destroyDomain.url(
-                                                                    {
-                                                                        site: site.id,
-                                                                        domain: domain.domain,
-                                                                    },
-                                                                ),
-                                                                {
-                                                                    preserveScroll: true,
-                                                                },
-                                                            )
-                                                        }
-                                                    >
-                                                        Remove domain
-                                                    </DropdownMenuItem>
-                                                )}
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-
-                        <label className="flex items-start gap-3 rounded-lg border border-[#e2e8f0] px-4 py-3 dark:border-[#2e3032]">
-                            <Checkbox
-                                id="redirect_www"
-                                checked={redirectWww}
-                                onCheckedChange={(checked) =>
-                                    setRedirectWww(checked === true)
-                                }
-                                className="mt-0.5"
-                            />
-                            <span className="grid gap-1">
-                                <span className="text-sm font-medium text-[#0f172a] dark:text-[#f8fafc]">
-                                    Redirect www to apex
-                                </span>
-                                <span className="text-sm text-[#64748b]">
-                                    Creates a www alias that redirects to the
-                                    domain you add.
-                                </span>
-                            </span>
-                        </label>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-4 border-t border-[#e2e8f0] pt-6 dark:border-[#2e3032]">
-                        <div className="space-y-1">
-                            <p className="text-sm font-medium text-[#0f172a] dark:text-[#f8fafc]">
-                                Allow wildcard subdomains
-                            </p>
-                            <p className="text-sm text-[#64748b]">
-                                Allow all subdomains to accept traffic, e.g.{' '}
-                                <code className="font-mono text-xs">
-                                    *.{primaryDomain}
-                                </code>
-                            </p>
-                        </div>
-                        <ToggleSwitch
-                            id="allow_wildcard_subdomains"
-                            checked={wildcardEnabled}
-                            onCheckedChange={(checked) => {
-                                setWildcardEnabled(checked);
-                                router.patch(
-                                    updateDomainSettings.url(site.id),
-                                    {
-                                        allow_wildcard_subdomains: checked,
-                                    },
-                                    { preserveScroll: true },
-                                );
-                            }}
-                        />
-                    </div>
+                            TLS tab
+                        </Link>
+                        .
+                    </p>
                 </div>
-            </ForgeFormCard>
+                <NginxConfigDialog site={site} nginx={nginx} />
+            </div>
+
+            <ForgeDividedCard title="Hostnames">
+                <ForgeListRow className="flex-col items-stretch gap-4 border-b border-[#e2e8f0] dark:border-[#2e3032]">
+                    <form
+                        onSubmit={(event) => {
+                            event.preventDefault();
+
+                            const error = hostnameError(
+                                domainForm.data.domain,
+                            );
+
+                            if (error) {
+                                domainForm.setError('domain', error);
+                                return;
+                            }
+
+                            domainForm.clearErrors('domain');
+                            domainForm.transform((data) => ({
+                                ...data,
+                                domain: normalizeHostname(data.domain),
+                                redirect_www: redirectWww,
+                            }));
+                            domainForm.post(storeDomain.url(site.id), {
+                                preserveScroll: true,
+                                onSuccess: () => {
+                                    domainForm.reset();
+                                    setRedirectWww(false);
+                                },
+                            });
+                        }}
+                        className="flex flex-col gap-3 sm:flex-row"
+                    >
+                        <div className="min-w-0 flex-1">
+                            <Input
+                                id="domain"
+                                value={domainForm.data.domain}
+                                onChange={(event) =>
+                                    domainForm.setData(
+                                        'domain',
+                                        normalizeHostname(
+                                            event.target.value,
+                                        ),
+                                    )
+                                }
+                                placeholder="another-domain.com"
+                                autoComplete="off"
+                            />
+                            <InputError message={domainForm.errors.domain} />
+                        </div>
+                        <Button
+                            type="submit"
+                            disabled={domainForm.processing || !domainValid}
+                            className="shrink-0"
+                        >
+                            Add domain
+                        </Button>
+                    </form>
+
+                    <label className="flex items-start gap-3 rounded-lg border border-[#e2e8f0] bg-[#f8fafc] px-4 py-3 dark:border-[#2e3032] dark:bg-[#151718]">
+                        <Checkbox
+                            id="redirect_www"
+                            checked={redirectWww}
+                            onCheckedChange={(checked) =>
+                                setRedirectWww(checked === true)
+                            }
+                            className="mt-0.5"
+                        />
+                        <span className="grid gap-1">
+                            <span className="text-sm font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                                Also redirect www
+                            </span>
+                            <span className="text-sm text-[#64748b]">
+                                Adds www and sends it to the apex domain.
+                            </span>
+                        </span>
+                    </label>
+                </ForgeListRow>
+
+                {site.domains.map((domain) => (
+                    <ForgeListRow
+                        key={domain.id}
+                        className="flex-wrap justify-between gap-3"
+                    >
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                            <span className="font-mono text-sm text-[#0f172a] dark:text-[#f8fafc]">
+                                {domain.domain}
+                            </span>
+                            {domain.is_primary && (
+                                <span className="rounded-full bg-[#18B69B]/10 px-2 py-0.5 text-xs font-medium text-[#0d9488] dark:text-[#18B69B]">
+                                    Primary
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {domain.redirect_to ? (
+                                <span className="text-xs text-[#64748b]">
+                                    → {domain.redirect_to}
+                                </span>
+                            ) : domain.is_primary ? (
+                                <span className="text-xs text-[#64748b]">
+                                    www redirects here
+                                </span>
+                            ) : null}
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon-sm"
+                                        aria-label={`Actions for ${domain.domain}`}
+                                    >
+                                        <MoreHorizontal className="size-4" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    {!domain.is_primary &&
+                                        !domain.redirect_to && (
+                                            <DropdownMenuItem
+                                                onClick={() =>
+                                                    router.patch(
+                                                        makePrimaryDomain.url(
+                                                            {
+                                                                site: site.id,
+                                                                domain: domain.domain,
+                                                            },
+                                                        ),
+                                                        {},
+                                                        {
+                                                            preserveScroll: true,
+                                                        },
+                                                    )
+                                                }
+                                            >
+                                                Make primary
+                                            </DropdownMenuItem>
+                                        )}
+                                    {!domain.is_primary && (
+                                        <DropdownMenuItem
+                                            className="text-destructive focus:text-destructive"
+                                            onClick={() =>
+                                                router.delete(
+                                                    destroyDomain.url({
+                                                        site: site.id,
+                                                        domain: domain.domain,
+                                                    }),
+                                                    {
+                                                        preserveScroll: true,
+                                                    },
+                                                )
+                                            }
+                                        >
+                                            Remove
+                                        </DropdownMenuItem>
+                                    )}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </div>
+                    </ForgeListRow>
+                ))}
+            </ForgeDividedCard>
+
+            <ForgeDividedCard title="Wildcard subdomains">
+                <ForgeListRow className="flex-wrap justify-between gap-4">
+                    <div className="min-w-0 space-y-1">
+                        <p className="text-sm font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                            Accept any subdomain
+                        </p>
+                        <p className="text-sm text-[#64748b]">
+                            Traffic to{' '}
+                            <code className="rounded bg-[#f1f5f9] px-1.5 py-0.5 font-mono text-xs dark:bg-[#2e3032]">
+                                *.{primaryDomain}
+                            </code>{' '}
+                            is routed to this site.
+                        </p>
+                    </div>
+                    <ToggleSwitch
+                        id="allow_wildcard_subdomains"
+                        checked={wildcardEnabled}
+                        onCheckedChange={(checked) => {
+                            setWildcardEnabled(checked);
+                            router.patch(
+                                updateDomainSettings.url(site.id),
+                                {
+                                    allow_wildcard_subdomains: checked,
+                                },
+                                { preserveScroll: true },
+                            );
+                        }}
+                    />
+                </ForgeListRow>
+            </ForgeDividedCard>
         </ForgePageContent>
     );
 }
@@ -1976,7 +1987,7 @@ function SupervisorTab({
 }) {
     const [dialogOpen, setDialogOpen] = useState(false);
     const [processKind, setProcessKind] = useState<'queue_worker' | 'custom'>(
-        'queue_worker',
+        defaultSupervisorProcessKind(site.type),
     );
     const [name, setName] = useState('queue');
     const [connection, setConnection] = useState('redis');
@@ -1985,10 +1996,8 @@ function SupervisorTab({
     const [sleep, setSleep] = useState('3');
     const [tries, setTries] = useState('3');
     const [jobTimeout, setJobTimeout] = useState('60');
-    const [command, setCommand] = useState(
-        site.php_version
-            ? `php${site.php_version} ${site.path}/artisan queue:work`
-            : `php ${site.path}/artisan queue:work`,
+    const [command, setCommand] = useState(() =>
+        defaultSupervisorCommand(site),
     );
     const [processNameError, setProcessNameError] = useState<string>();
     const [commandError, setCommandError] = useState<string>();
@@ -1999,8 +2008,8 @@ function SupervisorTab({
         (processKind !== 'custom' ||
             requiredTextError(command, 'a command', 2000) === undefined);
 
-    const phpBinary = site.php_version ? `php${site.php_version}` : 'php';
-    const queuePreview = `${phpBinary} artisan queue:work ${connection} --queue=${queue} --sleep=${sleep} --tries=${tries} --timeout=${jobTimeout}`;
+    const php = phpBinary(site);
+    const queuePreview = `${php} artisan queue:work ${connection} --queue=${queue} --sleep=${sleep} --tries=${tries} --timeout=${jobTimeout}`;
 
     return (
         <ForgePageContent>
@@ -2086,16 +2095,9 @@ function SupervisorTab({
                                         </Field>
 
                                         <ForgeFormTabs
-                                            tabs={[
-                                                {
-                                                    value: 'queue_worker',
-                                                    label: 'Queue worker',
-                                                },
-                                                {
-                                                    value: 'custom',
-                                                    label: 'Custom',
-                                                },
-                                            ]}
+                                            tabs={supervisorProcessTabOptions(
+                                                site.type,
+                                            )}
                                             value={processKind}
                                             onChange={(value) =>
                                                 setProcessKind(
@@ -2396,9 +2398,7 @@ function CronTab({ site, jobs }: { site: SiteDetail; jobs: CronJobRow[] }) {
     const [expression, setExpression] = useState<string>(
         CRON_FREQUENCY_PRESETS.weekly.expression,
     );
-    const defaultCommand = site.php_version
-        ? `php${site.php_version} ${site.path}/artisan`
-        : `php ${site.path}/artisan`;
+    const defaultCommand = defaultCronCommand(site);
     const [cronName, setCronName] = useState('');
     const [cronCommand, setCronCommand] = useState(defaultCommand);
     const [cronNameError, setCronNameError] = useState<string>();
@@ -2426,36 +2426,38 @@ function CronTab({ site, jobs }: { site: SiteDetail; jobs: CronJobRow[] }) {
 
     return (
         <ForgePageContent>
-            <ForgeDividedCard title="Scheduler">
-                <ForgeListRow className="flex-wrap justify-between gap-4">
-                    <div className="min-w-0">
-                        <p className="font-medium text-[#0f172a] dark:text-[#f8fafc]">
-                            Laravel scheduler
-                        </p>
-                        <p className="text-sm text-[#64748b]">
-                            Runs{' '}
-                            <code className="text-xs">schedule:run</code> every
-                            minute for this site.
-                        </p>
-                    </div>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                            router.post(
-                                toggleCronScheduler.url(site.id),
-                                {
-                                    enabled: !(scheduler?.enabled ?? false),
-                                },
-                                { preserveScroll: true },
-                            )
-                        }
-                    >
-                        {scheduler?.enabled ? 'Disable' : 'Enable'} scheduler
-                    </Button>
-                </ForgeListRow>
-            </ForgeDividedCard>
+            {siteHasLaravelScheduler(site.type) && (
+                <ForgeDividedCard title="Scheduler">
+                    <ForgeListRow className="flex-wrap justify-between gap-4">
+                        <div className="min-w-0">
+                            <p className="font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                                Laravel scheduler
+                            </p>
+                            <p className="text-sm text-[#64748b]">
+                                Runs{' '}
+                                <code className="text-xs">schedule:run</code>{' '}
+                                every minute for this site.
+                            </p>
+                        </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                                router.post(
+                                    toggleCronScheduler.url(site.id),
+                                    {
+                                        enabled: !(scheduler?.enabled ?? false),
+                                    },
+                                    { preserveScroll: true },
+                                )
+                            }
+                        >
+                            {scheduler?.enabled ? 'Disable' : 'Enable'} scheduler
+                        </Button>
+                    </ForgeListRow>
+                </ForgeDividedCard>
+            )}
 
             <ForgeDividedCard
                 title="Scheduled jobs"
@@ -2814,27 +2816,32 @@ function EnvironmentTab({
                             />
                         )}
 
-                        <div className="flex items-center justify-between gap-4 border-t border-[#e2e8f0] pt-4 dark:border-[#2e3032]">
-                            <div className="space-y-1">
-                                <p className="text-sm font-medium text-[#0f172a] dark:text-[#f8fafc]">
-                                    Cache
-                                </p>
-                                <p className="text-sm text-[#64748b]">
-                                    Run{' '}
-                                    <code className="rounded bg-[#f1f5f9] px-1.5 py-0.5 font-mono text-xs dark:bg-[#2e3032]">
-                                        php artisan config:cache
-                                    </code>{' '}
-                                    after updating environment variables.
-                                </p>
+                        {siteHasConfigCacheOnSave(site.type) && (
+                            <div className="flex items-center justify-between gap-4 border-t border-[#e2e8f0] pt-4 dark:border-[#2e3032]">
+                                <div className="space-y-1">
+                                    <p className="text-sm font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                                        Cache
+                                    </p>
+                                    <p className="text-sm text-[#64748b]">
+                                        Run{' '}
+                                        <code className="rounded bg-[#f1f5f9] px-1.5 py-0.5 font-mono text-xs dark:bg-[#2e3032]">
+                                            php artisan config:cache
+                                        </code>{' '}
+                                        after updating environment variables.
+                                    </p>
+                                </div>
+                                <ToggleSwitch
+                                    id="env_cache_on_save"
+                                    checked={form.data.env_cache_on_save}
+                                    onCheckedChange={(checked) =>
+                                        form.setData(
+                                            'env_cache_on_save',
+                                            checked,
+                                        )
+                                    }
+                                />
                             </div>
-                            <ToggleSwitch
-                                id="env_cache_on_save"
-                                checked={form.data.env_cache_on_save}
-                                onCheckedChange={(checked) =>
-                                    form.setData('env_cache_on_save', checked)
-                                }
-                            />
-                        </div>
+                        )}
 
                         <InputError message={errors.environment} />
 
@@ -2953,7 +2960,10 @@ function ConsoleTab({
     commands: ConsoleCommandRow[];
     activeCommand: ConsoleCommandRow | null;
 }) {
-    const [command, setCommand] = useState('php artisan --version');
+    const [command, setCommand] = useState(() =>
+        defaultConsoleCommand(site),
+    );
+    const suggestions = consoleSuggestedCommands(site);
 
     return (
         <div className="flex flex-col gap-4">
@@ -2979,9 +2989,28 @@ function ConsoleTab({
                                         onChange={(event) =>
                                             setCommand(event.target.value)
                                         }
+                                        placeholder={consoleCommandPlaceholder(
+                                            site,
+                                        )}
                                         className="font-mono text-sm"
                                         autoComplete="off"
                                     />
+                                    {suggestions.length > 0 && (
+                                        <div className="flex flex-wrap gap-2 pt-1">
+                                            {suggestions.map((suggestion) => (
+                                                <button
+                                                    key={suggestion}
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setCommand(suggestion)
+                                                    }
+                                                    className="rounded-md border border-[#e2e8f0] px-2 py-1 font-mono text-xs text-[#64748b] transition-colors hover:border-[#18B69B]/40 hover:text-[#0f172a] dark:border-[#2e3032] dark:hover:text-[#f8fafc]"
+                                                >
+                                                    {suggestion}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
                                     <InputError message={errors.command} />
                                 </div>
                                 <Button

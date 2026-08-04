@@ -569,6 +569,18 @@ export function CreateSiteDialog({
                         setFieldErrors({});
                     }}
                     onSubmit={(event) => {
+                        if (step !== 'configure') {
+                            event.preventDefault();
+
+                            if (step === 'site' && validateSiteStep()) {
+                                setStep('git');
+                            } else if (step === 'git' && validateGitStep()) {
+                                setStep('configure');
+                            }
+
+                            return;
+                        }
+
                         if (!validateConfigureStep()) {
                             event.preventDefault();
                         }
@@ -590,7 +602,7 @@ export function CreateSiteDialog({
 
                             <CreateSiteStepper step={step} />
 
-                            <DialogBody className="space-y-5">
+                            <DialogBody className="space-y-5 overflow-visible">
                                 {step === 'site' && (
                                     <div className="space-y-5">
                                         <Field
@@ -704,6 +716,7 @@ export function CreateSiteDialog({
                                                         <SearchableCombobox
                                                             id="repository"
                                                             value={repository}
+                                                            portalled
                                                             onValueChange={
                                                                 handleRepositoryChange
                                                             }
@@ -763,6 +776,7 @@ export function CreateSiteDialog({
                                                     <SearchableCombobox
                                                         id="repository_branch"
                                                         value={repositoryBranch}
+                                                        portalled
                                                         onValueChange={(
                                                             value,
                                                         ) => {
@@ -872,7 +886,7 @@ export function CreateSiteDialog({
                                                     <SelectTrigger id="php_version">
                                                         <SelectValue placeholder="Select PHP version" />
                                                     </SelectTrigger>
-                                                    <SelectContent portalled={false}>
+                                                    <SelectContent>
                                                         {phpVersions.map(
                                                             (version) => (
                                                                 <SelectItem
@@ -917,7 +931,7 @@ export function CreateSiteDialog({
                                                     <SelectTrigger id="node_version">
                                                         <SelectValue placeholder="Select Node version" />
                                                     </SelectTrigger>
-                                                    <SelectContent portalled={false}>
+                                                    <SelectContent>
                                                         {nodeVersions.map(
                                                             (version) => (
                                                                 <SelectItem
@@ -1153,7 +1167,7 @@ export function CreateSiteDialog({
                                                                 <SelectTrigger id="package_manager">
                                                                     <SelectValue />
                                                                 </SelectTrigger>
-                                                                <SelectContent portalled={false}>
+                                                                <SelectContent>
                                                                     <SelectItem value="npm">
                                                                         npm
                                                                     </SelectItem>

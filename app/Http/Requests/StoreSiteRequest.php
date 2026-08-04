@@ -42,6 +42,17 @@ class StoreSiteRequest extends FormRequest
                     if (in_array($poolName, ['beacon-panel', 'www'], true)) {
                         $fail('That hostname would conflict with a reserved PHP-FPM pool name.');
                     }
+
+                    if (! str_contains($value, '.')) {
+                        $fail('Enter a full domain name (e.g. app.example.com).');
+                    }
+
+                    $labels = explode('.', $value);
+                    $tld = $labels[array_key_last($labels)] ?? '';
+
+                    if (count($labels) < 2 || strlen($tld) < 2) {
+                        $fail('Enter a valid top-level domain.');
+                    }
                 },
             ],
             'type' => ['required', Rule::in(['laravel', 'nextjs', 'nuxt', 'static'])],

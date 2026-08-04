@@ -97,5 +97,8 @@ class DatabaseBackupTest extends TestCase
         $this->assertCount(1, $connections);
         $this->assertStringContainsString('DB_DATABASE=app_production', $connections[0]['laravel']);
         $this->assertStringContainsString('DB_USERNAME=app_user', $connections[0]['laravel']);
+        $this->assertStringStartsWith('tableplus://connections/new?', $connections[0]['tableplus']);
+        $this->assertStringContainsString('database=app_production', $connections[0]['tableplus']);
+        $this->assertStringContainsString('user=app_user', $connections[0]['tableplus']);
     }
 }

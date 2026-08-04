@@ -32,6 +32,32 @@ export function hostnameError(value: string): string | undefined {
         return 'Enter a valid hostname (lowercase letters, numbers, dots, hyphens).';
     }
 
+    if (!name.includes('.')) {
+        return 'Enter a full domain name (e.g. app.example.com).';
+    }
+
+    const labels = name.split('.');
+
+    for (const label of labels) {
+        if (label.length === 0) {
+            return 'Domain labels cannot be empty.';
+        }
+
+        if (label.length > 63) {
+            return 'Each domain label must be 63 characters or fewer.';
+        }
+
+        if (label.startsWith('-') || label.endsWith('-')) {
+            return 'Domain labels cannot start or end with a hyphen.';
+        }
+    }
+
+    const tld = labels[labels.length - 1] ?? '';
+
+    if (tld.length < 2) {
+        return 'Enter a valid top-level domain.';
+    }
+
     return undefined;
 }
 

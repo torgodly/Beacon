@@ -5,6 +5,10 @@ import { ForgeFrameworkBadge } from '@/components/forge/forge-badge';
 import { DeployButton } from '@/components/sites/deploy-button';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import {
+    siteHasConsoleTab,
+    siteHasSupervisorTab,
+} from '@/lib/site-runtime-commands';
 import { show } from '@/routes/sites';
 
 type SiteChromeSite = {
@@ -31,6 +35,24 @@ const SITE_TABS = [
     { key: 'isolation', title: 'Isolation' },
     { key: 'settings', title: 'Settings' },
 ] as const;
+
+export function siteTabsForType(type?: string) {
+    return SITE_TABS.filter((tab) => {
+        if (tab.key === 'console' && !siteHasConsoleTab(type ?? '')) {
+            return false;
+        }
+
+        if (
+            tab.key === 'supervisor' &&
+            type !== undefined &&
+            !siteHasSupervisorTab(type)
+        ) {
+            return false;
+        }
+
+        return true;
+    });
+}
 
 const tabActive =
     'border-b-2 border-[#18B69B] text-[#0f172a] dark:text-[#f8fafc]';
@@ -91,7 +113,7 @@ export function ForgeSiteChrome({
                     className="-mb-px flex gap-5 overflow-x-auto"
                     aria-label="Site sections"
                 >
-                    {SITE_TABS.map((item) => {
+                    {siteTabsForType(site.type).map((item) => {
                         const active = tab === item.key;
 
                         return (

@@ -104,18 +104,19 @@ class DatabaseBackupService
     }
 
     /**
-     * @return array<int, array{user_id: int, username: string, host: string, laravel: string, url: string}>
+     * @return array<int, array{user_id: int, username: string, host: string, laravel: string, url: string, tableplus: string}>
      */
     public function connectionStrings(Database $database): array
     {
         $database->loadMissing('users');
 
-        $socket = config('database.connections.mysql_admin.unix_socket', '/var/run/mysqld/mysqld.sock');
         $host = config('database.connections.mysql_admin.host', '127.0.0.1');
-        $port = config('database.connections.mysql_admin.port', '3306');
+        $port = (string) config('database.connections.mysql_admin.port', '3306');
 
         return $database->users->map(function (DatabaseUser $user) use ($database, $host, $port): array {
             $password = $user->password;
+            $encodedUser = rawurlencode($user->username);
+            $encodedPassword = rawurlencode($password);
 
             return [
                 'user_id' => $user->id,
@@ -129,7 +130,16 @@ class DatabaseBackupService
                     "DB_USERNAME={$user->username}",
                     "DB_PASSWORD={$password}",
                 ]),
-                'url' => "mysql://{$user->username}:{$password}@{$host}:{$port}/{$database->name}",
+                'url' => "mysql://{$encodedUser}:{$encodedPassword}@{$host}:{$port}/{$database->name}",
+                'tableplus' => 'tableplus://connections/new?'.http_build_query([
+                    'type' => 'mysql',
+                    'name' => $database->name,
+                    'host' => $host,
+                    'port' => $port,
+                    'user' => $user->username,
+                    'password' => $password,
+                    'database' => $database->name,
+                ], '', '&', PHP_QUERY_RFC3986),
             ];
         })->values()->all();
     }
