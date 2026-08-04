@@ -24,6 +24,11 @@ class FakeProcessFactory implements ProcessFactory
 
     private int $exitCode = 0;
 
+    /** @var list<int> */
+    private array $exitCodeSequence = [];
+
+    private int $exitCodeSequenceIndex = 0;
+
     private string $output = '';
 
     private string $errorOutput = '';
@@ -33,6 +38,21 @@ class FakeProcessFactory implements ProcessFactory
     public function willReturn(int $exitCode, string $output = '', string $errorOutput = ''): static
     {
         $this->exitCode = $exitCode;
+        $this->exitCodeSequence = [];
+        $this->exitCodeSequenceIndex = 0;
+        $this->output = $output;
+        $this->errorOutput = $errorOutput;
+
+        return $this;
+    }
+
+    /**
+     * @param  list<int>  $exitCodes
+     */
+    public function willReturnSequence(array $exitCodes, string $output = '', string $errorOutput = ''): static
+    {
+        $this->exitCodeSequence = $exitCodes;
+        $this->exitCodeSequenceIndex = 0;
         $this->output = $output;
         $this->errorOutput = $errorOutput;
 
@@ -54,11 +74,15 @@ class FakeProcessFactory implements ProcessFactory
             ? sprintf('usleep(%d);', (int) ($this->sleepSeconds * 1_000_000))
             : '';
 
+        $exitCode = $this->exitCodeSequence !== [] && isset($this->exitCodeSequence[$this->exitCodeSequenceIndex])
+            ? $this->exitCodeSequence[$this->exitCodeSequenceIndex++]
+            : $this->exitCode;
+
         $script .= sprintf(
             'fwrite(STDOUT, %s); fwrite(STDERR, %s); exit(%d);',
             var_export($this->output, true),
             var_export($this->errorOutput, true),
-            $this->exitCode,
+            $exitCode,
         );
 
         $process = new Process([PHP_BINARY, '-r', $script], $cwd, null, null, $timeout);

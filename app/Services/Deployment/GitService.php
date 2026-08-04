@@ -28,26 +28,7 @@ class GitService
         $repository = $this->repositoryUrl($site);
 
         if (! $this->isGitRepository($site)) {
-            $stream->append("Cloning {$repository} (branch {$branch})...\n");
-
-            $result = $this->runner->asSite(
-                argv: [
-                    '/usr/bin/git', 'clone', '--depth', '1',
-                    '--branch', $branch,
-                    $repository,
-                    '.',
-                ],
-                cwd: $site->path,
-                env: $env,
-                timeout: 600,
-                stream: $stream,
-            );
-
-            if ($result->failed()) {
-                throw new RuntimeException(
-                    "Git clone failed with exit code {$result->exitCode()}.",
-                );
-            }
+            $this->initializeRepository($site, $repository, $branch, $env, $stream);
 
             return;
         }
@@ -150,6 +131,102 @@ class GitService
         }
 
         return $repository;
+    }
+
+    /**
+     * Bootstrap git in an existing site directory.
+     *
+     * Site provisioning creates storage/ and web roots before the first
+     * deploy, so `git clone .` into the site path always fails. Instead we
+     * init the repo in place and fetch the requested branch.
+     */
+    private function initializeRepository(
+        Site $site,
+        string $repository,
+        string $branch,
+        array $env,
+        OutputStream $stream,
+    ): void {
+        $stream->append("Initializing {$repository} (branch {$branch})...\n");
+
+        $init = $this->runner->asSite(
+            argv: ['/usr/bin/git', 'init'],
+            cwd: $site->path,
+            env: $env,
+            timeout: 60,
+            stream: $stream,
+        );
+
+        if ($init->failed()) {
+            throw new RuntimeException(
+                "Git init failed with exit code {$init->exitCode()}.",
+            );
+        }
+
+        $this->ensureRemoteOrigin($site, $repository, $env, $stream);
+
+        $fetch = $this->runner->asSite(
+            argv: ['/usr/bin/git', 'fetch', 'origin', $branch, '--depth', '1'],
+            cwd: $site->path,
+            env: $env,
+            timeout: 600,
+            stream: $stream,
+        );
+
+        if ($fetch->failed()) {
+            throw new RuntimeException(
+                "Git fetch failed with exit code {$fetch->exitCode()}.",
+            );
+        }
+
+        $reset = $this->runner->asSite(
+            argv: ['/usr/bin/git', 'reset', '--hard', "origin/{$branch}"],
+            cwd: $site->path,
+            env: $env,
+            timeout: 120,
+            stream: $stream,
+        );
+
+        if ($reset->failed()) {
+            throw new RuntimeException(
+                "Git reset failed with exit code {$reset->exitCode()}.",
+            );
+        }
+    }
+
+    /**
+     * @param  array<string, string>  $env
+     */
+    private function ensureRemoteOrigin(
+        Site $site,
+        string $repository,
+        array $env,
+        OutputStream $stream,
+    ): void {
+        $existing = $this->runner->asSite(
+            argv: ['/usr/bin/git', 'remote', 'get-url', 'origin'],
+            cwd: $site->path,
+            env: $env,
+            timeout: 10,
+        );
+
+        $argv = $existing->successful()
+            ? ['/usr/bin/git', 'remote', 'set-url', 'origin', $repository]
+            : ['/usr/bin/git', 'remote', 'add', 'origin', $repository];
+
+        $result = $this->runner->asSite(
+            argv: $argv,
+            cwd: $site->path,
+            env: $env,
+            timeout: 30,
+            stream: $stream,
+        );
+
+        if ($result->failed()) {
+            throw new RuntimeException(
+                'Could not configure git remote origin.'
+            );
+        }
     }
 
     private function isGitRepository(Site $site): bool
