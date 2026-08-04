@@ -86,12 +86,17 @@ export default function GitHubSettings({
                             <form
                                 action="https://github.com/settings/apps/new"
                                 method="post"
+                                onSubmit={(event) => {
+                                    const input = event.currentTarget.elements.namedItem(
+                                        'manifest',
+                                    ) as HTMLInputElement | null;
+
+                                    if (input) {
+                                        input.value = JSON.stringify(manifest);
+                                    }
+                                }}
                             >
-                                <input
-                                    type="hidden"
-                                    name="manifest"
-                                    value={JSON.stringify(manifest)}
-                                />
+                                <input type="hidden" name="manifest" defaultValue="" />
                                 <Button type="submit">
                                     <Github className="size-4" />
                                     Connect GitHub

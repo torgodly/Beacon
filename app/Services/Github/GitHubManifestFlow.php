@@ -3,9 +3,11 @@
 namespace App\Services\Github;
 
 use App\Models\GithubInstallation;
+use App\Models\Server;
 use App\Models\User;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 class GitHubManifestFlow
 {
@@ -19,14 +21,16 @@ class GitHubManifestFlow
         $state = Str::random(40);
         Cache::put($this->stateKey($state), $user->id, now()->addHour());
 
+        $baseUrl = Server::current()->panelBaseUrl();
+
         return [
             'name' => config('beacon.github.app_name'),
-            'url' => config('app.url'),
+            'url' => $baseUrl,
             'hook_attributes' => [
-                'url' => route('webhooks.github'),
+                'url' => $this->absoluteRoute('webhooks.github', $baseUrl),
             ],
-            'redirect_url' => route('github.callback', ['state' => $state]),
-            'setup_url' => route('github.setup'),
+            'redirect_url' => $this->absoluteRoute('github.callback', $baseUrl, ['state' => $state]),
+            'setup_url' => $this->absoluteRoute('github.setup', $baseUrl),
             'public' => false,
             'default_permissions' => [
                 'contents' => 'read',
@@ -52,6 +56,8 @@ class GitHubManifestFlow
      */
     public function persistConversion(User $user, array $manifest): GithubInstallation
     {
+        $baseUrl = Server::current()->panelBaseUrl();
+
         return GithubInstallation::query()->updateOrCreate(
             ['user_id' => $user->id],
             [
@@ -61,7 +67,7 @@ class GitHubManifestFlow
                 'client_secret' => (string) $manifest['client_secret'],
                 'private_key' => (string) $manifest['pem'],
                 'webhook_secret' => (string) $manifest['webhook_secret'],
-                'webhook_url' => route('webhooks.github'),
+                'webhook_url' => $this->absoluteRoute('webhooks.github', $baseUrl),
                 'connected_at' => now(),
             ],
         );
@@ -81,6 +87,23 @@ class GitHubManifestFlow
         ]);
 
         return $installation->fresh();
+    }
+
+    /**
+     * @param  array<string, mixed>  $parameters
+     */
+    private function absoluteRoute(string $name, string $baseUrl, array $parameters = []): string
+    {
+        $path = route($name, $parameters, absolute: false);
+        $url = rtrim($baseUrl, '/').$path;
+
+        if (filter_var($url, FILTER_VALIDATE_URL) === false) {
+            throw new RuntimeException(
+                "Could not build a valid URL for [{$name}]. Check the panel URL in Settings → Server.",
+            );
+        }
+
+        return $url;
     }
 
     private function stateKey(string $state): string

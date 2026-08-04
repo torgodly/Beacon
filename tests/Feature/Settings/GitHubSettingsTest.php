@@ -3,6 +3,7 @@
 namespace Tests\Feature\Settings;
 
 use App\Models\GithubInstallation;
+use App\Models\Server;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -31,6 +32,36 @@ class GitHubSettingsTest extends TestCase
                 ->component('settings/github')
                 ->has('manifest')
                 ->where('installation', null));
+    }
+
+    #[Test]
+    public function manifest_urls_use_the_panel_public_domain(): void
+    {
+        Server::factory()->create([
+            'id' => 1,
+            'panel_domain' => 'beacon.example.com',
+            'panel_port' => 443,
+            'panel_url_public' => true,
+            'public_ip' => '203.0.113.10',
+        ]);
+
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)
+            ->get(route('github.edit'));
+
+        $response->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('settings/github')
+                ->where('manifest.url', 'https://beacon.example.com')
+                ->where('manifest.setup_url', 'https://beacon.example.com/settings/github/setup')
+                ->where('manifest.hook_attributes.url', 'https://beacon.example.com/webhooks/github'));
+
+        $redirectUrl = $response->original->getData()['page']['props']['manifest']['redirect_url'] ?? null;
+
+        $this->assertIsString($redirectUrl);
+        $this->assertStringStartsWith('https://beacon.example.com/settings/github/callback?state=', $redirectUrl);
+        $this->assertNotFalse(filter_var($redirectUrl, FILTER_VALIDATE_URL));
     }
 
     #[Test]

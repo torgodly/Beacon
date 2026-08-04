@@ -165,4 +165,38 @@ class Server extends Model
 
         return max($min, min($max, $configured));
     }
+
+    /**
+     * Canonical HTTPS URL for the panel — used for GitHub App manifests and webhooks.
+     */
+    public function panelBaseUrl(): string
+    {
+        if (filled($this->panel_domain)) {
+            $portSuffix = in_array($this->panel_port, [80, 443], true)
+                ? ''
+                : ":{$this->panel_port}";
+
+            return "https://{$this->panel_domain}{$portSuffix}";
+        }
+
+        $configured = rtrim((string) config('app.url'), '/');
+
+        if ($this->isValidAbsoluteUrl($configured) && ! str_contains($configured, '__APP_URL__')) {
+            return $configured;
+        }
+
+        return "https://{$this->public_ip}:{$this->panel_port}";
+    }
+
+    private function isValidAbsoluteUrl(string $url): bool
+    {
+        if ($url === '' || filter_var($url, FILTER_VALIDATE_URL) === false) {
+            return false;
+        }
+
+        $scheme = parse_url($url, PHP_URL_SCHEME);
+        $host = parse_url($url, PHP_URL_HOST);
+
+        return is_string($scheme) && $scheme !== '' && is_string($host) && $host !== '';
+    }
 }
