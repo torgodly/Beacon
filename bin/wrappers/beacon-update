@@ -100,6 +100,13 @@ case "$action" in
 
         panel_run "$rel" composer install -d "$rel" --no-dev --no-interaction \
             --prefer-dist --optimize-autoloader
+
+        # bootstrap/cache is shared between releases, so this release starts
+        # with the previous one's route and config cache. wayfinder:generate
+        # runs during the Vite build and would enumerate those stale routes,
+        # omitting typed helpers for anything added in this release.
+        panel_run "$rel" php "$rel/artisan" optimize:clear >/dev/null 2>&1 || true
+
         panel_run "$rel" npm --prefix "$rel" ci
         panel_run "$rel" npm --prefix "$rel" run build
 

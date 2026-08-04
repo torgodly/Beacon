@@ -941,6 +941,18 @@ bootstrap_panel() {
 
     panel_run "$rel" composer install -d "$rel" --no-dev --no-interaction \
         --prefer-dist --optimize-autoloader
+
+    # Drop caches inherited from the PREVIOUS release before building.
+    #
+    # bootstrap/cache is a symlink into shared state, so a new release starts
+    # life holding the last release's routes-v7.php and config.php. The Vite
+    # build runs `wayfinder:generate`, which boots Laravel to enumerate routes
+    # — against that stale cache. A route added in this release is therefore
+    # invisible, its typed helper is never written, and the build dies with
+    #   Could not load .../resources/js/routes/sites/serving
+    # (resources/js/routes is gitignored, so nothing else supplies it).
+    panel_run "$rel" php "$rel/artisan" optimize:clear >/dev/null 2>&1 || true
+
     panel_run "$rel" npm --prefix "$rel" ci
     panel_run "$rel" npm --prefix "$rel" run build
 
