@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -62,5 +63,13 @@ class DatabaseUser extends Model
         return $this->belongsToMany(Database::class, 'database_user_database')
             ->using(DatabaseUserDatabase::class)
             ->withPivot(['privileges', 'custom_grants']);
+    }
+
+    /**
+     * @return HasMany<Site, $this>
+     */
+    public function sites(): HasMany
+    {
+        return $this->hasMany(Site::class);
     }
 }

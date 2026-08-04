@@ -3,6 +3,7 @@
 namespace App\Actions\Database;
 
 use App\Models\Database;
+use App\Models\Site;
 use App\Services\Database\MySqlService;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -14,6 +15,12 @@ class DeleteDatabase
 
     public function handle(Database $database): void
     {
+        if (Site::query()->where('database_id', $database->id)->exists()) {
+            throw new RuntimeException(
+                'Sites still use this database. Detach them from the database before dropping it.',
+            );
+        }
+
         DB::transaction(function () use ($database): void {
             $name = $database->name;
 

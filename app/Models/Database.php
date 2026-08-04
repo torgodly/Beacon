@@ -63,4 +63,12 @@ class Database extends Model
     {
         return $this->hasMany(DatabaseBackup::class);
     }
+
+    /**
+     * @return HasMany<Site, $this>
+     */
+    public function sites(): HasMany
+    {
+        return $this->hasMany(Site::class);
+    }
 }

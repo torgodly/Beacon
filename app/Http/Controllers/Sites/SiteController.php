@@ -27,6 +27,7 @@ use App\Services\Deployment\DeploymentService;
 use App\Services\Nginx\NginxService;
 use App\Services\Php\PhpPoolWriter;
 use App\Services\Sites\SiteEnvironmentService;
+use App\Support\SiteDeploySettings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -147,6 +148,8 @@ class SiteController extends Controller
             }
         }
 
+        $data = SiteDeploySettings::normalize($data);
+
         try {
             $site = $createSite->handle($data);
         } catch (RuntimeException $e) {
@@ -158,7 +161,9 @@ class SiteController extends Controller
             ->with('toast', [
                 'type' => 'success',
                 'message' => filled($site->repository)
-                    ? "Site {$site->name} created with repository connected. Deploy when ready."
+                    ? ($site->auto_deploy
+                        ? "Site {$site->name} created — auto deploy is on for {$site->repository_branch}."
+                        : "Site {$site->name} created with repository connected. Deploy when ready.")
                     : "Site {$site->name} created.",
             ]);
     }
@@ -456,6 +461,9 @@ class SiteController extends Controller
             'repository' => $site->repository,
             'repository_branch' => $site->repository_branch ?? 'main',
             'repository_connected' => filled($site->repository),
+            'app_env' => $site->type === 'laravel' ? $site->app_env : null,
+            'database_driver' => $site->type === 'laravel' ? $site->database_driver : null,
+            'redis_enabled' => $site->type === 'laravel' ? $site->redis_enabled : false,
             'primary_domain' => ($primary = $site->domains->firstWhere('is_primary', true)) !== null
                 ? $primary->domain
                 : $site->name,
@@ -475,6 +483,9 @@ class SiteController extends Controller
             'client_max_body_size' => $site->client_max_body_size,
             'package_manager' => $site->package_manager,
             'php_version' => $site->php_version,
+            'app_env' => $site->app_env,
+            'database_driver' => $site->database_driver,
+            'redis_enabled' => $site->redis_enabled,
             'node_version' => $site->node_version,
             'proxy_port' => $site->proxy_port,
             // SSR types are reverse-proxied and have no document root, so the

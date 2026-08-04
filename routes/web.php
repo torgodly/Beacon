@@ -95,6 +95,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('database-backups/{backup:uuid}/download', [DatabaseBackupController::class, 'download'])
         ->name('database-backups.download');
     Route::post('database-users', [DatabaseController::class, 'storeUser'])->name('database-users.store');
+    Route::delete('database-users/{databaseUser}', [DatabaseController::class, 'destroyUser'])->name('database-users.destroy');
     Route::get('php', [PhpController::class, 'index'])->name('php.index');
     Route::post('php/{version}/install', [PhpController::class, 'install'])->name('php.install');
     Route::delete('php/{phpVersion}', [PhpController::class, 'destroy'])->name('php.destroy');

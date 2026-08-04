@@ -46,6 +46,9 @@ class CreateSite
                 'path' => rtrim((string) config('beacon.paths.sites_home'), '/').'/'.$data['name'],
                 'web_directory' => $data['web_directory'] ?? $this->webDirectory($data['type']),
                 'php_version' => $data['php_version'] ?? null,
+                'app_env' => $data['app_env'] ?? 'production',
+                'database_driver' => $data['database_driver'] ?? 'mysql',
+                'redis_enabled' => (bool) ($data['redis_enabled'] ?? false),
                 'node_version' => $data['node_version'] ?? null,
                 'package_manager' => $data['package_manager'] ?? $server->default_package_manager,
                 'proxy_port' => $this->needsProxyPort($data['type']) ? $this->ports->allocate() : null,
@@ -62,6 +65,8 @@ class CreateSite
                 'github_repo_id' => $repositoryProvider === 'github'
                     ? ($data['github_repo_id'] ?? null)
                     : null,
+                'auto_deploy' => (bool) ($data['auto_deploy'] ?? false),
+                'deploy_trigger' => $data['deploy_trigger'] ?? 'manual',
                 'deploy_script' => null,
                 'status' => 'provisioning',
                 'system_user' => (string) config('beacon.site_user', 'beacon'),

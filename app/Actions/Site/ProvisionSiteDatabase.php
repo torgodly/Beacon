@@ -27,6 +27,10 @@ class ProvisionSiteDatabase
             return;
         }
 
+        if (($data['database_driver'] ?? $site->database_driver) === 'sqlite') {
+            return;
+        }
+
         $strategy = $data['database_strategy'] ?? 'none';
 
         if ($strategy === 'none') {

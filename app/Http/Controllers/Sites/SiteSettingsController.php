@@ -5,10 +5,9 @@ namespace App\Http\Controllers\Sites;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\UpdateSiteSettingsRequest;
 use App\Models\GithubInstallation;
-use App\Models\Server;
 use App\Models\Site;
 use App\Services\Deployment\GitService;
-use App\Services\Github\WebhookReachability;
+use App\Support\SiteDeploySettings;
 use Illuminate\Http\RedirectResponse;
 
 class SiteSettingsController extends Controller
@@ -35,18 +34,9 @@ class SiteSettingsController extends Controller
             $data['repository_provider'] = null;
             $data['github_installation_id'] = null;
             $data['github_repo_id'] = null;
-            $data['deploy_trigger'] = 'manual';
-            $data['auto_deploy'] = false;
         }
 
-        if ($data['auto_deploy'] && $data['deploy_trigger'] === 'manual') {
-            $reachability = app(WebhookReachability::class);
-
-            $data['deploy_trigger'] = filled($data['github_installation_id'] ?? $site->github_installation_id)
-                && $reachability->canReceiveWebhooks(Server::current())
-                ? 'webhook'
-                : 'poll';
-        }
+        $data = SiteDeploySettings::normalize($data, $site);
 
         unset($data['github_repository']);
 

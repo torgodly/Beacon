@@ -74,6 +74,12 @@ import {
 } from '@/components/ui/select';
 import type { SiteSummary } from '@/layouts/site/layout';
 import { cn } from '@/lib/utils';
+import {
+    hostnameError,
+    normalizeHostname,
+    requiredTextError,
+    supervisorProcessNameError,
+} from '@/lib/validation';
 import { destroy, index as sitesIndex, show } from '@/routes/sites';
 import {
     store as storeSiteCommand,
@@ -159,6 +165,9 @@ type SiteDetail = SiteSummary &
         path: string;
         web_directory: string;
         php_version: string | null;
+        app_env: 'testing' | 'staging' | 'production' | null;
+        database_driver: 'mysql' | 'sqlite' | null;
+        redis_enabled: boolean;
         node_version: string | null;
         proxy_port: number | null;
         nginx_customized: boolean;
@@ -482,6 +491,29 @@ function OverviewTab({
                                 mono
                             />
                         )}
+                        {site.type === 'laravel' && site.app_env && (
+                            <>
+                                <ForgeDetailRow
+                                    label="Environment"
+                                    value={
+                                        site.app_env.charAt(0).toUpperCase() +
+                                        site.app_env.slice(1)
+                                    }
+                                />
+                                <ForgeDetailRow
+                                    label="Database"
+                                    value={
+                                        site.database_driver === 'sqlite'
+                                            ? 'SQLite'
+                                            : 'MySQL'
+                                    }
+                                />
+                                <ForgeDetailRow
+                                    label="Redis"
+                                    value={site.redis_enabled ? 'Enabled' : 'Disabled'}
+                                />
+                            </>
+                        )}
                         <ForgeDetailRow
                             label="Web root"
                             value={site.web_directory}
@@ -513,6 +545,8 @@ function DomainsTab({ site }: { site: SiteDetail }) {
         domain: '',
         redirect_www: false,
     });
+    const domainValid =
+        hostnameError(domainForm.data.domain) === undefined;
 
     return (
         <div className="flex flex-col gap-4">
@@ -524,8 +558,18 @@ function DomainsTab({ site }: { site: SiteDetail }) {
                     <form
                         onSubmit={(event) => {
                             event.preventDefault();
+
+                            const error = hostnameError(domainForm.data.domain);
+
+                            if (error) {
+                                domainForm.setError('domain', error);
+                                return;
+                            }
+
+                            domainForm.clearErrors('domain');
                             domainForm.transform((data) => ({
                                 ...data,
+                                domain: normalizeHostname(data.domain),
                                 redirect_www: redirectWww,
                             }));
                             domainForm.post(storeDomain.url(site.id), {
@@ -546,7 +590,9 @@ function DomainsTab({ site }: { site: SiteDetail }) {
                                 onChange={(event) =>
                                     domainForm.setData(
                                         'domain',
-                                        event.target.value,
+                                        normalizeHostname(
+                                            event.target.value,
+                                        ),
                                     )
                                 }
                                 placeholder="api.example.com"
@@ -576,7 +622,7 @@ function DomainsTab({ site }: { site: SiteDetail }) {
 
                         <Button
                             type="submit"
-                            disabled={domainForm.processing}
+                            disabled={domainForm.processing || !domainValid}
                             className="w-fit"
                         >
                             Add domain
@@ -1796,8 +1842,14 @@ function SupervisorTab({
             ? `php${site.php_version} ${site.path}/artisan queue:work`
             : `php ${site.path}/artisan queue:work`,
     );
+    const [processNameError, setProcessNameError] = useState<string>();
+    const [commandError, setCommandError] = useState<string>();
 
     const managedProcesses = processes.filter((process) => !process.is_system);
+    const supervisorFormValid =
+        supervisorProcessNameError(name) === undefined &&
+        (processKind !== 'custom' ||
+            requiredTextError(command, 'a command', 2000) === undefined);
 
     const phpBinary = site.php_version ? `php${site.php_version}` : 'php';
     const queuePreview = `${phpBinary} artisan queue:work ${connection} --queue=${queue} --sleep=${sleep} --tries=${tries} --timeout=${jobTimeout}`;
@@ -1831,6 +1883,28 @@ function SupervisorTab({
                                 {...storeSupervisorProcess.form(site.id)}
                                 className="contents"
                                 onSuccess={() => setDialogOpen(false)}
+                                onSubmit={(event) => {
+                                    const nameValidationError =
+                                        supervisorProcessNameError(name);
+                                    const commandValidationError =
+                                        processKind === 'custom'
+                                            ? requiredTextError(
+                                                  command,
+                                                  'a command',
+                                                  2000,
+                                              )
+                                            : undefined;
+
+                                    setProcessNameError(nameValidationError);
+                                    setCommandError(commandValidationError);
+
+                                    if (
+                                        nameValidationError ||
+                                        commandValidationError
+                                    ) {
+                                        event.preventDefault();
+                                    }
+                                }}
                             >
                                 {({ errors, processing }) => (
                                     <>
@@ -1845,15 +1919,20 @@ function SupervisorTab({
                                             htmlFor="process_name"
                                             label="Name"
                                             help="Add a custom display name for the background process."
-                                            error={errors.name}
+                                            error={
+                                                processNameError ?? errors.name
+                                            }
                                         >
                                             <Input
                                                 id="process_name"
                                                 name="name"
                                                 value={name}
-                                                onChange={(event) =>
-                                                    setName(event.target.value)
-                                                }
+                                                onChange={(event) => {
+                                                    setName(event.target.value);
+                                                    setProcessNameError(
+                                                        undefined,
+                                                    );
+                                                }}
                                                 placeholder="queue"
                                             />
                                         </Field>
@@ -2002,7 +2081,10 @@ function SupervisorTab({
                                                 <Field
                                                     htmlFor="custom_command"
                                                     label="Command"
-                                                    error={errors.command}
+                                                    error={
+                                                        commandError ??
+                                                        errors.command
+                                                    }
                                                     help={`Runs in ${site.path} as the beacon user.`}
                                                 >
                                                     <Input
@@ -2010,12 +2092,15 @@ function SupervisorTab({
                                                         name="command"
                                                         mono
                                                         value={command}
-                                                        onChange={(event) =>
+                                                        onChange={(event) => {
                                                             setCommand(
                                                                 event.target
                                                                     .value,
-                                                            )
-                                                        }
+                                                            );
+                                                            setCommandError(
+                                                                undefined,
+                                                            );
+                                                        }}
                                                     />
                                                 </Field>
                                             </div>
@@ -2034,7 +2119,10 @@ function SupervisorTab({
                                             </DialogClose>
                                             <Button
                                                 type="submit"
-                                                disabled={processing}
+                                                disabled={
+                                                    processing ||
+                                                    !supervisorFormValid
+                                                }
                                             >
                                                 Create background process
                                             </Button>
@@ -2163,6 +2251,30 @@ function CronTab({ site, jobs }: { site: SiteDetail; jobs: CronJobRow[] }) {
     const defaultCommand = site.php_version
         ? `php${site.php_version} ${site.path}/artisan`
         : `php ${site.path}/artisan`;
+    const [cronName, setCronName] = useState('');
+    const [cronCommand, setCronCommand] = useState(defaultCommand);
+    const [cronNameError, setCronNameError] = useState<string>();
+    const [cronCommandError, setCronCommandError] = useState<string>();
+    const [cronExpressionError, setCronExpressionError] = useState<string>();
+
+    useEffect(() => {
+        if (!dialogOpen) {
+            return;
+        }
+
+        setCronName('');
+        setCronCommand(defaultCommand);
+        setCronNameError(undefined);
+        setCronCommandError(undefined);
+        setCronExpressionError(undefined);
+        setFrequency('weekly');
+        setExpression(CRON_FREQUENCY_PRESETS.weekly.expression);
+    }, [dialogOpen, defaultCommand]);
+
+    const cronFormValid =
+        requiredTextError(cronName, 'a name', 128) === undefined &&
+        requiredTextError(cronCommand, 'a command', 2000) === undefined &&
+        requiredTextError(expression, 'a cron expression', 128) === undefined;
 
     return (
         <ForgePageContent>
@@ -2226,6 +2338,39 @@ function CronTab({ site, jobs }: { site: SiteDetail; jobs: CronJobRow[] }) {
                                 {...storeCronJob.form(site.id)}
                                 className="contents"
                                 onSuccess={() => setDialogOpen(false)}
+                                onSubmit={(event) => {
+                                    const nameValidationError = requiredTextError(
+                                        cronName,
+                                        'a name',
+                                        128,
+                                    );
+                                    const commandValidationError =
+                                        requiredTextError(
+                                            cronCommand,
+                                            'a command',
+                                            2000,
+                                        );
+                                    const expressionValidationError =
+                                        requiredTextError(
+                                            expression,
+                                            'a cron expression',
+                                            128,
+                                        );
+
+                                    setCronNameError(nameValidationError);
+                                    setCronCommandError(commandValidationError);
+                                    setCronExpressionError(
+                                        expressionValidationError,
+                                    );
+
+                                    if (
+                                        nameValidationError ||
+                                        commandValidationError ||
+                                        expressionValidationError
+                                    ) {
+                                        event.preventDefault();
+                                    }
+                                }}
                             >
                                 {({ errors, processing }) => (
                                     <>
@@ -2236,7 +2381,15 @@ function CronTab({ site, jobs }: { site: SiteDetail; jobs: CronJobRow[] }) {
                                                 id="cron_name"
                                                 name="name"
                                                 placeholder="My scheduled job"
+                                                value={cronName}
+                                                onChange={(event) => {
+                                                    setCronName(
+                                                        event.target.value,
+                                                    );
+                                                    setCronNameError(undefined);
+                                                }}
                                             />
+                                            <InputError message={cronNameError} />
                                         </div>
                                         <div className="grid gap-2">
                                             <Label htmlFor="cron_command">
@@ -2245,8 +2398,19 @@ function CronTab({ site, jobs }: { site: SiteDetail; jobs: CronJobRow[] }) {
                                             <Input
                                                 id="cron_command"
                                                 name="command"
-                                                defaultValue={defaultCommand}
+                                                value={cronCommand}
+                                                onChange={(event) => {
+                                                    setCronCommand(
+                                                        event.target.value,
+                                                    );
+                                                    setCronCommandError(
+                                                        undefined,
+                                                    );
+                                                }}
                                                 className="font-mono text-sm"
+                                            />
+                                            <InputError
+                                                message={cronCommandError}
                                             />
                                         </div>
                                         <div className="grid gap-2">
@@ -2299,13 +2463,19 @@ function CronTab({ site, jobs }: { site: SiteDetail; jobs: CronJobRow[] }) {
                                                     id="cron_expression"
                                                     name="expression"
                                                     value={expression}
-                                                    onChange={(event) =>
+                                                    onChange={(event) => {
                                                         setExpression(
                                                             event.target.value,
-                                                        )
-                                                    }
+                                                        );
+                                                        setCronExpressionError(
+                                                            undefined,
+                                                        );
+                                                    }}
                                                     placeholder="0 3 * * *"
                                                     className="font-mono text-sm"
+                                                />
+                                                <InputError
+                                                    message={cronExpressionError}
                                                 />
                                             </div>
                                         ) : (
@@ -2328,7 +2498,9 @@ function CronTab({ site, jobs }: { site: SiteDetail; jobs: CronJobRow[] }) {
                                             </DialogClose>
                                             <Button
                                                 type="submit"
-                                                disabled={processing}
+                                                disabled={
+                                                    processing || !cronFormValid
+                                                }
                                             >
                                                 Create scheduled job
                                             </Button>

@@ -57,6 +57,24 @@ class StoreSiteRequest extends FormRequest
                 Rule::exists('php_versions', 'version')->where('status', 'installed'),
             ],
 
+            'app_env' => [
+                Rule::requiredIf(fn (): bool => $this->input('type') === 'laravel'),
+                Rule::prohibitedIf(fn (): bool => $this->input('type') !== 'laravel'),
+                Rule::in(['testing', 'staging', 'production']),
+            ],
+
+            'database_driver' => [
+                Rule::requiredIf(fn (): bool => $this->input('type') === 'laravel'),
+                Rule::prohibitedIf(fn (): bool => $this->input('type') !== 'laravel'),
+                Rule::in(['mysql', 'sqlite']),
+            ],
+
+            'redis_enabled' => [
+                'sometimes',
+                'boolean',
+                Rule::prohibitedIf(fn (): bool => $this->input('type') !== 'laravel'),
+            ],
+
             'node_version' => [
                 Rule::requiredIf(fn (): bool => $this->needsNode()),
                 Rule::prohibitedIf(fn (): bool => ! $this->needsNode() && $this->input('type') !== 'static'),
@@ -87,17 +105,19 @@ class StoreSiteRequest extends FormRequest
                 'required_with:github_repo_id',
             ],
 
+            'auto_deploy' => ['sometimes', 'boolean'],
+
             'database_strategy' => [
-                Rule::requiredIf(fn (): bool => $this->input('type') === 'laravel'),
-                Rule::prohibitedIf(fn (): bool => $this->input('type') !== 'laravel'),
+                Rule::requiredIf(fn (): bool => $this->usesMysql()),
+                Rule::prohibitedIf(fn (): bool => ! $this->usesMysql()),
                 Rule::in(['none', 'create', 'existing']),
             ],
             'database_id' => [
                 'nullable',
                 'integer',
-                Rule::requiredIf(fn (): bool => $this->input('type') === 'laravel'
+                Rule::requiredIf(fn (): bool => $this->usesMysql()
                     && $this->input('database_strategy') === 'existing'),
-                Rule::prohibitedIf(fn (): bool => $this->input('type') !== 'laravel'
+                Rule::prohibitedIf(fn (): bool => ! $this->usesMysql()
                     || $this->input('database_strategy') !== 'existing'),
                 Rule::exists('databases', 'id')->where(
                     fn ($query) => $query->where('server_id', Server::current()->id),
@@ -108,9 +128,9 @@ class StoreSiteRequest extends FormRequest
                 'string',
                 'max:64',
                 'regex:/^[A-Za-z0-9_]{1,64}$/',
-                Rule::requiredIf(fn (): bool => $this->input('type') === 'laravel'
+                Rule::requiredIf(fn (): bool => $this->usesMysql()
                     && $this->input('database_strategy') === 'create'),
-                Rule::prohibitedIf(fn (): bool => $this->input('type') !== 'laravel'
+                Rule::prohibitedIf(fn (): bool => ! $this->usesMysql()
                     || $this->input('database_strategy') !== 'create'),
                 Rule::unique('databases', 'name'),
             ],
@@ -123,6 +143,21 @@ class StoreSiteRequest extends FormRequest
         return in_array($this->input('type'), ['nextjs', 'nuxt'], true);
     }
 
+    private function usesMysql(): bool
+    {
+        return $this->input('type') === 'laravel'
+            && $this->input('database_driver', 'mysql') === 'mysql';
+    }
+
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('auto_deploy')) {
+            $this->merge([
+                'auto_deploy' => filter_var($this->input('auto_deploy'), FILTER_VALIDATE_BOOLEAN),
+            ]);
+        }
+    }
+
     /**
      * @return array<string, string>
      */
@@ -133,6 +168,10 @@ class StoreSiteRequest extends FormRequest
             'php_version.exists' => 'That PHP version is not installed on this server.',
             'php_version.prohibited' => 'Only Laravel sites run under PHP-FPM.',
             'node_version.exists' => 'That Node version is not installed on this server.',
+            'app_env.required' => 'Choose an application environment.',
+            'app_env.in' => 'Environment must be testing, staging, or production.',
+            'database_driver.required' => 'Choose a database driver.',
+            'database_driver.in' => 'Database driver must be MySQL or SQLite.',
             'database_strategy.required' => 'Choose how this Laravel site should use MySQL.',
             'database_id.required' => 'Select an existing database or choose to create a new one.',
             'database_id.exists' => 'That database does not exist on this server.',
@@ -143,11 +182,11 @@ class StoreSiteRequest extends FormRequest
     }
 
     /**
-     * @return array{name: string, type: string, php_version?: string|null, node_version?: string|null, spa_fallback?: bool, web_directory?: string|null, client_max_body_size?: string|null, package_manager?: string|null, repository?: string|null, repository_branch?: string|null, database_strategy?: string|null, database_id?: int|null, database_name?: string|null}
+     * @return array{name: string, type: string, php_version?: string|null, app_env?: string|null, database_driver?: string|null, redis_enabled?: bool, node_version?: string|null, spa_fallback?: bool, web_directory?: string|null, client_max_body_size?: string|null, package_manager?: string|null, repository?: string|null, repository_branch?: string|null, database_strategy?: string|null, database_id?: int|null, database_name?: string|null}
      */
     public function siteData(): array
     {
-        return [
+        $data = [
             'name' => $this->validated('name'),
             'type' => $this->validated('type'),
             'php_version' => $this->validated('php_version'),
@@ -158,9 +197,23 @@ class StoreSiteRequest extends FormRequest
             'package_manager' => $this->validated('package_manager'),
             'repository' => $this->validated('repository'),
             'repository_branch' => $this->validated('repository_branch'),
-            'database_strategy' => $this->validated('database_strategy'),
-            'database_id' => $this->validated('database_id'),
-            'database_name' => $this->validated('database_name'),
+            'auto_deploy' => $this->boolean('auto_deploy'),
         ];
+
+        if ($data['type'] === 'laravel') {
+            $data['app_env'] = $this->validated('app_env');
+            $data['database_driver'] = $this->validated('database_driver');
+            $data['redis_enabled'] = $this->boolean('redis_enabled');
+
+            if ($data['database_driver'] === 'mysql') {
+                $data['database_strategy'] = $this->validated('database_strategy');
+                $data['database_id'] = $this->validated('database_id');
+                $data['database_name'] = $this->validated('database_name');
+            } else {
+                $data['database_strategy'] = 'none';
+            }
+        }
+
+        return $data;
     }
 }

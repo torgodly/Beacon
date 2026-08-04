@@ -131,6 +131,12 @@ class DeploymentService
             ['name' => 'BEACON_DB_DATABASE', 'description' => 'Linked database name written into .env on deploy', 'example' => 'app_example_com'],
             ['name' => 'BEACON_DB_USERNAME', 'description' => 'Linked database user written into .env on deploy', 'example' => 'app_example_com_user'],
             ['name' => 'BEACON_DB_PASSWORD', 'description' => 'Linked database user password written into .env on deploy', 'example' => null],
+            ['name' => 'BEACON_APP_ENV', 'description' => 'Laravel APP_ENV (testing, staging, production)', 'example' => 'production'],
+            ['name' => 'BEACON_DB_DRIVER', 'description' => 'Database driver for Laravel sites (mysql or sqlite)', 'example' => 'mysql'],
+            ['name' => 'BEACON_DB_SQLITE_PATH', 'description' => 'Absolute SQLite database path when driver is sqlite', 'example' => '/home/beacon/app.example.com/database/database.sqlite'],
+            ['name' => 'BEACON_REDIS_ENABLED', 'description' => 'When true, cache, queue, and session drivers use Redis', 'example' => 'false'],
+            ['name' => 'BEACON_REDIS_HOST', 'description' => 'Redis host written into .env when Redis is enabled', 'example' => '127.0.0.1'],
+            ['name' => 'BEACON_REDIS_PORT', 'description' => 'Redis port written into .env when Redis is enabled', 'example' => '6379'],
             ['name' => 'NODE_OPTIONS', 'description' => 'Node heap cap injected for builds', 'example' => '--max-old-space-size=1024'],
             ['name' => 'PATH', 'description' => 'Process PATH with Node/Bun prefixes', 'example' => null],
             ['name' => 'HOME', 'description' => 'Site user home directory', 'example' => '/home/beacon'],
@@ -153,6 +159,8 @@ class DeploymentService
         $site->loadMissing(['database', 'databaseUser']);
 
         $mysql = config('database.connections.mysql_admin');
+        $usesMysql = $site->type === 'laravel' && $site->database_driver === 'mysql';
+        $usesSqlite = $site->type === 'laravel' && $site->database_driver === 'sqlite';
 
         return array_filter([
             'BEACON_SITE' => $site->name,
@@ -168,11 +176,29 @@ class DeploymentService
                 ? '/usr/local/bun/default/bin/bun'
                 : "{$node}/npm",
             'BEACON_PORT' => $site->proxy_port ? (string) $site->proxy_port : null,
-            'BEACON_DB_HOST' => $site->database !== null ? ($mysql['host'] ?? '127.0.0.1') : null,
-            'BEACON_DB_PORT' => $site->database !== null ? (string) ($mysql['port'] ?? '3306') : null,
-            'BEACON_DB_DATABASE' => $site->database?->name,
-            'BEACON_DB_USERNAME' => $site->databaseUser?->username,
-            'BEACON_DB_PASSWORD' => $site->databaseUser?->password,
+            'BEACON_APP_ENV' => $site->type === 'laravel' ? $site->app_env : null,
+            'BEACON_DB_DRIVER' => $site->type === 'laravel' ? $site->database_driver : null,
+            'BEACON_DB_SQLITE_PATH' => $usesSqlite
+                ? "{$site->path}/database/database.sqlite"
+                : null,
+            'BEACON_DB_HOST' => $usesMysql && $site->database !== null
+                ? ($mysql['host'] ?? '127.0.0.1')
+                : null,
+            'BEACON_DB_PORT' => $usesMysql && $site->database !== null
+                ? (string) ($mysql['port'] ?? '3306')
+                : null,
+            'BEACON_DB_DATABASE' => $usesMysql ? $site->database?->name : null,
+            'BEACON_DB_USERNAME' => $usesMysql ? $site->databaseUser?->username : null,
+            'BEACON_DB_PASSWORD' => $usesMysql ? $site->databaseUser?->password : null,
+            'BEACON_REDIS_ENABLED' => $site->type === 'laravel'
+                ? ($site->redis_enabled ? 'true' : 'false')
+                : null,
+            'BEACON_REDIS_HOST' => $site->type === 'laravel' && $site->redis_enabled
+                ? (string) config('database.redis.default.host', '127.0.0.1')
+                : null,
+            'BEACON_REDIS_PORT' => $site->type === 'laravel' && $site->redis_enabled
+                ? (string) config('database.redis.default.port', '6379')
+                : null,
             'NODE_OPTIONS' => '--max-old-space-size='.MemoryBudget::nodeHeapMb(),
             'PATH' => "{$node}:/usr/local/bun/default/bin:/usr/local/bin:/usr/bin:/bin",
             'HOME' => '/home/beacon',

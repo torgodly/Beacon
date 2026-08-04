@@ -22,8 +22,11 @@ use Illuminate\Support\Str;
  * @property string $web_directory
  * @property string $system_user
  * @property string|null $php_version
+ * @property string $app_env
  * @property int|null $database_id
  * @property int|null $database_user_id
+ * @property string $database_driver
+ * @property bool $redis_enabled
  * @property string|null $node_version
  * @property string|null $package_manager
  * @property int|null $proxy_port
@@ -73,8 +76,11 @@ class Site extends Model
         'web_directory',
         'system_user',
         'php_version',
+        'app_env',
         'database_id',
         'database_user_id',
+        'database_driver',
+        'redis_enabled',
         'node_version',
         'package_manager',
         'proxy_port',
@@ -113,6 +119,7 @@ class Site extends Model
         return [
             'proxy_port' => 'integer',
             'spa_fallback' => 'boolean',
+            'redis_enabled' => 'boolean',
             'open_basedir' => 'boolean',
             'open_basedir_extra_paths' => 'array',
             'strict_functions' => 'boolean',

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Databases;
 use App\Actions\Database\CreateDatabase;
 use App\Actions\Database\CreateDatabaseUser;
 use App\Actions\Database\DeleteDatabase;
+use App\Actions\Database\DeleteDatabaseUser;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreDatabaseRequest;
 use App\Http\Requests\StoreDatabaseUserRequest;
@@ -12,6 +13,7 @@ use App\Models\Database;
 use App\Models\DatabaseBackup;
 use App\Models\DatabaseUser;
 use App\Models\Server;
+use App\Models\Site;
 use App\Services\Database\DatabaseBackupService;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -23,6 +25,18 @@ class DatabaseController extends Controller
     public function index(DatabaseBackupService $backups): Response
     {
         $server = Server::current();
+
+        $linkedSites = Site::query()
+            ->where('server_id', $server->id)
+            ->whereNotNull('database_id')
+            ->with('domains')
+            ->orderBy('name')
+            ->get();
+
+        $sitesByDatabaseId = $linkedSites->groupBy('database_id');
+        $sitesByUserId = $linkedSites
+            ->whereNotNull('database_user_id')
+            ->groupBy('database_user_id');
 
         $databases = Database::query()
             ->where('server_id', $server->id)
@@ -36,10 +50,19 @@ class DatabaseController extends Controller
                 'id' => $database->id,
                 'name' => $database->name,
                 'status' => $database->status,
+                'sites' => ($sitesByDatabaseId[$database->id] ?? collect())
+                    ->map(fn (Site $site): array => $this->siteLinkPayload($site))
+                    ->values()
+                    ->all(),
                 'users' => $database->users->map(fn (DatabaseUser $user): array => [
                     'id' => $user->id,
                     'username' => $user->username,
+                    'host' => $user->host,
                     'privileges' => $user->pivot->privileges,
+                    'sites' => ($sitesByUserId[$user->id] ?? collect())
+                        ->map(fn (Site $site): array => $this->siteLinkPayload($site))
+                        ->values()
+                        ->all(),
                 ])->values()->all(),
                 'backups' => $database->backups
                     ->map(fn (DatabaseBackup $backup): array => DatabaseBackupController::backupPayload($backup))
@@ -107,5 +130,35 @@ class DatabaseController extends Controller
         return back()
             ->with('toast', ['type' => 'success', 'message' => 'Database user created.'])
             ->with('database_user_password', $result['password']);
+    }
+
+    public function destroyUser(
+        DatabaseUser $databaseUser,
+        DeleteDatabaseUser $deleteDatabaseUser,
+    ): RedirectResponse {
+        abort_unless($databaseUser->server_id === Server::current()->id, 404);
+
+        try {
+            $deleteDatabaseUser->handle($databaseUser);
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['database_user' => $e->getMessage()]);
+        }
+
+        return back()->with('toast', ['type' => 'success', 'message' => 'Database user deleted.']);
+    }
+
+    /**
+     * @return array{id: int, name: string, type: string, primary_domain: string}
+     */
+    private function siteLinkPayload(Site $site): array
+    {
+        $primary = $site->domains->firstWhere('is_primary', true);
+
+        return [
+            'id' => $site->id,
+            'name' => $site->name,
+            'type' => $site->type,
+            'primary_domain' => $primary?->domain ?? $site->name,
+        ];
     }
 }

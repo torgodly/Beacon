@@ -43,6 +43,9 @@ class DeployScriptFactoryTest extends TestCase
         $this->assertStringContainsString('cp .env.example .env', $script);
         $this->assertStringContainsString('artisan key:generate --force', $script);
         $this->assertStringContainsString('artisan migrate --force', $script);
+        $this->assertStringContainsString('BEACON_APP_ENV', $script);
+        $this->assertStringContainsString('BEACON_DB_DRIVER', $script);
+        $this->assertStringContainsString('BEACON_REDIS_ENABLED', $script);
         $this->assertGreaterThan(
             strpos($script, '$BEACON_COMPOSER install'),
             strpos($script, 'artisan key:generate --force'),

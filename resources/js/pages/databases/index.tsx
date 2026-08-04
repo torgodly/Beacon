@@ -1,9 +1,10 @@
-import { Form, Head, router, usePage } from '@inertiajs/react';
+import { Form, Head, Link, router, usePage } from '@inertiajs/react';
 import {
     Check,
     Copy,
     Database,
     Download,
+    ExternalLink,
     HardDriveDownload,
     Plus,
     Trash2,
@@ -11,7 +12,6 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { ConfirmDialog } from '@/components/confirm-dialog';
-import { EmptyState } from '@/components/console/page-header';
 import {
     ForgeDividedCard,
     ForgeListRow,
@@ -22,6 +22,7 @@ import {
     ForgePageLayout,
 } from '@/components/forge/forge-details-sidebar';
 import { ForgeStatusBadge } from '@/components/forge/forge-badge';
+import { SiteFrameworkIcon } from '@/components/sites/site-framework-icon';
 import {
     ForgeActionsPanel,
     ForgeActionGroup,
@@ -55,15 +56,33 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { store as storeDatabaseUser } from '@/routes/database-users';
+import { store as storeDatabaseUser, destroy as destroyDatabaseUser } from '@/routes/database-users';
 import {
     destroy as destroyDatabase,
     index as databasesIndex,
     store as storeDatabase,
 } from '@/routes/databases';
 import { store as storeBackup } from '@/routes/databases/backups';
+import { show as showSite } from '@/routes/sites';
+import {
+    databaseNameError,
+    databaseUsernameError,
+} from '@/lib/validation';
 
-type DatabaseUserRow = { id: number; username: string; privileges: string };
+type DatabaseUserRow = {
+    id: number;
+    username: string;
+    host: string;
+    privileges: string;
+    sites: SiteLinkRow[];
+};
+
+type SiteLinkRow = {
+    id: number;
+    name: string;
+    type: string;
+    primary_domain: string;
+};
 
 type DatabaseBackupRow = {
     uuid: string;
@@ -87,10 +106,53 @@ type DatabaseRow = {
     id: number;
     name: string;
     status: string;
+    sites: SiteLinkRow[];
     users: DatabaseUserRow[];
     backups: DatabaseBackupRow[];
     connections: ConnectionRow[];
 };
+
+function formatPrivileges(privileges: string): string {
+    return privileges === 'readonly' ? 'Read only' : 'Full access';
+}
+
+function connectionForUser(
+    database: DatabaseRow,
+    userId: number,
+): ConnectionRow | undefined {
+    return database.connections.find(
+        (connection) => connection.user_id === userId,
+    );
+}
+
+/** Linked sites shown as chips with quick navigation to the site. */
+function SiteLinks({ sites }: { sites: SiteLinkRow[] }) {
+    if (sites.length === 0) {
+        return (
+            <p className="text-sm text-[#64748b]">
+                No sites linked yet.
+            </p>
+        );
+    }
+
+    return (
+        <div className="flex flex-wrap gap-2">
+            {sites.map((site) => (
+                <Link
+                    key={site.id}
+                    href={showSite(site.name)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-[#e2e8f0] bg-white px-3 py-2 text-sm transition-colors hover:border-[#cbd5e1] dark:border-[#2e3032] dark:bg-[#151718] dark:hover:border-[#3f4244]"
+                >
+                    <SiteFrameworkIcon type={site.type} size="sm" />
+                    <span className="font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                        {site.primary_domain}
+                    </span>
+                    <ExternalLink className="size-3 text-[#94a3b8]" />
+                </Link>
+            ))}
+        </div>
+    );
+}
 
 function bytes(size: number | null): string {
     if (size === null) {
@@ -149,6 +211,16 @@ export default function DatabasesIndex({
     const [userOpen, setUserOpen] = useState(false);
     const [selectedDatabase, setSelectedDatabase] = useState('');
     const [privileges, setPrivileges] = useState<'all' | 'readonly'>('all');
+    const [databaseName, setDatabaseName] = useState('');
+    const [databaseUserName, setDatabaseUserName] = useState('');
+    const [createNameError, setCreateNameError] = useState<string>();
+    const [createUserNameError, setCreateUserNameError] = useState<string>();
+    const [prefillDatabaseId, setPrefillDatabaseId] = useState('');
+
+    function openCreateUserDialog(databaseId?: number): void {
+        setPrefillDatabaseId(databaseId ? String(databaseId) : '');
+        setUserOpen(true);
+    }
 
     useEffect(() => {
         if (!userOpen) {
@@ -156,10 +228,22 @@ export default function DatabasesIndex({
         }
 
         setPrivileges('all');
+        setDatabaseUserName('');
+        setCreateUserNameError(undefined);
         setSelectedDatabase(
-            databases.length === 1 ? String(databases[0].id) : '',
+            prefillDatabaseId ||
+                (databases.length === 1 ? String(databases[0].id) : ''),
         );
-    }, [userOpen, databases]);
+    }, [userOpen, databases, prefillDatabaseId]);
+
+    useEffect(() => {
+        if (!createOpen) {
+            return;
+        }
+
+        setDatabaseName('');
+        setCreateNameError(undefined);
+    }, [createOpen]);
 
     const page = usePage<{
         flash?: { database_user_password?: string | null };
@@ -171,14 +255,24 @@ export default function DatabasesIndex({
         0,
     );
 
-    const headerActions = (
+    const sidebarActions = (
         <ForgeActionGroup layout="vertical">
-            <Dialog open={userOpen} onOpenChange={setUserOpen}>
+            <Dialog
+                open={userOpen}
+                onOpenChange={(open) => {
+                    setUserOpen(open);
+
+                    if (!open) {
+                        setPrefillDatabaseId('');
+                    }
+                }}
+            >
                 <DialogTrigger asChild>
                     <Button
                         variant="secondary"
                         size="sm"
                         disabled={databases.length === 0}
+                        onClick={() => openCreateUserDialog()}
                     >
                         <Users />
                         New user
@@ -203,6 +297,20 @@ export default function DatabasesIndex({
                                     <Form
                                         action={storeDatabaseUser()}
                                         onSuccess={() => setUserOpen(false)}
+                                        onSubmit={(event) => {
+                                            const usernameError =
+                                                databaseUsernameError(
+                                                    databaseUserName,
+                                                );
+
+                                            setCreateUserNameError(
+                                                usernameError,
+                                            );
+
+                                            if (usernameError) {
+                                                event.preventDefault();
+                                            }
+                                        }}
                                         className="contents"
                                     >
                                         {({ processing, errors }) => (
@@ -212,7 +320,10 @@ export default function DatabasesIndex({
                                                     htmlFor="username"
                                                     label="Username"
                                                     required
-                                                    error={errors.username}
+                                                    error={
+                                                        createUserNameError ??
+                                                        errors.username
+                                                    }
                                                     help="Letters, numbers, and underscores only."
                                                 >
                                                     <Input
@@ -221,6 +332,16 @@ export default function DatabasesIndex({
                                                         mono
                                                         autoComplete="off"
                                                         placeholder="app_user"
+                                                        value={databaseUserName}
+                                                        onChange={(event) => {
+                                                            setDatabaseUserName(
+                                                                event.target
+                                                                    .value,
+                                                            );
+                                                            setCreateUserNameError(
+                                                                undefined,
+                                                            );
+                                                        }}
                                                     />
                                                 </Field>
 
@@ -329,7 +450,10 @@ export default function DatabasesIndex({
                                                             databases.length ===
                                                                 0 ||
                                                             selectedDatabase ===
-                                                                ''
+                                                                '' ||
+                                                            databaseUsernameError(
+                                                                databaseUserName,
+                                                            ) !== undefined
                                                         }
                                                     >
                                                         {processing
@@ -366,6 +490,16 @@ export default function DatabasesIndex({
                                     <Form
                                         action={storeDatabase()}
                                         onSuccess={() => setCreateOpen(false)}
+                                        onSubmit={(event) => {
+                                            const nameError =
+                                                databaseNameError(databaseName);
+
+                                            setCreateNameError(nameError);
+
+                                            if (nameError) {
+                                                event.preventDefault();
+                                            }
+                                        }}
                                         className="contents"
                                     >
                                         {({ processing, errors }) => (
@@ -375,7 +509,10 @@ export default function DatabasesIndex({
                                                     htmlFor="name"
                                                     label="Name"
                                                     required
-                                                    error={errors.name}
+                                                    error={
+                                                        createNameError ??
+                                                        errors.name
+                                                    }
                                                     help="Letters, numbers and underscores only."
                                                 >
                                                     <Input
@@ -385,6 +522,16 @@ export default function DatabasesIndex({
                                                         autoFocus
                                                         autoComplete="off"
                                                         placeholder="app_production"
+                                                        value={databaseName}
+                                                        onChange={(event) => {
+                                                            setDatabaseName(
+                                                                event.target
+                                                                    .value,
+                                                            );
+                                                            setCreateNameError(
+                                                                undefined,
+                                                            );
+                                                        }}
                                                     />
                                                 </Field>
                                                 </DialogBody>
@@ -404,7 +551,12 @@ export default function DatabasesIndex({
                                                     <Button
                                                         type="submit"
                                                         variant="primary"
-                                                        disabled={processing}
+                                                        disabled={
+                                                            processing ||
+                                                            databaseNameError(
+                                                                databaseName,
+                                                            ) !== undefined
+                                                        }
                                                     >
                                                         {processing
                                                             ? 'Creating…'
@@ -457,7 +609,7 @@ export default function DatabasesIndex({
                                 <ForgeDetailRow label="Users" value="0" />
                             </ForgeDetailsSection>
                             <ForgeActionsPanel>
-                                {headerActions}
+                                {sidebarActions}
                             </ForgeActionsPanel>
                         </>
                     }
@@ -479,6 +631,18 @@ export default function DatabasesIndex({
                                                 size="sm"
                                                 variant="secondary"
                                                 onClick={() =>
+                                                    openCreateUserDialog(
+                                                        database.id,
+                                                    )
+                                                }
+                                            >
+                                                <Users className="size-3.5" />
+                                                Add user
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant="secondary"
+                                                onClick={() =>
                                                     router.post(
                                                         storeBackup.url(
                                                             database.id,
@@ -495,12 +659,20 @@ export default function DatabasesIndex({
                                                         size="icon-sm"
                                                         variant="ghost"
                                                         aria-label={`Drop ${database.name}`}
+                                                        disabled={
+                                                            database.sites
+                                                                .length > 0
+                                                        }
                                                     >
                                                         <Trash2 className="size-3.5" />
                                                     </Button>
                                                 }
                                                 title={`Drop ${database.name}?`}
-                                                description="Every table and all of its data is destroyed. This cannot be undone."
+                                                description={
+                                                    database.sites.length > 0
+                                                        ? 'Detach all sites from this database before dropping it.'
+                                                        : 'Every table and all of its data is destroyed. This cannot be undone.'
+                                                }
                                                 confirmLabel="Drop database"
                                                 destructive
                                                 confirmationValue={database.name}
@@ -515,55 +687,164 @@ export default function DatabasesIndex({
                                         </div>
                                     }
                                 >
-                                    <ForgeListRow className="flex-col items-stretch gap-4">
-                                        <div className="w-full space-y-3">
+                                    <ForgeListRow className="flex-col items-stretch gap-3">
+                                        <div className="flex w-full items-center justify-between gap-3">
                                             <h3 className="text-xs font-semibold tracking-wide text-[#64748b] uppercase">
-                                                Connection strings
+                                                Sites using this database
                                             </h3>
-                                            {database.connections.length === 0 ? (
+                                            <span className="text-xs text-[#64748b]">
+                                                {database.sites.length}{' '}
+                                                {database.sites.length === 1
+                                                    ? 'site'
+                                                    : 'sites'}
+                                            </span>
+                                        </div>
+                                        <SiteLinks sites={database.sites} />
+                                    </ForgeListRow>
+
+                                    <ForgeListRow className="flex-col items-stretch gap-4">
+                                        <div className="flex w-full items-center justify-between gap-3">
+                                            <h3 className="text-xs font-semibold tracking-wide text-[#64748b] uppercase">
+                                                Users
+                                            </h3>
+                                            <span className="text-xs text-[#64748b]">
+                                                {database.users.length}{' '}
+                                                {database.users.length === 1
+                                                    ? 'user'
+                                                    : 'users'}
+                                            </span>
+                                        </div>
+
+                                        {database.users.length === 0 ? (
+                                            <div className="rounded-md border border-dashed border-[#e2e8f0] px-4 py-5 text-center dark:border-[#2e3032]">
                                                 <p className="text-sm text-[#64748b]">
-                                                    Create a user to get a
-                                                    connection string.
+                                                    No users yet. Create one to
+                                                    get connection strings for
+                                                    this database.
                                                 </p>
-                                            ) : (
-                                                <div className="space-y-3">
-                                                    {database.connections.map(
-                                                        (connection) => (
-                                                            <div
-                                                                key={
-                                                                    connection.user_id
-                                                                }
-                                                                className="space-y-2 rounded-md border border-[#e2e8f0] p-3 dark:border-[#2e3032]"
-                                                            >
-                                                                <p className="font-mono text-sm font-medium text-[#0f172a] dark:text-[#f8fafc]">
-                                                                    {
-                                                                        connection.username
-                                                                    }
-                                                                    <span className="text-[#94a3b8]">
-                                                                        @
+                                                <Button
+                                                    size="sm"
+                                                    variant="secondary"
+                                                    className="mt-3"
+                                                    onClick={() =>
+                                                        openCreateUserDialog(
+                                                            database.id,
+                                                        )
+                                                    }
+                                                >
+                                                    <Plus className="size-3.5" />
+                                                    Add user
+                                                </Button>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-3">
+                                                {database.users.map((user) => {
+                                                    const connection =
+                                                        connectionForUser(
+                                                            database,
+                                                            user.id,
+                                                        );
+
+                                                    return (
+                                                        <div
+                                                            key={user.id}
+                                                            className="space-y-3 rounded-md border border-[#e2e8f0] p-3 dark:border-[#2e3032]"
+                                                        >
+                                                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                                                <div className="space-y-2">
+                                                                    <p className="font-mono text-sm font-medium text-[#0f172a] dark:text-[#f8fafc]">
                                                                         {
-                                                                            connection.host
+                                                                            user.username
                                                                         }
-                                                                    </span>
-                                                                </p>
-                                                                <CopyRow
-                                                                    label="laravel"
-                                                                    value={
-                                                                        connection.laravel
+                                                                        <span className="text-[#94a3b8]">
+                                                                            @
+                                                                            {
+                                                                                user.host
+                                                                            }
+                                                                        </span>
+                                                                    </p>
+                                                                    <ForgeStatusBadge
+                                                                        label={formatPrivileges(
+                                                                            user.privileges,
+                                                                        )}
+                                                                    />
+                                                                </div>
+
+                                                                <ConfirmDialog
+                                                                    trigger={
+                                                                        <Button
+                                                                            size="icon-sm"
+                                                                            variant="ghost"
+                                                                            aria-label={`Delete ${user.username}`}
+                                                                            disabled={
+                                                                                user
+                                                                                    .sites
+                                                                                    .length >
+                                                                                0
+                                                                            }
+                                                                        >
+                                                                            <Trash2 className="size-3.5" />
+                                                                        </Button>
                                                                     }
-                                                                />
-                                                                <CopyRow
-                                                                    label="url"
-                                                                    value={
-                                                                        connection.url
+                                                                    title={`Delete ${user.username}?`}
+                                                                    description={
+                                                                        user
+                                                                            .sites
+                                                                            .length >
+                                                                        0
+                                                                            ? 'This user is linked to a site. Change the site database settings first.'
+                                                                            : 'Removes the MySQL user and revokes all database access. This cannot be undone.'
+                                                                    }
+                                                                    confirmLabel="Delete user"
+                                                                    destructive
+                                                                    confirmationValue={
+                                                                        user.username
+                                                                    }
+                                                                    onConfirm={() =>
+                                                                        router.delete(
+                                                                            destroyDatabaseUser.url(
+                                                                                user.id,
+                                                                            ),
+                                                                        )
                                                                     }
                                                                 />
                                                             </div>
-                                                        ),
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
+
+                                                            {user.sites
+                                                                .length > 0 ? (
+                                                                <div className="space-y-2 border-t border-[#e2e8f0] pt-3 dark:border-[#2e3032]">
+                                                                    <p className="text-xs font-semibold tracking-wide text-[#64748b] uppercase">
+                                                                        Used by
+                                                                    </p>
+                                                                    <SiteLinks
+                                                                        sites={
+                                                                            user.sites
+                                                                        }
+                                                                    />
+                                                                </div>
+                                                            ) : null}
+
+                                                            {connection ? (
+                                                                <div className="space-y-2 border-t border-[#e2e8f0] pt-3 dark:border-[#2e3032]">
+                                                                    <CopyRow
+                                                                        label="laravel"
+                                                                        value={
+                                                                            connection.laravel
+                                                                        }
+                                                                    />
+                                                                    <CopyRow
+                                                                        label="url"
+                                                                        value={
+                                                                            connection.url
+                                                                        }
+                                                                    />
+                                                                </div>
+                                                            ) : null}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
                                     </ForgeListRow>
 
                                     <ForgeListRow className="flex-col items-stretch gap-3">
@@ -661,7 +942,7 @@ export default function DatabasesIndex({
                                 />
                             </ForgeDetailsSection>
                             <ForgeActionsPanel>
-                                {headerActions}
+                                {sidebarActions}
                             </ForgeActionsPanel>
                         </>
                     }

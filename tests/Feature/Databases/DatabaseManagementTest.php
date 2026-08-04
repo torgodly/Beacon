@@ -3,7 +3,9 @@
 namespace Tests\Feature\Databases;
 
 use App\Models\Database;
+use App\Models\DatabaseUser;
 use App\Models\Server;
+use App\Models\Site;
 use App\Models\User;
 use App\Services\Database\MySqlService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -99,5 +101,54 @@ class DatabaseManagementTest extends TestCase
         ]);
 
         $response->assertSessionHasErrors('database_id');
+    }
+
+    public function test_destroy_user_removes_database_user(): void
+    {
+        $this->mock(MySqlService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('revokeAll')->once()->with('app_user', 'app_production', 'localhost');
+            $mock->shouldReceive('dropUser')->once()->with('app_user', 'localhost');
+        });
+
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+
+        $database = Database::factory()->create([
+            'server_id' => 1,
+            'name' => 'app_production',
+        ]);
+
+        $databaseUser = DatabaseUser::factory()->create([
+            'server_id' => 1,
+            'username' => 'app_user',
+        ]);
+
+        $databaseUser->databases()->attach($database->id, ['privileges' => 'all']);
+
+        $response = $this->actingAs($user)->delete(route('database-users.destroy', $databaseUser));
+
+        $response->assertRedirect();
+        $this->assertDatabaseMissing('database_users', ['id' => $databaseUser->id]);
+    }
+
+    public function test_destroy_user_is_blocked_when_linked_to_a_site(): void
+    {
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+
+        $database = Database::factory()->create(['server_id' => 1]);
+        $databaseUser = DatabaseUser::factory()->create(['server_id' => 1]);
+
+        $site = Site::factory()->create([
+            'server_id' => 1,
+            'database_id' => $database->id,
+            'database_user_id' => $databaseUser->id,
+        ]);
+
+        $response = $this->actingAs($user)->delete(route('database-users.destroy', $databaseUser));
+
+        $response->assertSessionHasErrors('database_user');
+        $this->assertDatabaseHas('database_users', ['id' => $databaseUser->id]);
+        $this->assertDatabaseHas('sites', ['id' => $site->id]);
     }
 }

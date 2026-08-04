@@ -169,20 +169,34 @@ function DialogContent({
         }
     }, [open]);
 
+    const close = React.useCallback(() => {
+        setOpen(false);
+    }, [setOpen]);
+
     return (
         <dialog
             ref={dialogRef}
             data-slot="dialog-content"
             className={cn('modal', open && 'modal-open')}
-            onClose={() => setOpen(false)}
+            onClose={close}
+            onCancel={(event) => {
+                event.preventDefault();
+                close();
+            }}
+            onClick={(event) => {
+                if (event.target === event.currentTarget) {
+                    close();
+                }
+            }}
             {...props}
         >
             <div
                 className={cn(
-                    'modal-box flex max-h-[min(92vh,calc(100vh-1.5rem))] max-w-[calc(100%-1.5rem)] flex-col overflow-visible rounded-2xl border border-base-300 bg-base-100 p-0 text-base-content shadow-2xl',
+                    'modal-box flex max-h-[min(92vh,calc(100vh-1.5rem))] max-w-[calc(100%-1.5rem)] flex-col overflow-hidden rounded-2xl border border-base-300 bg-base-100 p-0 text-base-content shadow-2xl',
                     sizeClasses[size],
                     className,
                 )}
+                onClick={(event) => event.stopPropagation()}
             >
                 {showCloseButton && (
                     <form
@@ -202,10 +216,12 @@ function DialogContent({
                 <div className="flex min-h-0 flex-1 flex-col">{children}</div>
             </div>
 
-            <form method="dialog" className="modal-backdrop">
-                <button type="submit" className="sr-only">
-                    Close
-                </button>
+            <form method="dialog" className="modal-backdrop" onSubmit={close}>
+                <button
+                    type="submit"
+                    className="fixed inset-0 cursor-default border-0 bg-transparent p-0"
+                    aria-label="Close dialog"
+                />
             </form>
         </dialog>
     );

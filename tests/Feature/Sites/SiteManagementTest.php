@@ -64,6 +64,8 @@ class SiteManagementTest extends TestCase
             'name' => 'app.example.com',
             'type' => 'laravel',
             'php_version' => '8.4',
+            'app_env' => 'production',
+            'database_driver' => 'mysql',
             'database_strategy' => 'none',
         ]);
 
@@ -73,6 +75,8 @@ class SiteManagementTest extends TestCase
             'name' => 'app.example.com',
             'type' => 'laravel',
             'php_version' => '8.4',
+            'app_env' => 'production',
+            'database_driver' => 'mysql',
             'status' => 'active',
         ]);
 
@@ -100,6 +104,8 @@ class SiteManagementTest extends TestCase
             'name' => 'app.example.com',
             'type' => 'laravel',
             'php_version' => '8.4',
+            'app_env' => 'staging',
+            'database_driver' => 'mysql',
             'database_strategy' => 'create',
             'database_name' => 'app_example_com',
         ]);
@@ -129,6 +135,8 @@ class SiteManagementTest extends TestCase
             'name' => 'app.example.com',
             'type' => 'laravel',
             'php_version' => '8.4',
+            'app_env' => 'production',
+            'database_driver' => 'mysql',
             'database_strategy' => 'none',
             'repository' => 'git@github.com:org/app.git',
             'repository_branch' => 'main',
@@ -142,6 +150,25 @@ class SiteManagementTest extends TestCase
             'repository_branch' => 'main',
             'repository_provider' => 'custom',
         ]);
+    }
+
+    public function test_store_rejects_an_invalid_hostname(): void
+    {
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+        $this->installPhp('8.4');
+
+        $response = $this->actingAs($user)->post(route('sites.store'), [
+            'name' => 'Domain',
+            'type' => 'laravel',
+            'php_version' => '8.4',
+            'app_env' => 'production',
+            'database_driver' => 'mysql',
+            'database_strategy' => 'none',
+        ]);
+
+        $response->assertSessionHasErrors('name');
+        $this->assertDatabaseMissing('sites', ['name' => 'Domain']);
     }
 
     public function test_a_php_version_that_is_not_installed_is_rejected(): void
@@ -192,6 +219,8 @@ class SiteManagementTest extends TestCase
             'name' => 'beacon.abdo.ly',
             'type' => 'laravel',
             'php_version' => '8.4',
+            'app_env' => 'production',
+            'database_driver' => 'mysql',
             'database_strategy' => 'none',
         ]);
 
@@ -209,6 +238,8 @@ class SiteManagementTest extends TestCase
             'name' => 'beacon.panel',
             'type' => 'laravel',
             'php_version' => '8.4',
+            'app_env' => 'production',
+            'database_driver' => 'mysql',
             'database_strategy' => 'none',
         ]);
 
@@ -333,6 +364,117 @@ class SiteManagementTest extends TestCase
 
         $response->assertRedirect(route('sites.index'));
         $this->assertDatabaseMissing('sites', ['name' => $site->name]);
+    }
+
+    public function test_store_can_create_a_laravel_site_with_sqlite(): void
+    {
+        $this->processFactory->willReturn(0, "server { listen 80; }\n");
+
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+        $this->installPhp('8.4');
+
+        $response = $this->actingAs($user)->post(route('sites.store'), [
+            'name' => 'sqlite.example.com',
+            'type' => 'laravel',
+            'php_version' => '8.4',
+            'app_env' => 'testing',
+            'database_driver' => 'sqlite',
+            'redis_enabled' => false,
+        ]);
+
+        $response->assertRedirect(route('sites.index'));
+
+        $this->assertDatabaseHas('sites', [
+            'name' => 'sqlite.example.com',
+            'app_env' => 'testing',
+            'database_driver' => 'sqlite',
+            'database_id' => null,
+            'database_user_id' => null,
+            'redis_enabled' => false,
+        ]);
+    }
+
+    public function test_store_can_enable_redis_for_laravel_sites(): void
+    {
+        $this->processFactory->willReturn(0, "server { listen 80; }\n");
+
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+        $this->installPhp('8.4');
+
+        $response = $this->actingAs($user)->post(route('sites.store'), [
+            'name' => 'redis.example.com',
+            'type' => 'laravel',
+            'php_version' => '8.4',
+            'app_env' => 'production',
+            'database_driver' => 'mysql',
+            'database_strategy' => 'none',
+            'redis_enabled' => true,
+        ]);
+
+        $response->assertRedirect(route('sites.index'));
+
+        $this->assertDatabaseHas('sites', [
+            'name' => 'redis.example.com',
+            'redis_enabled' => true,
+        ]);
+    }
+
+    public function test_store_can_enable_auto_deploy_with_a_custom_repository(): void
+    {
+        $this->processFactory->willReturn(0, "server { listen 80; }\n");
+
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+        $this->installPhp('8.4');
+
+        $response = $this->actingAs($user)->post(route('sites.store'), [
+            'name' => 'deploy.example.com',
+            'type' => 'laravel',
+            'php_version' => '8.4',
+            'app_env' => 'production',
+            'database_driver' => 'mysql',
+            'database_strategy' => 'none',
+            'repository' => 'git@github.com:org/app.git',
+            'repository_branch' => 'main',
+            'auto_deploy' => true,
+        ]);
+
+        $response->assertRedirect(route('sites.index'));
+
+        $this->assertDatabaseHas('sites', [
+            'name' => 'deploy.example.com',
+            'auto_deploy' => true,
+            'deploy_trigger' => 'poll',
+        ]);
+    }
+
+    public function test_store_disables_auto_deploy_when_no_repository_is_connected(): void
+    {
+        $this->processFactory->willReturn(0, "server { listen 80; }\n");
+
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+        $this->installPhp('8.4');
+
+        $response = $this->actingAs($user)->post(route('sites.store'), [
+            'name' => 'manual.example.com',
+            'type' => 'laravel',
+            'php_version' => '8.4',
+            'app_env' => 'production',
+            'database_driver' => 'mysql',
+            'database_strategy' => 'none',
+            'auto_deploy' => true,
+        ]);
+
+        $response->assertRedirect(route('sites.index'));
+
+        $this->assertDatabaseHas('sites', [
+            'name' => 'manual.example.com',
+            'auto_deploy' => false,
+            'deploy_trigger' => 'manual',
+        ]);
     }
 
     private function createSiteWithDomain(string $name, bool $strictFunctions = false): Site

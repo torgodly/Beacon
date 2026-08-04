@@ -112,13 +112,40 @@ if [ -n "${BEACON_SITE:-}" ]; then
   set_env_var APP_URL "https://${BEACON_SITE}"
 fi
 
-if [ -n "${BEACON_DB_DATABASE:-}" ]; then
+if [ -n "${BEACON_APP_ENV:-}" ]; then
+  set_env_var APP_ENV "${BEACON_APP_ENV}"
+  if [ "${BEACON_APP_ENV}" = "testing" ]; then
+    set_env_var APP_DEBUG true
+  else
+    set_env_var APP_DEBUG false
+  fi
+fi
+
+if [ "${BEACON_DB_DRIVER:-mysql}" = "sqlite" ]; then
+  set_env_var DB_CONNECTION sqlite
+  sqlite_path="${BEACON_DB_SQLITE_PATH:-${BEACON_SITE_DIR}/database/database.sqlite}"
+  set_env_var DB_DATABASE "${sqlite_path}"
+  mkdir -p "$(dirname "${sqlite_path}")"
+  touch "${sqlite_path}"
+elif [ -n "${BEACON_DB_DATABASE:-}" ]; then
   set_env_var DB_CONNECTION mysql
   set_env_var DB_HOST "${BEACON_DB_HOST:-127.0.0.1}"
   set_env_var DB_PORT "${BEACON_DB_PORT:-3306}"
   set_env_var DB_DATABASE "${BEACON_DB_DATABASE}"
   set_env_var DB_USERNAME "${BEACON_DB_USERNAME:-}"
   set_env_var DB_PASSWORD "${BEACON_DB_PASSWORD:-}"
+fi
+
+if [ "${BEACON_REDIS_ENABLED:-false}" = "true" ]; then
+  set_env_var CACHE_STORE redis
+  set_env_var QUEUE_CONNECTION redis
+  set_env_var SESSION_DRIVER redis
+  set_env_var REDIS_HOST "${BEACON_REDIS_HOST:-127.0.0.1}"
+  set_env_var REDIS_PORT "${BEACON_REDIS_PORT:-6379}"
+else
+  set_env_var CACHE_STORE file
+  set_env_var QUEUE_CONNECTION database
+  set_env_var SESSION_DRIVER file
 fi
 
 # ── Dependencies & build ──────────────────────────────────────────────
