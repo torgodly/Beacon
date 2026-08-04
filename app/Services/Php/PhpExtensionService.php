@@ -74,18 +74,9 @@ class PhpExtensionService
 
         if (! $extension->is_installed) {
             $this->install($extension);
-        } else {
-            $result = $this->runner->sudoRoot(
-                SudoWrapper::Php,
-                ['ext-enable', $version->version, $extension->name],
-            );
-
-            if ($result->failed()) {
-                throw new RuntimeException(
-                    "Could not enable {$extension->name} on PHP {$version->version}: {$result->errorOutput()}",
-                );
-            }
         }
+
+        $this->activate($extension);
 
         $extension->update(['is_installed' => true, 'is_enabled' => true]);
         $this->markDirty($version);
@@ -137,15 +128,31 @@ class PhpExtensionService
             throw new RuntimeException("{$extension->name} is not an installable extension.");
         }
 
+        $aptSuffix = self::INSTALLABLE[$extension->name];
+
         $result = $this->runner->sudoRoot(
             SudoWrapper::Package,
-            ['ext-install', $extension->phpVersion->version, $extension->name],
+            ['ext-install', $extension->phpVersion->version, $aptSuffix],
             timeout: 600,
         );
 
         if ($result->failed()) {
             throw new RuntimeException(
                 "apt failed installing {$extension->apt_package}: {$result->combinedOutput()}",
+            );
+        }
+    }
+
+    private function activate(PhpExtension $extension): void
+    {
+        $result = $this->runner->sudoRoot(
+            SudoWrapper::Php,
+            ['ext-enable', $extension->phpVersion->version, $extension->name],
+        );
+
+        if ($result->failed()) {
+            throw new RuntimeException(
+                "Could not enable {$extension->name} on PHP {$extension->phpVersion->version}: {$result->errorOutput()}",
             );
         }
     }

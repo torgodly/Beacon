@@ -367,9 +367,12 @@ export default function PhpIndex({
                                                 </div>
 
                                                 <p className="text-caption text-fg-subtle">
-                                                    Toggling several extensions
-                                                    restarts PHP-FPM once, after the
-                                                    response is sent.
+                                                    Click an extension to install,
+                                                    enable, or disable it. Core
+                                                    extensions marked locked cannot
+                                                    be turned off. PHP-FPM restarts
+                                                    once after your changes are
+                                                    saved.
                                                 </p>
                                             </section>
 

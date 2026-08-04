@@ -183,46 +183,38 @@ function DialogContent({
                 event.preventDefault();
                 close();
             }}
-            onClick={(event) => {
-                if (event.target === event.currentTarget) {
-                    close();
-                }
-            }}
             {...props}
         >
             <div
                 className={cn(
-                    'modal-box flex max-h-[min(92vh,calc(100vh-1.5rem))] max-w-[calc(100%-1.5rem)] flex-col overflow-hidden rounded-2xl border border-base-300 bg-base-100 p-0 text-base-content shadow-2xl',
+                    'modal-box relative z-0 flex max-h-[min(92vh,calc(100vh-1.5rem))] max-w-[calc(100%-1.5rem)] flex-col overflow-hidden rounded-2xl border border-base-300 bg-base-100 p-0 text-base-content shadow-2xl',
                     sizeClasses[size],
                     className,
                 )}
-                onClick={(event) => event.stopPropagation()}
             >
                 {showCloseButton && (
-                    <form
-                        method="dialog"
-                        className="absolute top-4 right-4 z-20"
+                    <button
+                        type="button"
+                        onClick={close}
+                        className="btn btn-sm btn-circle btn-ghost absolute top-4 right-4 z-20 bg-base-100/80 hover:bg-base-200"
+                        aria-label="Close"
                     >
-                        <button
-                            type="submit"
-                            className="btn btn-sm btn-circle btn-ghost bg-base-100/80 hover:bg-base-200"
-                            aria-label="Close"
-                        >
-                            <XIcon className="size-4" />
-                        </button>
-                    </form>
+                        <XIcon className="size-4" />
+                    </button>
                 )}
 
                 <div className="flex min-h-0 flex-1 flex-col">{children}</div>
             </div>
 
-            <form method="dialog" className="modal-backdrop" onSubmit={close}>
+            <div className="modal-backdrop">
                 <button
-                    type="submit"
-                    className="fixed inset-0 cursor-default border-0 bg-transparent p-0"
+                    type="button"
+                    tabIndex={-1}
+                    className="size-full min-h-full cursor-default border-0 bg-transparent p-0"
                     aria-label="Close dialog"
+                    onClick={close}
                 />
-            </form>
+            </div>
         </dialog>
     );
 }
