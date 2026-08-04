@@ -459,8 +459,10 @@ function OverviewTab({
             <Panel eyebrow="danger zone" title="Delete site">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <p className="max-w-prose text-[14px] leading-[22px] text-fg-muted">
-                        Removes the Nginx vhost, runtime pool, site directory,
-                        and database record. This cannot be undone.
+                        Permanently removes the Nginx vhost, SSL certificates,
+                        PHP pool, Supervisor workers, cron jobs, deploy keys,
+                        logs, site directory, and all database records. This
+                        cannot be undone.
                     </p>
                     <ConfirmDialog
                         trigger={
@@ -470,7 +472,7 @@ function OverviewTab({
                             </Button>
                         }
                         title={`Delete ${site.name}?`}
-                        description="This removes the Nginx config, PHP pool, site directory, and database record. This cannot be undone."
+                        description="Permanently removes Nginx, SSL, runtime pools, Supervisor, cron, deploy keys, logs, the site directory, and every database record for this site."
                         confirmLabel="Delete site"
                         destructive
                         confirmationValue={site.name}

@@ -164,6 +164,13 @@ class SupervisorService
         $process->delete();
     }
 
+    public function deleteAllForSite(Site $site): void
+    {
+        foreach ($site->supervisorProcesses as $process) {
+            $this->delete($process);
+        }
+    }
+
     public function start(SupervisorProcess $process): void
     {
         $this->control($process, 'start');

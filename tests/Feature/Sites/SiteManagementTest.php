@@ -255,7 +255,7 @@ class SiteManagementTest extends TestCase
         ]);
 
         $response->assertRedirect(route('sites.index'));
-        $this->assertSoftDeleted('sites', ['name' => $site->name]);
+        $this->assertDatabaseMissing('sites', ['name' => $site->name]);
     }
 
     private function createSiteWithDomain(string $name, bool $strictFunctions = false): Site
