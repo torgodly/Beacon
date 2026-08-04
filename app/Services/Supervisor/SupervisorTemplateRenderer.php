@@ -14,6 +14,7 @@ class SupervisorTemplateRenderer
         $view = match ($process->kind) {
             'queue_worker' => 'supervisor.queue-worker',
             'ssr' => 'supervisor.ssr',
+            'custom' => 'supervisor.custom',
             default => throw new InvalidArgumentException("Unknown supervisor kind [{$process->kind}]."),
         };
 

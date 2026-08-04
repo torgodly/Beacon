@@ -18,14 +18,21 @@ class SupervisorController extends Controller
         SupervisorService $supervisor,
     ): RedirectResponse {
         try {
-            $supervisor->createQueueWorker($site, $request->validated());
+            $validated = $request->validated();
+            $kind = $validated['kind'] ?? 'queue_worker';
+
+            if ($kind === 'custom') {
+                $supervisor->createCustom($site, $validated);
+            } else {
+                $supervisor->createQueueWorker($site, $validated);
+            }
         } catch (RuntimeException $e) {
             return back()->withErrors(['supervisor' => $e->getMessage()]);
         }
 
         $site->activity()->log('supervisor.created');
 
-        return back()->with('toast', ['type' => 'success', 'message' => 'Queue worker created.']);
+        return back()->with('toast', ['type' => 'success', 'message' => 'Background process created.']);
     }
 
     public function restart(Site $site, SupervisorProcess $process, SupervisorService $supervisor): RedirectResponse
@@ -72,6 +79,7 @@ class SupervisorController extends Controller
             'status' => $process->status,
             'status_message' => $process->status_message,
             'log_path' => $process->log_path,
+            'is_system' => $process->is_system,
             'last_status_at' => $process->last_status_at?->toIso8601String(),
         ];
     }

@@ -17,7 +17,9 @@ class StoreSupervisorProcessRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'kind' => ['nullable', 'string', 'in:queue_worker,custom'],
             'name' => ['required', 'string', 'max:64', 'regex:/^[a-z0-9][a-z0-9-]{0,62}$/i'],
+            'command' => ['required_if:kind,custom', 'nullable', 'string', 'max:2000'],
             'connection' => ['nullable', 'string', 'max:64'],
             'queue' => ['nullable', 'string', 'max:128'],
             'numprocs' => ['nullable', 'integer', 'min:1', 'max:16'],

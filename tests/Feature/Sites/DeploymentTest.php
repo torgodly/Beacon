@@ -47,6 +47,35 @@ class DeploymentTest extends TestCase
         $this->assertSame('idle', $site->fresh()->deployment_status);
     }
 
+    public function test_successful_deploy_auto_issues_ssl_when_not_yet_configured(): void
+    {
+        $certificatesOutput = <<<'OUTPUT'
+Found the following certs:
+  Certificate Name: app.example.com
+    Domains: app.example.com
+    Expiry Date: 2026-11-01 12:00:00+00:00 (VALID: 89 days)
+    Certificate Path: /etc/letsencrypt/live/app.example.com/fullchain.pem
+    Private Key Path: /etc/letsencrypt/live/app.example.com/privkey.pem
+OUTPUT;
+
+        $this->processFactory->willReturn(0, $certificatesOutput);
+
+        $user = User::factory()->create(['email' => 'admin@example.com']);
+        Server::factory()->create(['id' => 1]);
+        $site = $this->createSiteWithScript('app.example.com');
+
+        $response = $this->actingAs($user)->post(route('sites.deployments.store', $site));
+
+        $response->assertRedirect();
+
+        $this->assertDatabaseHas('ssl_certificates', [
+            'site_id' => $site->id,
+            'lineage' => 'app.example.com',
+            'status' => 'issued',
+        ]);
+        $this->assertSame('issued', $site->fresh()->ssl_status);
+    }
+
     public function test_deployment_log_endpoint_returns_incremental_output(): void
     {
         $user = User::factory()->create();

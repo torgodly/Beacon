@@ -74,6 +74,42 @@ class SupervisorService
     }
 
     /**
+     * @param  array<string, mixed>  $data
+     */
+    public function createCustom(Site $site, array $data): SupervisorProcess
+    {
+        $name = (string) $data['name'];
+        $programName = $this->programName($site, $name);
+
+        $process = $site->supervisorProcesses()->create([
+            'name' => $name,
+            'program_name' => $programName,
+            'kind' => 'custom',
+            'command' => (string) $data['command'],
+            'directory' => $site->path,
+            'run_as' => 'beacon',
+            'numprocs' => (int) ($data['numprocs'] ?? 1),
+            'autostart' => (bool) ($data['autostart'] ?? true),
+            'autorestart' => (bool) ($data['autorestart'] ?? true),
+            'stop_wait_secs' => (int) ($data['stop_wait_secs'] ?? 15),
+            'stop_signal' => (string) ($data['stop_signal'] ?? 'TERM'),
+            'config_path' => "/etc/supervisor/conf.d/{$programName}.conf",
+            'log_path' => $this->logPath($site, $name),
+            'status' => 'stopped',
+        ]);
+
+        $this->sync($process);
+
+        $fresh = $process->fresh();
+
+        if ($fresh === null) {
+            throw new RuntimeException('Could not reload supervisor process.');
+        }
+
+        return $fresh;
+    }
+
+    /**
      * Create or refresh the Node server that backs a Next.js / Nuxt site.
      *
      * Without this the site has an Nginx reverse proxy pointing at a port with

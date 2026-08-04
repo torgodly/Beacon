@@ -10,6 +10,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Services\Github\DeploymentStatusReporter;
 use App\Services\Runtime\MemoryBudget;
+use App\Services\Ssl\CertbotService;
 use App\Services\Supervisor\SsrLauncher;
 use App\Services\Supervisor\SupervisorService;
 use App\Services\System\ProcessResult;
@@ -30,6 +31,7 @@ class DeploymentService
         private readonly GitService $git,
         private readonly DeployPreflight $preflight,
         private readonly DeploymentStatusReporter $github,
+        private readonly CertbotService $certbot,
     ) {}
 
     public static function queue(
@@ -93,6 +95,7 @@ class DeploymentService
             $this->step($stream, 'Running deploy script', fn () => $this->runScript($site, $stream, $timeout));
             $this->step($stream, 'Normalising permissions', fn () => $this->fixPermissions($site, $stream));
             $this->step($stream, 'Restarting processes', fn () => $this->restartProcesses($site, $stream));
+            $this->step($stream, 'Securing TLS', fn () => $this->maybeIssueSsl($deployment, $site, $stream));
 
             $this->finish($deployment, $site, 'success', 0);
             $this->github->success($deployment);
@@ -227,6 +230,39 @@ BASH;
                 "Permission normalisation failed with code {$result->exitCode()}.",
                 $result->exitCode() ?: 1,
             );
+        }
+    }
+
+    private function maybeIssueSsl(Deployment $deployment, Site $site, OutputStream $stream): void
+    {
+        if (! config('beacon.ssl.auto_issue_on_deploy', true)) {
+            $stream->append("Automatic TLS issuance is disabled.\n");
+
+            return;
+        }
+
+        if ($site->ssl_status === 'issued') {
+            $stream->append("TLS is already configured for this site.\n");
+
+            return;
+        }
+
+        $deployment->loadMissing('user');
+
+        $email = $deployment->user?->email
+            ?? config('beacon.ssl.letsencrypt_email');
+
+        if (blank($email)) {
+            $stream->append("\033[33m⚠ No Let's Encrypt email available — skipped TLS issuance. Set BEACON_LETSENCRYPT_EMAIL or deploy while signed in.\033[0m\n");
+
+            return;
+        }
+
+        try {
+            $this->certbot->issue($site, $email);
+            $stream->append("\033[32m✔ TLS certificate issued for {$site->name}\033[0m\n");
+        } catch (Throwable $e) {
+            $stream->append("\033[33m⚠ TLS issuance failed: {$e->getMessage()}\033[0m\n");
         }
     }
 

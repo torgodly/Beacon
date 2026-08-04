@@ -7,7 +7,7 @@ import {
     useForm,
     usePage,
 } from '@inertiajs/react';
-import { Play, RotateCcw, Save, Shield, Trash2 } from 'lucide-react';
+import { Clock, Cog, Play, Plus, RefreshCw, RotateCcw, Save, Shield, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { CodeDiffViewer } from '@/components/code-diff-viewer';
 import { CodeEditor } from '@/components/code-editor';
@@ -28,6 +28,10 @@ import {
 } from '@/components/forge/forge-badge';
 import { ForgeDeploymentsSection } from '@/components/forge/forge-deployments-list';
 import { ForgeFormCard, ForgePageContent } from '@/components/forge/forge-form-card';
+import {
+    ForgeActionGroup,
+    ForgeEmptyState,
+} from '@/components/forge/forge-empty-state';
 import { Panel, SpecList, StatCluster } from '@/components/console/panel';
 import { DeployScriptEnvReference } from '@/components/deploy-script-env-reference';
 import InputError from '@/components/input-error';
@@ -201,6 +205,7 @@ type SupervisorProcessRow = {
     status: string;
     status_message: string | null;
     log_path: string | null;
+    is_system: boolean;
     last_status_at: string | null;
 };
 
@@ -661,120 +666,134 @@ function SslTab({
     site: SiteDetail;
     certificate: SslCertificatePayload | null;
 }) {
+    const { auth } = usePage().props as {
+        auth: { user: { email: string } | null };
+    };
     const issueForm = useForm({
-        email: '',
+        email: auth.user?.email ?? '',
     });
+    const hasCertificate = certificate !== null && site.ssl_status === 'issued';
 
     return (
-        <div className="flex flex-col gap-4">
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-base">SSL status</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm">
-                    <div className="flex justify-between gap-4">
-                        <span className="text-muted-foreground">Status</span>
-                        <StatusBadge
-                            status={sslStatus(site.ssl_status)}
-                            label={site.ssl_status}
-                        />
+        <ForgePageContent>
+            <ForgeDividedCard
+                title="TLS certificate"
+                action={
+                    hasCertificate ? (
+                        <ForgeActionGroup>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={issueForm.processing}
+                                onClick={() =>
+                                    issueForm.post(issueSsl.url(site.id), {
+                                        preserveScroll: true,
+                                    })
+                                }
+                            >
+                                <RefreshCw className="size-3.5" />
+                                Re-issue
+                            </Button>
+                        </ForgeActionGroup>
+                    ) : null
+                }
+            >
+                <ForgeListRow className="flex-col items-start gap-4 sm:flex-row sm:items-center">
+                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+                        <p className="font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                            {hasCertificate
+                                ? 'HTTPS is active'
+                                : 'HTTPS not configured'}
+                        </p>
+                        <p className="text-sm text-[#64748b]">
+                            {hasCertificate
+                                ? "Let's Encrypt certificate is installed and Nginx is serving HTTPS."
+                                : 'A certificate is requested automatically after each successful deployment. You can also issue one manually below.'}
+                        </p>
                     </div>
-                </CardContent>
-            </Card>
+                    <StatusBadge
+                        status={sslStatus(site.ssl_status)}
+                        label={
+                            site.ssl_status === 'issued'
+                                ? 'Secured'
+                                : site.ssl_status
+                        }
+                    />
+                </ForgeListRow>
 
-            {certificate ? (
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="text-base">
-                            Active certificate
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3 text-sm">
-                        <div className="flex justify-between gap-4">
-                            <span className="text-muted-foreground">
-                                Certificate name
-                            </span>
-                            <span className="font-mono">
+                {hasCertificate && certificate ? (
+                    <>
+                        <ForgeListRow className="justify-between">
+                            <span className="text-[#64748b]">Certificate</span>
+                            <span className="font-mono text-xs text-[#0f172a] dark:text-[#f8fafc]">
                                 {certificate.lineage}
                             </span>
-                        </div>
-                        <div className="flex justify-between gap-4">
-                            <span className="text-muted-foreground">
-                                Domains
-                            </span>
-                            <span className="text-right font-mono text-xs">
+                        </ForgeListRow>
+                        <ForgeListRow className="justify-between">
+                            <span className="text-[#64748b]">Domains</span>
+                            <span className="max-w-md text-right font-mono text-xs text-[#0f172a] dark:text-[#f8fafc]">
                                 {certificate.domains.join(', ')}
                             </span>
-                        </div>
+                        </ForgeListRow>
                         {certificate.expires_at && (
-                            <div className="flex justify-between gap-4">
-                                <span className="text-muted-foreground">
-                                    Expires
-                                </span>
-                                <span>
+                            <ForgeListRow className="justify-between">
+                                <span className="text-[#64748b]">Expires</span>
+                                <span className="text-sm text-[#0f172a] dark:text-[#f8fafc]">
                                     {new Date(
                                         certificate.expires_at,
                                     ).toLocaleDateString()}{' '}
-                                    ({certificate.days_remaining} days)
+                                    <span className="text-[#64748b]">
+                                        ({certificate.days_remaining} days)
+                                    </span>
                                 </span>
-                            </div>
+                            </ForgeListRow>
                         )}
-
-                        <ConfirmDialog
-                            trigger={
-                                <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    className="w-fit"
-                                >
-                                    <Trash2 className="size-3.5" />
-                                    Remove certificate
-                                </Button>
-                            }
-                            title="Remove SSL certificate?"
-                            description="This deletes the certificate from certbot and updates Nginx."
-                            confirmLabel="Remove certificate"
-                            destructive
-                            onConfirm={() =>
-                                router.delete(
-                                    destroySsl.url({
-                                        site: site.id,
-                                        certificate: certificate.id,
-                                    }),
-                                    { preserveScroll: true },
-                                )
-                            }
-                        />
-                    </CardContent>
-                </Card>
-            ) : (
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="text-base">
-                            Issue certificate
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
+                        <ForgeListRow>
+                            <ConfirmDialog
+                                trigger={
+                                    <Button
+                                        variant="destructive"
+                                        size="sm"
+                                        className="w-fit"
+                                    >
+                                        <Trash2 className="size-3.5" />
+                                        Remove certificate
+                                    </Button>
+                                }
+                                title="Remove TLS certificate?"
+                                description="Visitors will lose HTTPS until a new certificate is issued. Nginx will be updated immediately."
+                                confirmLabel="Remove certificate"
+                                destructive
+                                onConfirm={() =>
+                                    router.delete(
+                                        destroySsl.url({
+                                            site: site.id,
+                                            certificate: certificate.id,
+                                        }),
+                                        { preserveScroll: true },
+                                    )
+                                }
+                            />
+                        </ForgeListRow>
+                    </>
+                ) : (
+                    <ForgeListRow className="flex-col items-stretch gap-4">
                         <form
                             onSubmit={(event) => {
                                 event.preventDefault();
                                 issueForm.post(issueSsl.url(site.id), {
                                     preserveScroll: true,
-                                    onSuccess: () => issueForm.reset(),
                                 });
                             }}
-                            className="grid max-w-xl gap-4"
+                            className="flex max-w-lg flex-col gap-3"
                         >
-                            <p className="text-sm text-muted-foreground">
-                                Request a Let&apos;s Encrypt certificate for all
-                                non-redirect domains on this site.
-                            </p>
                             <div className="grid gap-2">
-                                <Label htmlFor="email">
+                                <Label htmlFor="ssl_email">
                                     Let&apos;s Encrypt email
                                 </Label>
                                 <Input
-                                    id="email"
+                                    id="ssl_email"
                                     type="email"
                                     value={issueForm.data.email}
                                     onChange={(event) =>
@@ -794,13 +813,13 @@ function SslTab({
                                 className="w-fit"
                             >
                                 <Shield className="size-3.5" />
-                                Issue certificate
+                                Issue certificate now
                             </Button>
                         </form>
-                    </CardContent>
-                </Card>
-            )}
-        </div>
+                    </ForgeListRow>
+                )}
+            </ForgeDividedCard>
+        </ForgePageContent>
     );
 }
 
@@ -1709,36 +1728,34 @@ function DeploymentsTab({
                 title="Deploy script"
                 description="Runs as the site user after each clone. Restart workers at the end of the script."
             >
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-                    <form
-                        onSubmit={(event) => {
-                            event.preventDefault();
-                            scriptForm.patch(updateDeployScript.url(site.id), {
-                                preserveScroll: true,
-                            });
-                        }}
-                        className="flex min-w-0 flex-col gap-3"
+                <form
+                    onSubmit={(event) => {
+                        event.preventDefault();
+                        scriptForm.patch(updateDeployScript.url(site.id), {
+                            preserveScroll: true,
+                        });
+                    }}
+                    className="flex flex-col gap-4"
+                >
+                    <CodeEditor
+                        value={scriptForm.data.deploy_script}
+                        onChange={(value) =>
+                            scriptForm.setData('deploy_script', value)
+                        }
+                        language="bash"
+                        rows={16}
+                    />
+                    <InputError message={scriptForm.errors.deploy_script} />
+                    <Button
+                        type="submit"
+                        disabled={scriptForm.processing}
+                        className="w-fit"
                     >
-                        <CodeEditor
-                            value={scriptForm.data.deploy_script}
-                            onChange={(value) =>
-                                scriptForm.setData('deploy_script', value)
-                            }
-                            language="bash"
-                            rows={14}
-                        />
-                        <InputError message={scriptForm.errors.deploy_script} />
-                        <Button
-                            type="submit"
-                            disabled={scriptForm.processing}
-                            className="w-fit"
-                        >
-                            <Save className="size-3.5" />
-                            Save script
-                        </Button>
-                    </form>
+                        <Save className="size-3.5" />
+                        Save script
+                    </Button>
                     <DeployScriptEnvReference variables={deployEnvReference} />
-                </div>
+                </form>
             </ForgeFormCard>
         </ForgePageContent>
     );
@@ -1751,180 +1768,403 @@ function SupervisorTab({
     site: SiteDetail;
     processes: SupervisorProcessRow[];
 }) {
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [processKind, setProcessKind] = useState<'queue_worker' | 'custom'>(
+        'queue_worker',
+    );
     const [name, setName] = useState('queue');
+    const [connection, setConnection] = useState('redis');
     const [queue, setQueue] = useState('default');
+    const [numprocs, setNumprocs] = useState('1');
+    const [sleep, setSleep] = useState('3');
+    const [tries, setTries] = useState('3');
+    const [command, setCommand] = useState(
+        site.php_version
+            ? `php${site.php_version} ${site.path}/artisan queue:work`
+            : `php ${site.path}/artisan queue:work`,
+    );
+
+    const managedProcesses = processes.filter((process) => !process.is_system);
+
+    const queuePreview = site.php_version
+        ? `php${site.php_version} ${site.path}/artisan queue:work ${connection} --queue=${queue} --sleep=${sleep} --tries=${tries}`
+        : `php ${site.path}/artisan queue:work ${connection} --queue=${queue} --sleep=${sleep} --tries=${tries}`;
 
     return (
-        <div className="flex flex-col gap-4">
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-base">Queue workers</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    {processes.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">
-                            No supervisor processes yet.
-                        </p>
-                    ) : (
-                        <ul className="divide-y rounded-lg border">
-                            {processes.map((process) => (
-                                <li
-                                    key={process.id}
-                                    className="flex flex-wrap items-center justify-between gap-3 px-3 py-3"
-                                >
-                                    <div>
-                                        <p className="font-medium">
-                                            {process.name}
-                                        </p>
-                                        <p className="font-mono text-xs text-muted-foreground">
-                                            {process.program_name}
-                                            {process.queue
-                                                ? ` · ${process.queue}`
-                                                : ''}
-                                        </p>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <StatusBadge
-                                            status={
-                                                process.status === 'running'
-                                                    ? 'success'
-                                                    : process.status ===
-                                                        'failed'
-                                                      ? 'failed'
-                                                      : 'stopped'
-                                            }
-                                            label={process.status}
+        <ForgePageContent>
+            <ForgeDividedCard
+                title="Background processes"
+                action={
+                    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                        <DialogTrigger asChild>
+                            <Button size="sm">
+                                <Plus className="size-3.5" />
+                                Add background process
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+                            <DialogHeader>
+                                <DialogTitle>New background process</DialogTitle>
+                                <DialogDescription>
+                                    Background processes are managed with
+                                    Supervisor and restart automatically if they
+                                    crash.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <Form
+                                {...storeSupervisorProcess.form(site.id)}
+                                className="flex flex-col gap-4"
+                                onSuccess={() => setDialogOpen(false)}
+                            >
+                                {({ errors, processing }) => (
+                                    <>
+                                        <input
+                                            type="hidden"
+                                            name="kind"
+                                            value={processKind}
                                         />
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="process_name">
+                                                Name
+                                            </Label>
+                                            <Input
+                                                id="process_name"
+                                                name="name"
+                                                value={name}
+                                                onChange={(event) =>
+                                                    setName(event.target.value)
+                                                }
+                                                placeholder="queue"
+                                            />
+                                            <InputError message={errors.name} />
+                                        </div>
+
+                                        <div className="flex gap-6 border-b border-[#e2e8f0] dark:border-[#2e3032]">
+                                            {(
+                                                [
+                                                    ['queue_worker', 'Queue worker'],
+                                                    ['custom', 'Custom'],
+                                                ] as const
+                                            ).map(([kind, label]) => (
+                                                <button
+                                                    key={kind}
+                                                    type="button"
+                                                    className={cn(
+                                                        'border-b-2 px-1 py-2 text-sm font-medium transition-colors',
+                                                        processKind === kind
+                                                            ? 'border-[#18B69B] text-[#0f172a] dark:text-[#f8fafc]'
+                                                            : 'border-transparent text-[#64748b] hover:text-[#0f172a] dark:hover:text-[#f8fafc]',
+                                                    )}
+                                                    onClick={() =>
+                                                        setProcessKind(kind)
+                                                    }
+                                                >
+                                                    {label}
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        {processKind === 'queue_worker' ? (
+                                            <div className="space-y-3 rounded-lg border border-[#e2e8f0] dark:border-[#2e3032]">
+                                                <div className="grid gap-3 p-4 sm:grid-cols-2">
+                                                    <div className="grid gap-2">
+                                                        <Label htmlFor="connection">
+                                                            Connection
+                                                        </Label>
+                                                        <Input
+                                                            id="connection"
+                                                            name="connection"
+                                                            value={connection}
+                                                            onChange={(event) =>
+                                                                setConnection(
+                                                                    event.target.value,
+                                                                )
+                                                            }
+                                                        />
+                                                    </div>
+                                                    <div className="grid gap-2">
+                                                        <Label htmlFor="queue">
+                                                            Queue
+                                                        </Label>
+                                                        <Input
+                                                            id="queue"
+                                                            name="queue"
+                                                            value={queue}
+                                                            onChange={(event) =>
+                                                                setQueue(
+                                                                    event.target.value,
+                                                                )
+                                                            }
+                                                        />
+                                                    </div>
+                                                    <div className="grid gap-2">
+                                                        <Label htmlFor="numprocs">
+                                                            Processes
+                                                        </Label>
+                                                        <Input
+                                                            id="numprocs"
+                                                            name="numprocs"
+                                                            type="number"
+                                                            min={1}
+                                                            value={numprocs}
+                                                            onChange={(event) =>
+                                                                setNumprocs(
+                                                                    event.target.value,
+                                                                )
+                                                            }
+                                                        />
+                                                    </div>
+                                                    <div className="grid gap-2">
+                                                        <Label htmlFor="sleep">
+                                                            Sleep (seconds)
+                                                        </Label>
+                                                        <Input
+                                                            id="sleep"
+                                                            name="sleep"
+                                                            type="number"
+                                                            min={1}
+                                                            value={sleep}
+                                                            onChange={(event) =>
+                                                                setSleep(
+                                                                    event.target.value,
+                                                                )
+                                                            }
+                                                        />
+                                                    </div>
+                                                    <div className="grid gap-2">
+                                                        <Label htmlFor="tries">
+                                                            Tries
+                                                        </Label>
+                                                        <Input
+                                                            id="tries"
+                                                            name="tries"
+                                                            type="number"
+                                                            min={1}
+                                                            value={tries}
+                                                            onChange={(event) =>
+                                                                setTries(
+                                                                    event.target.value,
+                                                                )
+                                                            }
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="border-t border-[#e2e8f0] bg-[#f8fafc] p-4 dark:border-[#2e3032] dark:bg-[#151718]/40">
+                                                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[#64748b]">
+                                                        Preview
+                                                    </p>
+                                                    <p className="font-mono text-sm text-[#0f172a] dark:text-[#f8fafc]">
+                                                        {queuePreview}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-4">
+                                                <div className="grid gap-2">
+                                                    <Label htmlFor="custom_command">
+                                                        Command
+                                                    </Label>
+                                                    <Input
+                                                        id="custom_command"
+                                                        name="command"
+                                                        value={command}
+                                                        onChange={(event) =>
+                                                            setCommand(
+                                                                event.target.value,
+                                                            )
+                                                        }
+                                                        className="font-mono text-sm"
+                                                    />
+                                                    <InputError
+                                                        message={errors.command}
+                                                    />
+                                                </div>
+                                                <div className="rounded-lg bg-[#f8fafc] p-4 dark:bg-[#151718]/40">
+                                                    <p className="text-sm font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                                                        Supervisor configuration
+                                                    </p>
+                                                    <dl className="mt-3 space-y-2 text-sm">
+                                                        <div className="flex justify-between gap-4">
+                                                            <dt className="text-[#64748b]">
+                                                                Working directory
+                                                            </dt>
+                                                            <dd className="truncate font-mono text-xs text-[#0f172a] dark:text-[#f8fafc]">
+                                                                {site.path}
+                                                            </dd>
+                                                        </div>
+                                                        <div className="flex justify-between gap-4">
+                                                            <dt className="text-[#64748b]">
+                                                                Processes
+                                                            </dt>
+                                                            <dd className="text-[#0f172a] dark:text-[#f8fafc]">
+                                                                1
+                                                            </dd>
+                                                        </div>
+                                                        <div className="flex justify-between gap-4">
+                                                            <dt className="text-[#64748b]">
+                                                                Graceful shutdown
+                                                            </dt>
+                                                            <dd className="text-[#0f172a] dark:text-[#f8fafc]">
+                                                                15 seconds
+                                                            </dd>
+                                                        </div>
+                                                    </dl>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <InputError message={errors.supervisor} />
+                                        <DialogFooter>
+                                            <Button
+                                                type="submit"
+                                                disabled={processing}
+                                            >
+                                                Create background process
+                                            </Button>
+                                        </DialogFooter>
+                                    </>
+                                )}
+                            </Form>
+                        </DialogContent>
+                    </Dialog>
+                }
+            >
+                {managedProcesses.length === 0 ? (
+                    <ForgeListRow className="justify-center py-10">
+                        <ForgeEmptyState
+                            icon={Cog}
+                            title="No background processes yet"
+                            description="Get started and create your first background process."
+                            className="border-0 bg-transparent p-0 shadow-none"
+                            action={
+                                <Button
+                                    size="sm"
+                                    onClick={() => setDialogOpen(true)}
+                                >
+                                    <Plus className="size-3.5" />
+                                    Add background process
+                                </Button>
+                            }
+                        />
+                    </ForgeListRow>
+                ) : (
+                    managedProcesses.map((process) => (
+                        <ForgeListRow
+                            key={process.id}
+                            className="flex-wrap justify-between"
+                        >
+                            <div className="min-w-0">
+                                <p className="font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                                    {process.name}
+                                </p>
+                                <p className="font-mono text-xs text-[#64748b]">
+                                    {process.kind === 'queue_worker'
+                                        ? `queue:work · ${process.queue ?? 'default'}`
+                                        : process.program_name}
+                                </p>
+                            </div>
+                            <ForgeActionGroup>
+                                <StatusBadge
+                                    status={
+                                        process.status === 'running'
+                                            ? 'success'
+                                            : process.status === 'failed'
+                                              ? 'failed'
+                                              : 'stopped'
+                                    }
+                                    label={process.status}
+                                />
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                        router.post(
+                                            restartSupervisorProcess.url({
+                                                site: site.id,
+                                                process: process.id,
+                                            }),
+                                            {},
+                                            { preserveScroll: true },
+                                        )
+                                    }
+                                >
+                                    Restart
+                                </Button>
+                                <ConfirmDialog
+                                    trigger={
                                         <Button
                                             type="button"
-                                            variant="outline"
+                                            variant="ghost"
                                             size="sm"
-                                            onClick={() =>
-                                                router.post(
-                                                    restartSupervisorProcess.url(
-                                                        {
-                                                            site: site.id,
-                                                            process: process.id,
-                                                        },
-                                                    ),
-                                                    {},
-                                                    { preserveScroll: true },
-                                                )
-                                            }
                                         >
-                                            Restart
+                                            <Trash2 className="size-3.5" />
                                         </Button>
-                                        <ConfirmDialog
-                                            trigger={
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="sm"
-                                                >
-                                                    <Trash2 className="size-3.5" />
-                                                </Button>
-                                            }
-                                            title="Remove process?"
-                                            description="This deletes the supervisor program and its config."
-                                            confirmLabel="Remove"
-                                            destructive
-                                            onConfirm={() =>
-                                                router.delete(
-                                                    destroySupervisorProcess.url(
-                                                        {
-                                                            site: site.id,
-                                                            process: process.id,
-                                                        },
-                                                    ),
-                                                    { preserveScroll: true },
-                                                )
-                                            }
-                                        />
-                                    </div>
-                                </li>
-                            ))}
-                        </ul>
-                    )}
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-base">
-                        Add queue worker
-                    </CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <Form
-                        {...storeSupervisorProcess.form(site.id)}
-                        className="grid max-w-xl gap-4"
-                    >
-                        {({ errors, processing }) => (
-                            <>
-                                <div className="grid gap-2">
-                                    <Label htmlFor="supervisor_name">
-                                        Name
-                                    </Label>
-                                    <Input
-                                        id="supervisor_name"
-                                        name="name"
-                                        value={name}
-                                        onChange={(event) =>
-                                            setName(event.target.value)
-                                        }
-                                    />
-                                    <InputError message={errors.name} />
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label htmlFor="supervisor_queue">
-                                        Queue
-                                    </Label>
-                                    <Input
-                                        id="supervisor_queue"
-                                        name="queue"
-                                        value={queue}
-                                        onChange={(event) =>
-                                            setQueue(event.target.value)
-                                        }
-                                    />
-                                </div>
-                                <InputError message={errors.supervisor} />
-                                <Button
-                                    type="submit"
-                                    disabled={processing}
-                                    className="w-fit"
-                                >
-                                    Create worker
-                                </Button>
-                            </>
-                        )}
-                    </Form>
-                </CardContent>
-            </Card>
-        </div>
+                                    }
+                                    title="Remove background process?"
+                                    description="This deletes the supervisor program and its config."
+                                    confirmLabel="Remove"
+                                    destructive
+                                    onConfirm={() =>
+                                        router.delete(
+                                            destroySupervisorProcess.url({
+                                                site: site.id,
+                                                process: process.id,
+                                            }),
+                                            { preserveScroll: true },
+                                        )
+                                    }
+                                />
+                            </ForgeActionGroup>
+                        </ForgeListRow>
+                    ))
+                )}
+            </ForgeDividedCard>
+        </ForgePageContent>
     );
 }
+
+const CRON_FREQUENCY_PRESETS = {
+    minutely: { label: 'Every minute', expression: '* * * * *' },
+    hourly: { label: 'Hourly', expression: '0 * * * *' },
+    nightly: { label: 'Nightly', expression: '0 0 * * *' },
+    weekly: { label: 'Weekly', expression: '0 0 * * 0' },
+    monthly: { label: 'Monthly', expression: '0 0 1 * *' },
+    custom: { label: 'Custom frequency', expression: '' },
+} as const;
+
+type CronFrequencyPreset = keyof typeof CRON_FREQUENCY_PRESETS;
 
 function CronTab({ site, jobs }: { site: SiteDetail; jobs: CronJobRow[] }) {
     const scheduler = jobs.find((job) => job.is_laravel_scheduler);
     const customJobs = jobs.filter((job) => !job.is_laravel_scheduler);
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [frequency, setFrequency] = useState<CronFrequencyPreset>('weekly');
+    const [expression, setExpression] = useState<string>(
+        CRON_FREQUENCY_PRESETS.weekly.expression,
+    );
+    const defaultCommand = site.php_version
+        ? `php${site.php_version} ${site.path}/artisan`
+        : `php ${site.path}/artisan`;
 
     return (
-        <div className="flex flex-col gap-4">
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-base">
-                        Laravel scheduler
-                    </CardTitle>
-                </CardHeader>
-                <CardContent className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="text-sm text-muted-foreground">
-                        Runs <code className="text-xs">schedule:run</code> every
-                        minute for this site.
-                    </p>
+        <ForgePageContent>
+            <ForgeDividedCard title="Scheduler">
+                <ForgeListRow className="flex-wrap justify-between gap-4">
+                    <div className="min-w-0">
+                        <p className="font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                            Laravel scheduler
+                        </p>
+                        <p className="text-sm text-[#64748b]">
+                            Runs{' '}
+                            <code className="text-xs">schedule:run</code> every
+                            minute for this site.
+                        </p>
+                    </div>
                     <Button
                         type="button"
                         variant="outline"
+                        size="sm"
                         onClick={() =>
                             router.post(
                                 toggleCronScheduler.url(site.id),
@@ -1937,113 +2177,205 @@ function CronTab({ site, jobs }: { site: SiteDetail; jobs: CronJobRow[] }) {
                     >
                         {scheduler?.enabled ? 'Disable' : 'Enable'} scheduler
                     </Button>
-                </CardContent>
-            </Card>
+                </ForgeListRow>
+            </ForgeDividedCard>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-base">Custom jobs</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    {customJobs.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">
-                            No custom cron jobs yet.
-                        </p>
-                    ) : (
-                        <ul className="divide-y rounded-lg border">
-                            {customJobs.map((job) => (
-                                <li
-                                    key={job.id}
-                                    className="flex flex-wrap items-start justify-between gap-3 px-3 py-3"
-                                >
-                                    <div className="min-w-0">
-                                        <p className="font-medium">
-                                            {job.name}
-                                        </p>
-                                        <p className="font-mono text-xs text-muted-foreground">
-                                            {job.expression}
-                                        </p>
-                                        <p className="mt-1 truncate font-mono text-xs">
-                                            {job.command}
-                                        </p>
-                                    </div>
-                                    <ConfirmDialog
-                                        trigger={
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                size="sm"
+            <ForgeDividedCard
+                title="Scheduled jobs"
+                action={
+                    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                        <DialogTrigger asChild>
+                            <Button size="sm">
+                                <Plus className="size-3.5" />
+                                Add scheduled job
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-lg">
+                            <DialogHeader>
+                                <DialogTitle>New scheduled job</DialogTitle>
+                                <DialogDescription>
+                                    Create a cron job linked to{' '}
+                                    <span className="font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                                        {site.name}
+                                    </span>
+                                    . Commands should use fully qualified paths.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <Form
+                                {...storeCronJob.form(site.id)}
+                                className="flex flex-col gap-4"
+                                onSuccess={() => setDialogOpen(false)}
+                            >
+                                {({ errors, processing }) => (
+                                    <>
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="cron_name">Name</Label>
+                                            <Input
+                                                id="cron_name"
+                                                name="name"
+                                                placeholder="My scheduled job"
+                                            />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="cron_command">
+                                                Command
+                                            </Label>
+                                            <Input
+                                                id="cron_command"
+                                                name="command"
+                                                defaultValue={defaultCommand}
+                                                className="font-mono text-sm"
+                                            />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="cron_frequency">
+                                                Frequency
+                                            </Label>
+                                            <Select
+                                                value={frequency}
+                                                onValueChange={(value) => {
+                                                    const preset =
+                                                        value as CronFrequencyPreset;
+                                                    setFrequency(preset);
+                                                    if (preset !== 'custom') {
+                                                        setExpression(
+                                                            CRON_FREQUENCY_PRESETS[
+                                                                preset
+                                                            ].expression,
+                                                        );
+                                                    }
+                                                }}
                                             >
-                                                <Trash2 className="size-3.5" />
+                                                <SelectTrigger id="cron_frequency">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {Object.entries(
+                                                        CRON_FREQUENCY_PRESETS,
+                                                    ).map(([key, preset]) => (
+                                                        <SelectItem
+                                                            key={key}
+                                                            value={key}
+                                                        >
+                                                            {preset.label}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            <input
+                                                type="hidden"
+                                                name="frequency_preset"
+                                                value={frequency}
+                                            />
+                                        </div>
+                                        {frequency === 'custom' ? (
+                                            <div className="grid gap-2">
+                                                <Label htmlFor="cron_expression">
+                                                    Cron expression
+                                                </Label>
+                                                <Input
+                                                    id="cron_expression"
+                                                    name="expression"
+                                                    value={expression}
+                                                    onChange={(event) =>
+                                                        setExpression(
+                                                            event.target.value,
+                                                        )
+                                                    }
+                                                    placeholder="0 3 * * *"
+                                                    className="font-mono text-sm"
+                                                />
+                                            </div>
+                                        ) : (
+                                            <input
+                                                type="hidden"
+                                                name="expression"
+                                                value={expression}
+                                            />
+                                        )}
+                                        <InputError message={errors.cron} />
+                                        <DialogFooter>
+                                            <Button
+                                                type="submit"
+                                                disabled={processing}
+                                            >
+                                                Create scheduled job
                                             </Button>
-                                        }
-                                        title="Remove cron job?"
-                                        description="This removes the job from the managed crontab block."
-                                        confirmLabel="Remove"
-                                        destructive
-                                        onConfirm={() =>
-                                            router.delete(
-                                                destroyCronJob.url({
-                                                    site: site.id,
-                                                    cronJob: job.id,
-                                                }),
-                                                { preserveScroll: true },
-                                            )
-                                        }
-                                    />
-                                </li>
-                            ))}
-                        </ul>
-                    )}
-
-                    <Form
-                        {...storeCronJob.form(site.id)}
-                        className="grid max-w-xl gap-4"
-                    >
-                        {({ errors, processing }) => (
-                            <>
-                                <div className="grid gap-2">
-                                    <Label htmlFor="cron_name">Name</Label>
-                                    <Input
-                                        id="cron_name"
-                                        name="name"
-                                        placeholder="Nightly backup"
-                                    />
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label htmlFor="cron_expression">
-                                        Cron expression
-                                    </Label>
-                                    <Input
-                                        id="cron_expression"
-                                        name="expression"
-                                        defaultValue="0 3 * * *"
-                                    />
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label htmlFor="cron_command">
-                                        Command
-                                    </Label>
-                                    <Input
-                                        id="cron_command"
-                                        name="command"
-                                        placeholder="cd $PWD && php artisan backup:run"
-                                    />
-                                </div>
-                                <InputError message={errors.cron} />
+                                        </DialogFooter>
+                                    </>
+                                )}
+                            </Form>
+                        </DialogContent>
+                    </Dialog>
+                }
+            >
+                {customJobs.length === 0 ? (
+                    <ForgeListRow className="justify-center py-10">
+                        <ForgeEmptyState
+                            icon={Clock}
+                            title="No scheduled jobs yet"
+                            description="Add custom cron jobs for backups, cleanups, or other recurring tasks."
+                            className="border-0 bg-transparent p-0 shadow-none"
+                            action={
                                 <Button
-                                    type="submit"
-                                    disabled={processing}
-                                    className="w-fit"
+                                    size="sm"
+                                    onClick={() => setDialogOpen(true)}
                                 >
-                                    Add cron job
+                                    <Plus className="size-3.5" />
+                                    Add scheduled job
                                 </Button>
-                            </>
-                        )}
-                    </Form>
-                </CardContent>
-            </Card>
-        </div>
+                            }
+                        />
+                    </ForgeListRow>
+                ) : (
+                    customJobs.map((job) => (
+                        <ForgeListRow
+                            key={job.id}
+                            className="flex-wrap items-start justify-between gap-3"
+                        >
+                            <div className="min-w-0">
+                                <p className="font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                                    {job.name}
+                                </p>
+                                <p className="font-mono text-xs text-[#64748b]">
+                                    {job.expression}
+                                    {job.frequency_preset
+                                        ? ` · ${CRON_FREQUENCY_PRESETS[job.frequency_preset as CronFrequencyPreset]?.label ?? job.frequency_preset}`
+                                        : ''}
+                                </p>
+                                <p className="mt-1 truncate font-mono text-xs text-[#0f172a] dark:text-[#f8fafc]">
+                                    {job.command}
+                                </p>
+                            </div>
+                            <ConfirmDialog
+                                trigger={
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                    >
+                                        <Trash2 className="size-3.5" />
+                                    </Button>
+                                }
+                                title="Remove scheduled job?"
+                                description="This removes the job from the managed crontab block."
+                                confirmLabel="Remove"
+                                destructive
+                                onConfirm={() =>
+                                    router.delete(
+                                        destroyCronJob.url({
+                                            site: site.id,
+                                            cronJob: job.id,
+                                        }),
+                                        { preserveScroll: true },
+                                    )
+                                }
+                            />
+                        </ForgeListRow>
+                    ))
+                )}
+            </ForgeDividedCard>
+        </ForgePageContent>
     );
 }
 
@@ -2373,7 +2705,7 @@ export default function SiteShow({
     if (tab === 'ssl') {
         return (
             <>
-                <Head title={`${site.name} — SSL`} />
+                <Head title={`${site.name} — TLS`} />
                 <SslTab site={site} certificate={sslCertificate} />
             </>
         );

@@ -68,6 +68,30 @@ class SupervisorTest extends TestCase
         $this->assertDatabaseMissing('supervisor_processes', ['id' => $process->id]);
     }
 
+    public function test_custom_background_process_can_be_created(): void
+    {
+        $this->processFactory->willReturn(0, "example-com-worker RUNNING pid 1\n");
+
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+        $site = $this->createSite('app.example.com');
+
+        $response = $this->actingAs($user)->post(route('sites.supervisor.store', $site), [
+            'kind' => 'custom',
+            'name' => 'worker',
+            'command' => 'php artisan horizon',
+        ]);
+
+        $response->assertRedirect();
+
+        $this->assertDatabaseHas('supervisor_processes', [
+            'site_id' => $site->id,
+            'name' => 'worker',
+            'kind' => 'custom',
+            'command' => 'php artisan horizon',
+        ]);
+    }
+
     private function createSite(string $name): Site
     {
         $site = Site::factory()->laravel()->create([
