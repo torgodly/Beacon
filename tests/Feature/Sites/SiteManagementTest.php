@@ -158,6 +158,22 @@ class SiteManagementTest extends TestCase
         $this->assertDatabaseMissing('sites', ['name' => 'beacon.abdo.ly']);
     }
 
+    public function test_a_hostname_that_collides_with_a_reserved_fpm_pool_is_rejected(): void
+    {
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+        $this->installPhp('8.4');
+
+        $response = $this->actingAs($user)->post(route('sites.store'), [
+            'name' => 'beacon.panel',
+            'type' => 'laravel',
+            'php_version' => '8.4',
+        ]);
+
+        $response->assertSessionHasErrors('name');
+        $this->assertDatabaseMissing('sites', ['name' => 'beacon.panel']);
+    }
+
     public function test_index_only_offers_installed_runtimes(): void
     {
         $user = User::factory()->create();

@@ -8,6 +8,11 @@ PHPM=/usr/sbin/phpenmod
 POOL_DIR=/etc/php
 VERSION_RE='^8\.[1-4]$'
 EXT_RE='^[a-z0-9_]{1,32}$'
+SITE_USER="${BEACON_SITE_USER:-beacon}"
+PANEL_USER="${BEACON_PANEL_USER:-beacon-panel}"
+SITES_HOME="${BEACON_SITES_HOME:-/home/beacon}"
+LOG_ROOT="${BEACON_LOG_ROOT:-/var/log/beacon}/sites"
+RESERVED_POOLS='^(beacon-panel|www)$'
 
 die() { printf 'beacon-php: %s\n' "$*" >&2; exit 64; }
 
@@ -19,24 +24,89 @@ valid_ext() {
     [[ "${1:-}" =~ $EXT_RE ]] || die "invalid extension: ${1:-}"
 }
 
+valid_site_name() {
+    [[ "${1:-}" =~ ^[a-z0-9]([a-z0-9.-]{0,61}[a-z0-9])?$ ]] || die "invalid site name"
+}
+
+pool_name_for_site() {
+    printf '%s' "${1//./-}"
+}
+
+reserved_pool_name() {
+    local pool
+    pool="$(pool_name_for_site "$1")"
+    [[ "$pool" =~ $RESERVED_POOLS ]] && return 0
+    return 1
+}
+
+fpm_binary() {
+    local ver="$1"
+
+    if [[ -x "/usr/sbin/php-fpm${ver}" ]]; then
+        printf '/usr/sbin/php-fpm%s' "$ver"
+        return 0
+    fi
+
+    if command -v "php-fpm${ver}" >/dev/null 2>&1; then
+        command -v "php-fpm${ver}"
+        return 0
+    fi
+
+    die "php-fpm ${ver} binary not found"
+}
+
+fpm_test() {
+    local ver="$1"
+    local bin
+    bin="$(fpm_binary "$ver")"
+
+    if ! "$bin" -t >/dev/null 2>&1; then
+        printf 'beacon-php: invalid php-fpm %s configuration:\n' "$ver" >&2
+        "$bin" -t 2>&1 >&2 || true
+        die "refusing to reload php${ver}-fpm while configuration is invalid"
+    fi
+}
+
+ensure_site_pool_paths() {
+    local site="$1"
+    local site_home="${SITES_HOME}/${site}"
+
+    [[ -d "$site_home" ]] || die "site directory missing: ${site_home}"
+
+    [[ -d "${site_home}/storage/tmp" ]] \
+        || die "missing ${site_home}/storage/tmp — provision the site before writing its FPM pool"
+    [[ -d "${site_home}/storage/sessions" ]] \
+        || die "missing ${site_home}/storage/sessions — provision the site before writing its FPM pool"
+}
+
+ensure_site_log_file() {
+    local site="$1"
+
+    install -d -o "$SITE_USER" -g "$PANEL_USER" -m 0750 "$LOG_ROOT"
+    install -m 0640 -o "$SITE_USER" -g "$PANEL_USER" /dev/null "${LOG_ROOT}/${site}-php-error.log"
+}
+
 action="${1:-}"; shift || true
 
 case "$action" in
     pool-write)
         site="${1:-}"; ver="${2:-}"
         valid_version "$ver"
-        [[ "$site" =~ ^[a-z0-9]([a-z0-9.-]{0,61}[a-z0-9])?$ ]] || die "invalid site name"
-        target="$POOL_DIR/$ver/fpm/pool.d/${site//./-}.conf"
+        valid_site_name "$site"
+        reserved_pool_name "$site" && die "reserved pool name: $(pool_name_for_site "$site")"
+        ensure_site_pool_paths "$site"
+        target="$POOL_DIR/$ver/fpm/pool.d/$(pool_name_for_site "$site").conf"
         tmp="$(mktemp "$POOL_DIR/$ver/fpm/pool.d/.beacon-XXXXXX")"
         trap 'rm -f "$tmp"' EXIT
         cat > "$tmp"
         [[ -s "$tmp" ]] || die "empty pool configuration"
         mv -f "$tmp" "$target"; trap - EXIT
+        ensure_site_log_file "$site"
         ;;
     pool-delete)
         site="${1:-}"; ver="${2:-}"
         valid_version "$ver"
-        rm -f "$POOL_DIR/$ver/fpm/pool.d/${site//./-}.conf"
+        rm -f "$POOL_DIR/$ver/fpm/pool.d/$(pool_name_for_site "$site").conf"
         ;;
     ini-write)
         ver="${1:-}"; sapi="${2:-}"
@@ -61,11 +131,13 @@ case "$action" in
     fpm-reload)
         ver="${1:-}"
         valid_version "$ver"
+        fpm_test "$ver"
         "$SYSTEMCTL" reload "php${ver}-fpm"
         ;;
     fpm-restart)
         ver="${1:-}"
         valid_version "$ver"
+        fpm_test "$ver"
         "$SYSTEMCTL" restart "php${ver}-fpm"
         ;;
     *)

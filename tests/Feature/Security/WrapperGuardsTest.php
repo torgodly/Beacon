@@ -158,6 +158,15 @@ INI;
         $this->assertStringContainsString('invalid site name', $output);
     }
 
+    public function test_beacon_php_rejects_reserved_pool_names(): void
+    {
+        [$code, $output] = $this->runWrapper('php', ['pool-write', 'beacon.panel', '8.4'], '[beacon-panel]
+user = beacon');
+
+        $this->assertSame(64, $code);
+        $this->assertStringContainsString('reserved pool name', $output);
+    }
+
     public function test_beacon_php_rejects_invalid_version(): void
     {
         [$code, $output] = $this->runWrapper('php', ['pool-write', 'example.com', '7.4'], '[www]');

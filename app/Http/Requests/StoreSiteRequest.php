@@ -32,6 +32,16 @@ class StoreSiteRequest extends FormRequest
                     if ($hostname !== null && is_string($value) && strcasecmp($value, $hostname) === 0) {
                         $fail('That hostname is reserved for the Beacon panel.');
                     }
+
+                    if (! is_string($value)) {
+                        return;
+                    }
+
+                    $poolName = str_replace('.', '-', $value);
+
+                    if (in_array($poolName, ['beacon-panel', 'www'], true)) {
+                        $fail('That hostname would conflict with a reserved PHP-FPM pool name.');
+                    }
                 },
             ],
             'type' => ['required', Rule::in(['laravel', 'nextjs', 'nuxt', 'static'])],

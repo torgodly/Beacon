@@ -1180,11 +1180,33 @@ configure_panel_runtime() {
         < "${deploy_dir}/php/beacon-panel.pool.conf" \
         > "/etc/php/${PANEL_PHP}/fpm/pool.d/beacon-panel.conf"
 
+    if grep -q '\${PANEL' "/etc/php/${PANEL_PHP}/fpm/pool.d/beacon-panel.conf"; then
+        echo "ERROR: envsubst left unexpanded variables in beacon-panel FPM pool." >&2
+        echo "       Check that PANEL_PHP and PANEL_CURRENT are set." >&2
+        exit 1
+    fi
+
     envsubst '${PANEL_PHP} ${PANEL_CURRENT}' \
         < "${deploy_dir}/supervisor/beacon-panel-worker.conf" \
         > /etc/supervisor/conf.d/beacon-panel-worker.conf
 
     nginx -t
+
+    local fpm_bin="/usr/sbin/php-fpm${PANEL_PHP}"
+    if [[ ! -x "$fpm_bin" ]]; then
+        fpm_bin="$(command -v "php-fpm${PANEL_PHP}" 2>/dev/null || true)"
+    fi
+
+    if [[ -n "$fpm_bin" && -x "$fpm_bin" ]]; then
+        if ! "$fpm_bin" -t; then
+            echo "ERROR: php-fpm configuration is invalid — the panel cannot start." >&2
+            echo "       Diagnose: journalctl -xeu php${PANEL_PHP}-fpm.service" >&2
+            echo "       List pools: ls -la /etc/php/${PANEL_PHP}/fpm/pool.d/" >&2
+            echo "       Quick recovery: move aside a broken site pool, then restart php-fpm." >&2
+            exit 1
+        fi
+    fi
+
     systemctl enable "php${PANEL_PHP}-fpm" nginx redis-server supervisor 2>/dev/null || true
     systemctl restart "php${PANEL_PHP}-fpm" nginx redis-server supervisor
 
