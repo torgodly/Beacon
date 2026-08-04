@@ -20,6 +20,7 @@ class HealthCheckService
 
         if (config('beacon.health.strict', false)) {
             $issues = [...$issues, ...$this->hostChecks()];
+            $issues = [...$issues, ...$this->nginxGlobalChecks()];
             $issues = [...$issues, ...$this->provisionedRuntimeChecks()];
         }
 
@@ -164,6 +165,36 @@ class HealthCheckService
         }
 
         return $issues;
+    }
+
+    /**
+     * @return list<array{severity: string, message: string}>
+     */
+    private function nginxGlobalChecks(): array
+    {
+        if (app()->environment('testing')) {
+            return [];
+        }
+
+        $path = '/etc/nginx/conf.d/beacon-global.conf';
+
+        if (! is_readable($path)) {
+            return [[
+                'severity' => 'critical',
+                'message' => 'Missing /etc/nginx/conf.d/beacon-global.conf — full page loads may 502 with "upstream sent too big header". Re-run install.sh or deploy a current panel release.',
+            ]];
+        }
+
+        $contents = (string) file_get_contents($path);
+
+        if (! preg_match('/^\s*fastcgi_buffer_size\s+32k\s*;/m', $contents)) {
+            return [[
+                'severity' => 'critical',
+                'message' => 'nginx fastcgi_buffer_size is not 32k in beacon-global.conf — the site detail page can 502 on refresh. Re-run install.sh or update the panel.',
+            ]];
+        }
+
+        return [];
     }
 
     /**

@@ -28,6 +28,21 @@ restart_runtime() {
     fi
 }
 
+sync_nginx_configs() {
+    local deploy_dir="${ROOT}/current/deploy/nginx"
+    local nginx_test="${NGINX:-/usr/sbin/nginx}"
+
+    [[ -f "${deploy_dir}/beacon-global.conf" ]] || return 0
+
+    install -m 0644 "${deploy_dir}/beacon-global.conf" /etc/nginx/conf.d/beacon-global.conf
+
+    if "$nginx_test" -t >/dev/null 2>&1; then
+        "$SYSTEMCTL" reload nginx
+    else
+        printf 'beacon-update: WARN: nginx config test failed after syncing beacon-global.conf\n' >&2
+    fi
+}
+
 promote_release() {
     local target="$1"
     ln -sfn "$target" "${ROOT}/current.new"
@@ -128,6 +143,7 @@ case "$action" in
         chmod -R a+rX,go-w "$rel"
 
         promote_release "$rel"
+        sync_nginx_configs
         restart_runtime
 
         ok=0
@@ -172,6 +188,7 @@ case "$action" in
         fi
 
         promote_release "$target"
+        sync_nginx_configs
         restart_runtime
         ;;
 

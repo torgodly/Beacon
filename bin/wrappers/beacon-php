@@ -58,6 +58,11 @@ case "$action" in
         valid_version "$ver"; valid_ext "$ext"
         "$PHPE" -v "$ver" -s ALL "$ext"
         ;;
+    fpm-reload)
+        ver="${1:-}"
+        valid_version "$ver"
+        "$SYSTEMCTL" reload "php${ver}-fpm"
+        ;;
     fpm-restart)
         ver="${1:-}"
         valid_version "$ver"

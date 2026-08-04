@@ -139,6 +139,25 @@ class SiteManagementTest extends TestCase
         $this->assertDatabaseMissing('sites', ['name' => 'spa.example.com']);
     }
 
+    public function test_the_panel_hostname_cannot_be_used_as_a_site_name(): void
+    {
+        $user = User::factory()->create();
+        Server::factory()->create([
+            'id' => 1,
+            'panel_domain' => 'beacon.abdo.ly',
+        ]);
+        $this->installPhp('8.4');
+
+        $response = $this->actingAs($user)->post(route('sites.store'), [
+            'name' => 'beacon.abdo.ly',
+            'type' => 'laravel',
+            'php_version' => '8.4',
+        ]);
+
+        $response->assertSessionHasErrors('name');
+        $this->assertDatabaseMissing('sites', ['name' => 'beacon.abdo.ly']);
+    }
+
     public function test_index_only_offers_installed_runtimes(): void
     {
         $user = User::factory()->create();

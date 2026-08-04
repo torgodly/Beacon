@@ -41,7 +41,7 @@ class PhpPoolWriter
             throw new RuntimeException("Could not write PHP pool: {$result->errorOutput()}");
         }
 
-        $this->runner->sudoRoot(SudoWrapper::Php, ['fpm-restart', $site->php_version], timeout: 120);
+        $this->runner->sudoRoot(SudoWrapper::Php, ['fpm-reload', $site->php_version], timeout: 120);
     }
 
     public function delete(Site $site): void
@@ -55,7 +55,7 @@ class PhpPoolWriter
             ['pool-delete', $site->name, $site->php_version],
         );
 
-        $this->runner->sudoRoot(SudoWrapper::Php, ['fpm-restart', $site->php_version], timeout: 120);
+        $this->runner->sudoRoot(SudoWrapper::Php, ['fpm-reload', $site->php_version], timeout: 120);
     }
 
     private function extraOpenBasedirPaths(Site $site): string

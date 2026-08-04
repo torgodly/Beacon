@@ -171,7 +171,7 @@ class Server extends Model
      */
     public function panelBaseUrl(): string
     {
-        $domain = $this->normalizedPanelDomain();
+        $domain = $this->panelHostname();
 
         if ($domain !== null) {
             $portSuffix = in_array($this->panel_port, [80, 443], true)
@@ -188,6 +188,11 @@ class Server extends Model
         }
 
         return "https://{$this->public_ip}:{$this->panel_port}";
+    }
+
+    public function panelHostname(): ?string
+    {
+        return $this->normalizedPanelDomain();
     }
 
     private function isValidAbsoluteUrl(string $url): bool

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Server;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -25,6 +26,13 @@ class StoreSiteRequest extends FormRequest
                 'regex:/^[a-z0-9]([a-z0-9.-]{0,61}[a-z0-9])?$/',
                 Rule::unique('sites', 'name'),
                 'not_regex:/\.\./',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    $hostname = Server::current()->panelHostname();
+
+                    if ($hostname !== null && is_string($value) && strcasecmp($value, $hostname) === 0) {
+                        $fail('That hostname is reserved for the Beacon panel.');
+                    }
+                },
             ],
             'type' => ['required', Rule::in(['laravel', 'nextjs', 'nuxt', 'static'])],
 
