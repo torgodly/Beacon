@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { getPortalContainer } from '@/lib/portal-container';
 import { cn } from '@/lib/utils';
 
 export type SearchableComboboxOption = {
@@ -151,7 +152,7 @@ export function SearchableCombobox({
             top: rect.bottom + 4,
             left: rect.left,
             width: rect.width,
-            zIndex: 80,
+            zIndex: 100,
         });
     }
 
@@ -276,7 +277,7 @@ export function SearchableCombobox({
             </div>
 
             {portalled && menu && typeof document !== 'undefined'
-                ? createPortal(menu, document.body)
+                ? createPortal(menu, getPortalContainer())
                 : null}
         </>
     );
