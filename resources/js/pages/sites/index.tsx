@@ -6,7 +6,7 @@ import {
     MoreHorizontal,
     Plus,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
     ForgeDividedCard,
     ForgeListRow,
@@ -25,6 +25,10 @@ import {
     ForgeEmptyState,
 } from '@/components/forge/forge-empty-state';
 import InputError from '@/components/input-error';
+import {
+    SearchableCombobox,
+    type SearchableComboboxOption,
+} from '@/components/searchable-combobox';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -49,7 +53,20 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import {
+    branches as githubBranchRoute,
+    remoteBranches as githubRemoteBranchRoute,
+    repositories as githubRepositoryRoute,
+} from '@/routes/github';
 import { index as sitesIndex, show, store } from '@/routes/sites';
+
+type GitHubRepositoryOption = {
+    id: number;
+    full_name: string;
+    clone_url: string;
+    ssh_url: string;
+    default_branch: string | null;
+};
 
 type SiteRow = {
     id: string;
@@ -89,12 +106,14 @@ export default function SitesIndex({
     phpVersions,
     nodeVersions,
     packageManager,
+    github,
 }: {
     sites: SiteRow[];
     siteTypes: SiteTypeOption[];
     phpVersions: RuntimeOption[];
     nodeVersions: RuntimeOption[];
     packageManager: string;
+    github: { connected: boolean };
 }) {
     const [createOpen, setCreateOpen] = useState(false);
     const [siteType, setSiteType] = useState('laravel');
@@ -117,7 +136,196 @@ export default function SitesIndex({
     const [webDirectory, setWebDirectory] = useState('');
     const [spaFallback, setSpaFallback] = useState(true);
     const [repository, setRepository] = useState('');
-    const [repositoryBranch, setRepositoryBranch] = useState('main');
+    const [repositoryBranch, setRepositoryBranch] = useState('');
+    const [githubRepoId, setGithubRepoId] = useState<number | null>(null);
+    const [githubRepositories, setGithubRepositories] = useState<
+        GitHubRepositoryOption[]
+    >([]);
+    const [repoLoading, setRepoLoading] = useState(false);
+    const [branchLoading, setBranchLoading] = useState(false);
+    const [branches, setBranches] = useState<string[]>([]);
+
+    const repositoryOptions = useMemo<SearchableComboboxOption[]>(
+        () =>
+            githubRepositories.map((repo) => ({
+                value: repo.full_name,
+                label: repo.full_name,
+                description: repo.default_branch
+                    ? `Default: ${repo.default_branch}`
+                    : undefined,
+            })),
+        [githubRepositories],
+    );
+
+    const branchOptions = useMemo<SearchableComboboxOption[]>(
+        () =>
+            branches.map((branch) => ({
+                value: branch,
+                label: branch,
+            })),
+        [branches],
+    );
+
+    useEffect(() => {
+        if (!createOpen || !github.connected) {
+            return;
+        }
+
+        let cancelled = false;
+
+        async function loadRepositories() {
+            setRepoLoading(true);
+
+            try {
+                const response = await fetch(githubRepositoryRoute.url(), {
+                    headers: { Accept: 'application/json' },
+                });
+
+                if (!response.ok || cancelled) {
+                    return;
+                }
+
+                const data = (await response.json()) as {
+                    repositories: GitHubRepositoryOption[];
+                };
+
+                setGithubRepositories(data.repositories);
+            } finally {
+                if (!cancelled) {
+                    setRepoLoading(false);
+                }
+            }
+        }
+
+        void loadRepositories();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [createOpen, github.connected]);
+
+    useEffect(() => {
+        const trimmed = repository.trim();
+
+        if (!createOpen || trimmed === '') {
+            setBranches([]);
+            return;
+        }
+
+        let cancelled = false;
+        const timeout = window.setTimeout(async () => {
+            setBranchLoading(true);
+
+            try {
+                if (
+                    github.connected &&
+                    githubRepoId !== null &&
+                    trimmed.includes('/')
+                ) {
+                    const [owner, repo] = trimmed.split('/');
+                    const response = await fetch(
+                        githubBranchRoute.url({ owner, repo }),
+                        { headers: { Accept: 'application/json' } },
+                    );
+
+                    if (!response.ok || cancelled) {
+                        return;
+                    }
+
+                    const data = (await response.json()) as {
+                        branches: Array<{ name: string }>;
+                    };
+
+                    const names = data.branches.map((branch) => branch.name);
+                    setBranches(names);
+
+                    if (names.length > 0) {
+                        setRepositoryBranch((current) => {
+                            if (current && names.includes(current)) {
+                                return current;
+                            }
+
+                            const selected = githubRepositories.find(
+                                (entry) => entry.full_name === trimmed,
+                            );
+
+                            if (
+                                selected?.default_branch &&
+                                names.includes(selected.default_branch)
+                            ) {
+                                return selected.default_branch;
+                            }
+
+                            return names.includes('main')
+                                ? 'main'
+                                : names.includes('master')
+                                  ? 'master'
+                                  : names[0];
+                        });
+                    }
+
+                    return;
+                }
+
+                const response = await fetch(
+                    githubRemoteBranchRoute.url({
+                        query: { repository: trimmed },
+                    }),
+                    { headers: { Accept: 'application/json' } },
+                );
+
+                if (!response.ok || cancelled) {
+                    return;
+                }
+
+                const data = (await response.json()) as {
+                    branches: Array<{ name: string }>;
+                };
+
+                const names = data.branches.map((branch) => branch.name);
+                setBranches(names);
+
+                if (names.length > 0) {
+                    setRepositoryBranch((current) => {
+                        if (current && names.includes(current)) {
+                            return current;
+                        }
+
+                        return names.includes('main')
+                            ? 'main'
+                            : names.includes('master')
+                              ? 'master'
+                              : names[0];
+                    });
+                }
+            } finally {
+                if (!cancelled) {
+                    setBranchLoading(false);
+                }
+            }
+        }, 400);
+
+        return () => {
+            cancelled = true;
+            window.clearTimeout(timeout);
+        };
+    }, [createOpen, github.connected, githubRepoId, repository]);
+
+    function handleRepositoryChange(value: string) {
+        setRepository(value);
+
+        const selected = githubRepositories.find(
+            (entry) => entry.full_name === value,
+        );
+
+        setGithubRepoId(selected?.id ?? null);
+
+        if (selected?.default_branch) {
+            setRepositoryBranch(selected.default_branch);
+        } else {
+            setRepositoryBranch('');
+        }
+    }
 
     // Reset the document root whenever the type changes so the placeholder
     // always reflects the default that type will actually get.
@@ -234,23 +442,67 @@ export default function SitesIndex({
                                                     htmlFor="repository"
                                                     label="Git repository"
                                                     error={errors.repository}
-                                                    help="HTTPS or SSH URL — e.g. git@github.com:org/app.git"
+                                                    help={
+                                                        github.connected
+                                                            ? 'Search your GitHub repositories or paste a URL.'
+                                                            : 'HTTPS or SSH URL — e.g. git@github.com:org/app.git'
+                                                    }
                                                 >
-                                                    <Input
-                                                        id="repository"
-                                                        name="repository"
-                                                        mono
-                                                        autoComplete="off"
-                                                        spellCheck={false}
-                                                        placeholder="git@github.com:org/app.git"
-                                                        value={repository}
-                                                        onChange={(event) =>
-                                                            setRepository(
-                                                                event.target
-                                                                    .value,
-                                                            )
-                                                        }
-                                                    />
+                                                    {github.connected ? (
+                                                        <>
+                                                            <SearchableCombobox
+                                                                id="repository"
+                                                                name="repository"
+                                                                value={repository}
+                                                                onValueChange={
+                                                                    handleRepositoryChange
+                                                                }
+                                                                options={
+                                                                    repositoryOptions
+                                                                }
+                                                                loading={
+                                                                    repoLoading
+                                                                }
+                                                                mono
+                                                                placeholder="Search repositories…"
+                                                            />
+                                                            {githubRepoId !==
+                                                                null && (
+                                                                <>
+                                                                    <input
+                                                                        type="hidden"
+                                                                        name="github_repo_id"
+                                                                        value={
+                                                                            githubRepoId
+                                                                        }
+                                                                    />
+                                                                    <input
+                                                                        type="hidden"
+                                                                        name="github_repository"
+                                                                        value={
+                                                                            repository
+                                                                        }
+                                                                    />
+                                                                </>
+                                                            )}
+                                                        </>
+                                                    ) : (
+                                                        <Input
+                                                            id="repository"
+                                                            name="repository"
+                                                            mono
+                                                            autoComplete="off"
+                                                            spellCheck={false}
+                                                            placeholder="git@github.com:org/app.git"
+                                                            value={repository}
+                                                            onChange={(event) =>
+                                                                setRepository(
+                                                                    event.target
+                                                                        .value,
+                                                                )
+                                                            }
+                                                        />
+                                                    )}
                                                 </Field>
 
                                                 <Field
@@ -259,25 +511,59 @@ export default function SitesIndex({
                                                     error={
                                                         errors.repository_branch
                                                     }
+                                                    help={
+                                                        branchLoading
+                                                            ? 'Fetching branches…'
+                                                            : branches.length >
+                                                                0
+                                                              ? `${branches.length} branches available`
+                                                              : undefined
+                                                    }
                                                 >
-                                                    <Input
-                                                        id="repository_branch"
-                                                        name="repository_branch"
-                                                        mono
-                                                        autoComplete="off"
-                                                        spellCheck={false}
-                                                        placeholder="main"
-                                                        value={repositoryBranch}
-                                                        onChange={(event) =>
-                                                            setRepositoryBranch(
-                                                                event.target
-                                                                    .value,
-                                                            )
-                                                        }
-                                                        disabled={
-                                                            !repository.trim()
-                                                        }
-                                                    />
+                                                    {branches.length > 0 ? (
+                                                        <SearchableCombobox
+                                                            id="repository_branch"
+                                                            name="repository_branch"
+                                                            value={
+                                                                repositoryBranch
+                                                            }
+                                                            onValueChange={
+                                                                setRepositoryBranch
+                                                            }
+                                                            options={
+                                                                branchOptions
+                                                            }
+                                                            loading={
+                                                                branchLoading
+                                                            }
+                                                            mono
+                                                            placeholder="Select branch"
+                                                            disabled={
+                                                                !repository.trim()
+                                                            }
+                                                        />
+                                                    ) : (
+                                                        <Input
+                                                            id="repository_branch"
+                                                            name="repository_branch"
+                                                            mono
+                                                            autoComplete="off"
+                                                            spellCheck={false}
+                                                            placeholder="main"
+                                                            value={
+                                                                repositoryBranch
+                                                            }
+                                                            onChange={(event) =>
+                                                                setRepositoryBranch(
+                                                                    event.target
+                                                                        .value,
+                                                                )
+                                                            }
+                                                            disabled={
+                                                                !repository.trim()
+                                                            }
+                                                        />
+                                                    )}
                                                 </Field>
                                             </div>
 

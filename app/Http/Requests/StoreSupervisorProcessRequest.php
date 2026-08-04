@@ -28,6 +28,8 @@ class StoreSupervisorProcessRequest extends FormRequest
             'stop_wait_secs' => ['nullable', 'integer', 'min:90', 'max:7200'],
             'sleep' => ['nullable', 'integer', 'min:1', 'max:60'],
             'max_time' => ['nullable', 'integer', 'min:60', 'max:86400'],
+            'backoff' => ['nullable', 'integer', 'min:0', 'max:3600'],
+            'rest' => ['nullable', 'integer', 'min:0', 'max:3600'],
             'autostart' => ['nullable', 'boolean'],
             'autorestart' => ['nullable', 'boolean'],
         ];

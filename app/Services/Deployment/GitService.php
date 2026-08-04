@@ -64,6 +64,59 @@ class GitService
         }
     }
 
+    /**
+     * @return list<string>
+     */
+    public function listRemoteBranches(string $repository): array
+    {
+        $url = $this->normalizeRepositoryUrl($repository);
+        $sitesHome = rtrim((string) config('beacon.paths.sites_home'), '/');
+
+        $result = $this->runner->asSite(
+            argv: ['/usr/bin/git', 'ls-remote', '--heads', $url],
+            cwd: $sitesHome,
+            env: ['GIT_TERMINAL_PROMPT' => '0'],
+            timeout: 30,
+        );
+
+        if ($result->failed()) {
+            throw new RuntimeException(
+                trim($result->errorOutput()) ?: 'Could not list remote branches.',
+            );
+        }
+
+        $branches = [];
+
+        foreach (explode("\n", trim($result->output())) as $line) {
+            if ($line === '') {
+                continue;
+            }
+
+            if (preg_match('#refs/heads/(.+)$#', $line, $matches) === 1) {
+                $branches[] = $matches[1];
+            }
+        }
+
+        sort($branches);
+
+        return $branches;
+    }
+
+    public function normalizeRepositoryUrl(string $repository): string
+    {
+        $repository = trim($repository);
+
+        if (
+            ! str_contains($repository, '://')
+            && str_contains($repository, '/')
+            && ! str_starts_with($repository, 'git@')
+        ) {
+            return "https://github.com/{$repository}.git";
+        }
+
+        return $repository;
+    }
+
     public function remoteHead(Site $site): ?string
     {
         if (blank($site->repository)) {
@@ -73,7 +126,7 @@ class GitService
         $branch = $site->repository_branch ?: 'main';
 
         $result = $this->runner->asSite(
-            argv: ['/usr/bin/git', 'ls-remote', $this->repositoryUrl($site), "refs/heads/{$branch}"],
+            argv: ['/usr/bin/git', 'ls-remote', $this->normalizeRepositoryUrl((string) $site->repository), "refs/heads/{$branch}"],
             cwd: $site->path,
             env: $this->gitEnvironment($site),
             timeout: 60,
@@ -120,17 +173,7 @@ class GitService
 
     public function repositoryUrl(Site $site): string
     {
-        $repository = trim((string) $site->repository);
-
-        if (
-            $site->repository_provider === 'github'
-            && ! str_contains($repository, '://')
-            && str_contains($repository, '/')
-        ) {
-            return "https://github.com/{$repository}.git";
-        }
-
-        return $repository;
+        return $this->normalizeRepositoryUrl((string) $site->repository);
     }
 
     /**

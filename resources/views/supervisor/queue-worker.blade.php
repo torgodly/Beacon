@@ -1,7 +1,24 @@
+@php
+    $phpBinary = '/usr/bin/php'.($site->php_version ?? config('beacon.sites.default_php_version', '8.4'));
+    $command = $phpBinary.' '.$site->path.'/artisan queue:work '.$process->connection
+        .' --queue='.$process->queue
+        .' --sleep='.$process->sleep
+        .' --tries='.$process->tries
+        .' --max-time='.$process->max_time
+        .' --timeout='.$process->job_timeout;
+
+    if ($process->backoff !== null) {
+        $command .= ' --backoff='.$process->backoff;
+    }
+
+    if ($process->rest !== null) {
+        $command .= ' --rest='.$process->rest;
+    }
+@endphp
 ; ─── Managed by Beacon — do not edit by hand ───
 [program:{{ $process->program_name }}]
 process_name    = %(program_name)s_%(process_num)02d
-command         = /usr/bin/php{{ $site->php_version ?? config('beacon.sites.default_php_version', '8.4') }} {{ $site->path }}/artisan queue:work {{ $process->connection }} --queue={{ $process->queue }} --sleep={{ $process->sleep }} --tries={{ $process->tries }} --max-time={{ $process->max_time }} --timeout={{ $process->job_timeout }}
+command         = {{ $command }}
 directory       = {{ $site->path }}
 user            = beacon
 numprocs        = {{ $process->numprocs }}

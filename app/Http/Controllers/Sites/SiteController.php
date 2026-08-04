@@ -110,13 +110,35 @@ class SiteController extends Controller
             'phpVersions' => $installedPhp,
             'nodeVersions' => $installedNode,
             'packageManager' => $server->default_package_manager,
+            'github' => [
+                'connected' => GithubInstallation::query()
+                    ->where('user_id', auth()->id())
+                    ->whereNotNull('installation_id')
+                    ->exists(),
+            ],
         ]);
     }
 
     public function store(StoreSiteRequest $request, CreateSite $createSite): RedirectResponse
     {
+        $data = $request->siteData();
+
+        if ($request->filled('github_repo_id') && $request->filled('github_repository')) {
+            $installation = GithubInstallation::query()
+                ->where('user_id', $request->user()->id)
+                ->whereNotNull('installation_id')
+                ->first();
+
+            if ($installation !== null) {
+                $data['github_installation_id'] = $installation->id;
+                $data['github_repo_id'] = (int) $request->input('github_repo_id');
+                $data['repository'] = (string) $request->input('github_repository');
+                $data['repository_provider'] = 'github';
+            }
+        }
+
         try {
-            $site = $createSite->handle($request->siteData());
+            $site = $createSite->handle($data);
         } catch (RuntimeException $e) {
             return back()->withErrors(['name' => $e->getMessage()]);
         }
@@ -250,6 +272,28 @@ class SiteController extends Controller
                 ->orderBy('name')
                 ->get()
                 ->map(fn (SupervisorProcess $process): array => SupervisorController::processPayload($process));
+        }
+
+        if ($tab === 'supervisor' && $runtimeOptions === null) {
+            $server = Server::current();
+
+            $runtimeOptions = [
+                'php_versions' => PhpVersion::query()
+                    ->where('server_id', $server->id)
+                    ->where('status', 'installed')
+                    ->orderByDesc('version')
+                    ->pluck('version')
+                    ->values()
+                    ->all(),
+                'node_versions' => NodeVersion::query()
+                    ->where('server_id', $server->id)
+                    ->where('runtime', 'node')
+                    ->where('status', 'installed')
+                    ->orderByDesc('version')
+                    ->pluck('version')
+                    ->values()
+                    ->all(),
+            ];
         }
 
         if ($tab === 'cron' || $tab === 'overview') {

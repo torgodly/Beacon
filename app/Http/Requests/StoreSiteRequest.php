@@ -61,6 +61,13 @@ class StoreSiteRequest extends FormRequest
                 'max:255',
                 'required_with:repository',
             ],
+            'github_repo_id' => ['nullable', 'integer'],
+            'github_repository' => [
+                'nullable',
+                'string',
+                'max:500',
+                'required_with:github_repo_id',
+            ],
         ];
     }
 

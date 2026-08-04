@@ -27,14 +27,17 @@ class CreateSite
     ) {}
 
     /**
-     * @param  array{name: string, type: string, php_version?: string|null, node_version?: string|null, spa_fallback?: bool, web_directory?: string|null, package_manager?: string|null, client_max_body_size?: string|null, repository?: string|null, repository_branch?: string|null}  $data
+     * @param  array{name: string, type: string, php_version?: string|null, node_version?: string|null, spa_fallback?: bool, web_directory?: string|null, package_manager?: string|null, client_max_body_size?: string|null, repository?: string|null, repository_branch?: string|null, repository_provider?: string|null, github_installation_id?: int|null, github_repo_id?: int|null}  $data
      */
     public function handle(array $data): Site
     {
         $server = Server::current();
         $repository = filled($data['repository'] ?? null) ? $data['repository'] : null;
+        $repositoryProvider = $repository !== null
+            ? ($data['repository_provider'] ?? 'custom')
+            : null;
 
-        return DB::transaction(function () use ($data, $server, $repository): Site {
+        return DB::transaction(function () use ($data, $server, $repository, $repositoryProvider): Site {
             $site = Site::query()->create([
                 'server_id' => $server->id,
                 'name' => $data['name'],
@@ -49,9 +52,15 @@ class CreateSite
                 'client_max_body_size' => $data['client_max_body_size'] ?? '100M',
                 'repository' => $repository,
                 'repository_branch' => $repository !== null
-                    ? ($data['repository_branch'] ?? 'main')
+                    ? ($data['repository_branch'] ?? null)
                     : null,
-                'repository_provider' => $repository !== null ? 'custom' : null,
+                'repository_provider' => $repositoryProvider,
+                'github_installation_id' => $repositoryProvider === 'github'
+                    ? ($data['github_installation_id'] ?? null)
+                    : null,
+                'github_repo_id' => $repositoryProvider === 'github'
+                    ? ($data['github_repo_id'] ?? null)
+                    : null,
                 'deploy_script' => null,
                 'status' => 'provisioning',
             ]);

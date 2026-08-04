@@ -14,6 +14,7 @@ use App\Http\Controllers\Sites\CronController;
 use App\Http\Controllers\Sites\DeploymentController;
 use App\Http\Controllers\Sites\DomainController;
 use App\Http\Controllers\Sites\EnvironmentController;
+use App\Http\Controllers\Sites\GitHubBrowseController;
 use App\Http\Controllers\Sites\SiteController;
 use App\Http\Controllers\Sites\SiteGitHubController;
 use App\Http\Controllers\Sites\SiteRuntimeController;
@@ -42,6 +43,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('sites', [SiteController::class, 'index'])->name('sites.index');
     Route::post('sites', [SiteController::class, 'store'])->name('sites.store');
+    Route::get('github/repositories', [GitHubBrowseController::class, 'repositories'])->name('github.repositories');
+    Route::get('github/repositories/{owner}/{repo}/branches', [GitHubBrowseController::class, 'branches'])->name('github.branches');
+    Route::get('github/remote-branches', [GitHubBrowseController::class, 'remoteBranches'])->name('github.remote-branches');
     Route::get('sites/{site:name}', [SiteController::class, 'show'])->name('sites.show');
     Route::patch('sites/{site:name}/nginx', [SiteController::class, 'updateNginx'])
         ->middleware(RequirePassword::class)
