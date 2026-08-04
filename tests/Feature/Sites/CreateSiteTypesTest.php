@@ -90,6 +90,25 @@ class CreateSiteTypesTest extends TestCase
         $this->assertCommandRun(['/bin/chmod', '0700', '/home/beacon/app.example.com/storage/sessions']);
     }
 
+    public function test_laravel_site_defers_fpm_reload_until_the_request_terminates(): void
+    {
+        $this->create([
+            'name' => 'deferred.example.com',
+            'type' => 'laravel',
+            'php_version' => '8.4',
+        ]);
+
+        $this->assertNoCommandMatching('fpm-reload');
+
+        $this->app->terminate();
+
+        $reload = collect($this->processFactory->calls)->first(
+            fn (array $call): bool => in_array('fpm-reload', $call['command'], true),
+        );
+
+        $this->assertNotNull($reload, 'fpm-reload should run after the HTTP response is sent');
+    }
+
     /**
      * @return array<string, array{string}>
      */

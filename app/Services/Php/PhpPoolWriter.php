@@ -10,6 +10,9 @@ use RuntimeException;
 
 class PhpPoolWriter
 {
+    /** @var array<string, true> */
+    private array $pendingReloads = [];
+
     public function __construct(private readonly ProcessRunner $runner) {}
 
     public function write(Site $site): void
@@ -45,7 +48,7 @@ class PhpPoolWriter
             throw new RuntimeException("Could not write PHP pool: {$result->errorOutput()}");
         }
 
-        $this->runner->sudoRoot(SudoWrapper::Php, ['fpm-reload', $site->php_version], timeout: 120);
+        $this->scheduleFpmReload((string) $site->php_version);
     }
 
     public function delete(Site $site): void
@@ -59,7 +62,29 @@ class PhpPoolWriter
             ['pool-delete', $site->name, $site->php_version],
         );
 
-        $this->runner->sudoRoot(SudoWrapper::Php, ['fpm-reload', $site->php_version], timeout: 120);
+        $this->scheduleFpmReload((string) $site->php_version);
+    }
+
+    /**
+     * Reload after the HTTP response is sent.
+     *
+     * The panel itself runs inside php-fpm. Reloading the master from inside a
+     * panel request recycles workers and can kill the worker handling the
+     * create-site POST — nginx answers 502, the DB transaction rolls back, and
+     * the operator sees a broken panel that "fixes itself" on refresh.
+     */
+    private function scheduleFpmReload(string $version): void
+    {
+        if (isset($this->pendingReloads[$version])) {
+            return;
+        }
+
+        $this->pendingReloads[$version] = true;
+
+        app()->terminating(function () use ($version): void {
+            $this->runner->sudoRoot(SudoWrapper::Php, ['fpm-reload', $version], timeout: 120);
+            unset($this->pendingReloads[$version]);
+        });
     }
 
     private function extraOpenBasedirPaths(Site $site): string
