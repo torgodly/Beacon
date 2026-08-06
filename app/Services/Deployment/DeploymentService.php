@@ -319,9 +319,12 @@ BASH;
             $ssr = $supervisor->syncSsrProcess($site, autostart: true);
 
             if ($ssr !== null) {
-                $stream->append("Starting {$ssr->program_name}…\n");
+                $stream->append("Restarting {$ssr->program_name}…\n");
 
                 try {
+                    // Always restart after a deploy — ensureRunning alone leaves a
+                    // still-RUNNING Next/Nuxt process serving the previous build.
+                    $supervisor->restart($ssr);
                     $supervisor->ensureRunning($ssr);
                     $status = $ssr->fresh()?->status ?? 'unknown';
                     $stream->append("  → {$status}\n");
