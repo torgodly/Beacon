@@ -224,7 +224,7 @@ class SupervisorService
         $this->control($process, 'restart', fallbackToStart: true);
     }
 
-    public function ensureRunning(SupervisorProcess $process): void
+    public function ensureRunning(SupervisorProcess $process, int $timeoutSeconds = 20): void
     {
         $this->refreshStatus($process);
         $process->refresh();
@@ -234,15 +234,54 @@ class SupervisorService
         }
 
         $this->start($process);
-        $process->refresh();
 
-        if (! in_array($process->status, ['running', 'starting'], true)) {
-            $detail = trim((string) $process->status_message);
+        $deadline = microtime(true) + $timeoutSeconds;
 
-            throw new RuntimeException(
-                $detail !== '' ? $detail : 'Process is not running.',
-            );
+        while (microtime(true) < $deadline) {
+            usleep(500_000);
+            $this->refreshStatus($process);
+            $process->refresh();
+
+            if (in_array($process->status, ['running', 'starting'], true)) {
+                return;
+            }
         }
+
+        $detail = trim((string) $process->status_message);
+        $logTail = $this->readLogTail($process->log_path);
+        $message = $detail !== '' ? $detail : 'Process is not running.';
+
+        if ($logTail !== '') {
+            $message .= "\n\nLast log lines:\n{$logTail}";
+        }
+
+        throw new RuntimeException($message);
+    }
+
+    private function readLogTail(?string $path, int $maxBytes = 4096): string
+    {
+        if ($path === null || $path === '' || ! is_readable($path)) {
+            return '';
+        }
+
+        $size = filesize($path);
+
+        if ($size === false || $size === 0) {
+            return '';
+        }
+
+        $handle = fopen($path, 'rb');
+
+        if ($handle === false) {
+            return '';
+        }
+
+        $offset = max(0, $size - $maxBytes);
+        fseek($handle, $offset);
+        $tail = stream_get_contents($handle);
+        fclose($handle);
+
+        return trim((string) $tail);
     }
 
     public function restartAllForSite(Site $site, ?OutputStream $stream = null): void

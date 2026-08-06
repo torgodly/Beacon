@@ -106,18 +106,13 @@ class SsrProcessTest extends TestCase
         $this->assertStringContainsString('exec "$BEACON_NODE" .output/server/index.mjs', $nuxt);
     }
 
-    public function test_launcher_sources_site_env_files_before_exec(): void
+    public function test_launcher_starts_with_shebang_and_lets_node_load_env(): void
     {
         $script = app(SsrLauncher::class)->script($this->createSite('nextjs'));
 
-        $envBlock = strpos($script, 'load_env_file .env');
-        $execLine = strpos($script, 'exec ');
-
-        $this->assertNotFalse($envBlock);
-        $this->assertNotFalse($execLine);
-        $this->assertLessThan($execLine, $envBlock, 'Env files must load before exec.');
-        $this->assertStringContainsString('load_env_file .env.local', $script);
-        $this->assertStringContainsString('load_env_file .env.production', $script);
+        $this->assertSame('#!', substr($script, 0, 2));
+        $this->assertStringNotContainsString('load_env_file', $script);
+        $this->assertStringContainsString('Next.js / Nuxt load .env', $script);
     }
 
     private function createSite(string $type, string $name = 'app.example.com'): Site

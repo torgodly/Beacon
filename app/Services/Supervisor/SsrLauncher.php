@@ -72,38 +72,24 @@ class SsrLauncher
             : 'exec "$BEACON_NODE" .output/server/index.mjs';
 
         return <<<BASH
-        #!/usr/bin/env bash
-        # {$site->name} — SSR launcher. Managed by Beacon; regenerated on runtime changes.
-        set -euo pipefail
-        umask 0002
+#!/usr/bin/env bash
+# {$site->name} — SSR launcher. Managed by Beacon; regenerated on runtime changes.
+set -euo pipefail
+umask 0002
 
-        cd "{$site->path}"
+cd "{$site->path}"
 
-        export BEACON_NODE="{$nodeBin}/node"
+export BEACON_NODE="{$nodeBin}/node"
+export PATH="{$nodeBin}:/usr/local/bun/default/bin:\$PATH"
+export NODE_ENV=production
+export HOST=127.0.0.1
+export PORT={$port}
 
-        # Load site env files (Next.js / Nuxt convention). Beacon's Env tab writes
-        # to .env; .env.local is optional and usually gitignored.
-        load_env_file() {
-          local file="\$1"
-          if [ -f "\$file" ]; then
-            . "./\${file}"
-          fi
-        }
+# Next.js / Nuxt load .env*, .env.production*, etc. themselves at runtime.
+# Do not `source` them here — bash parsing breaks on many valid dotenv values.
 
-        set -a
-        load_env_file .env
-        load_env_file .env.local
-        load_env_file .env.production
-        load_env_file .env.production.local
-        set +a
-
-        export PATH="{$nodeBin}:/usr/local/bun/default/bin:\$PATH"
-        export NODE_ENV=production
-        export HOST=127.0.0.1
-        export PORT={$port}
-
-        # exec → PID is preserved so Supervisor's SIGTERM reaches Node directly.
-        {$exec}
-        BASH;
+# exec → PID is preserved so Supervisor's SIGTERM reaches Node directly.
+{$exec}
+BASH;
     }
 }
