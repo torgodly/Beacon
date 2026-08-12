@@ -100,5 +100,37 @@ class DatabaseBackupTest extends TestCase
         $this->assertStringStartsWith('tableplus://connections/new?', $connections[0]['tableplus']);
         $this->assertStringContainsString('database=app_production', $connections[0]['tableplus']);
         $this->assertStringContainsString('user=app_user', $connections[0]['tableplus']);
+        $this->assertSame('127.0.0.1', $connections[0]['connect_host']);
+        $this->assertFalse($connections[0]['remote']);
+    }
+
+    public function test_connection_strings_use_public_ip_when_remote_is_enabled(): void
+    {
+        Server::factory()->create([
+            'id' => 1,
+            'public_ip' => '203.0.113.50',
+        ]);
+
+        $database = Database::factory()->create([
+            'server_id' => 1,
+            'name' => 'app_production',
+            'allow_remote' => true,
+        ]);
+
+        $dbUser = DatabaseUser::factory()->create([
+            'server_id' => 1,
+            'username' => 'app_user',
+            'host' => '%',
+            'password' => 'secret',
+        ]);
+
+        $database->users()->attach($dbUser->id, ['privileges' => 'all']);
+
+        $connections = app(DatabaseBackupService::class)->connectionStrings($database);
+
+        $this->assertSame('203.0.113.50', $connections[0]['connect_host']);
+        $this->assertTrue($connections[0]['remote']);
+        $this->assertStringContainsString('@203.0.113.50:3306/', $connections[0]['url']);
+        $this->assertStringContainsString('host=203.0.113.50', $connections[0]['tableplus']);
     }
 }

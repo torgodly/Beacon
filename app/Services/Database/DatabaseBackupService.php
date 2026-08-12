@@ -105,7 +105,7 @@ class DatabaseBackupService
     }
 
     /**
-     * @return array<int, array{user_id: int, username: string, host: string, laravel: string, url: string, tableplus: string}>
+     * @return array<int, array{user_id: int, username: string, host: string, connect_host: string, remote: bool, laravel: string, url: string, tableplus: string}>
      */
     public function connectionStrings(Database $database): array
     {
@@ -116,7 +116,10 @@ class DatabaseBackupService
 
         return $database->users->map(function (DatabaseUser $user) use ($database, $serverIp, $port): array {
             $password = $user->password;
-            $host = $user->host === '%' ? $serverIp : '127.0.0.1';
+            // When remote is enabled, connection helpers point at the public IP so
+            // TablePlus / laptop clients work. Sites on the server still use 127.0.0.1
+            // via BEACON_DB_HOST on deploy — not these clipboard helpers.
+            $host = $database->allow_remote ? $serverIp : '127.0.0.1';
             $encodedUser = rawurlencode($user->username);
             $encodedPassword = rawurlencode($password);
 
@@ -124,6 +127,8 @@ class DatabaseBackupService
                 'user_id' => $user->id,
                 'username' => $user->username,
                 'host' => $user->host,
+                'connect_host' => $host,
+                'remote' => (bool) $database->allow_remote,
                 'laravel' => implode("\n", [
                     'DB_CONNECTION=mysql',
                     "DB_HOST={$host}",

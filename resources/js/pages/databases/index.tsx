@@ -5,7 +5,9 @@ import {
     Database,
     Download,
     ExternalLink,
+    Globe,
     HardDriveDownload,
+    Lock,
     Plus,
     Trash2,
     Users,
@@ -49,7 +51,10 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { store as storeDatabaseUser, destroy as destroyDatabaseUser } from '@/routes/database-users';
+import {
+    store as storeDatabaseUser,
+    destroy as destroyDatabaseUser,
+} from '@/routes/database-users';
 import {
     destroy as destroyDatabase,
     index as databasesIndex,
@@ -92,6 +97,8 @@ type ConnectionRow = {
     user_id: number;
     username: string;
     host: string;
+    connect_host: string;
+    remote: boolean;
     laravel: string;
     url: string;
     tableplus: string;
@@ -144,47 +151,6 @@ function ToggleSwitch({
     );
 }
 
-function RemoteAccessToggle({
-    database,
-    serverIp,
-}: {
-    database: DatabaseRow;
-    serverIp: string;
-}) {
-    const [pending, setPending] = useState(false);
-
-    return (
-        <div className="flex items-center gap-3 rounded-lg border border-[#e2e8f0] px-3 py-2 dark:border-[#2e3032]">
-            <ToggleSwitch
-                id={`remote-access-${database.id}`}
-                checked={database.allow_remote}
-                disabled={pending}
-                onCheckedChange={(checked) => {
-                    setPending(true);
-                    router.patch(
-                        updateDatabaseAccess.url(database.id),
-                        { allow_remote: checked },
-                        { onFinish: () => setPending(false) },
-                    );
-                }}
-            />
-            <div className="min-w-0">
-                <label
-                    htmlFor={`remote-access-${database.id}`}
-                    className="block text-xs font-medium text-[#0f172a] dark:text-[#f8fafc]"
-                >
-                    Remote access
-                </label>
-                <p className="text-[11px] leading-4 text-[#64748b]">
-                    {database.allow_remote
-                        ? `Port 3306 open · connect via ${serverIp}`
-                        : 'Local only · turn on when you need TablePlus'}
-                </p>
-            </div>
-        </div>
-    );
-}
-
 function formatPrivileges(privileges: string): string {
     return privileges === 'readonly' ? 'Read only' : 'Full access';
 }
@@ -217,9 +183,11 @@ function bytes(size: number | null): string {
 function CopyButton({
     value,
     label,
+    shortLabel = 'Copy link',
 }: {
     value: string;
     label: string;
+    shortLabel?: string;
 }) {
     const [copied, setCopied] = useState(false);
 
@@ -239,72 +207,256 @@ function CopyButton({
             ) : (
                 <Copy className="size-3.5" />
             )}
-            {copied ? 'Copied' : 'Copy link'}
+            {copied ? 'Copied' : shortLabel}
         </Button>
     );
 }
 
-function UserConnectRow({
+function DatabaseCard({
     database,
-    user,
+    serverIp,
+    onAddUser,
 }: {
     database: DatabaseRow;
-    user: DatabaseUserRow;
+    serverIp: string;
+    onAddUser: () => void;
 }) {
-    const connection = connectionForUser(database, user.id);
+    const [pendingRemote, setPendingRemote] = useState(false);
+    const latestBackup = database.backups[0] ?? null;
+    const remote = database.allow_remote;
 
     return (
-        <ForgeListRow className="flex-col items-stretch gap-3 sm:flex-row sm:items-center">
-            <div className="min-w-0 flex-1">
-                <p className="font-mono text-sm font-medium text-[#0f172a] dark:text-[#f8fafc]">
-                    {user.username}
-                    <span className="text-[#94a3b8]">@{user.host}</span>
-                </p>
-                <p className="mt-1 text-xs text-[#64748b]">
-                    {formatPrivileges(user.privileges)}
-                </p>
-            </div>
-
-            {connection ? (
+        <ForgeDividedCard
+            title={database.name}
+            action={
                 <div className="flex flex-wrap items-center gap-2">
-                    <Button size="sm" variant="primary" asChild>
-                        <a href={connection.tableplus}>
-                            Open in TablePlus
-                        </a>
-                    </Button>
-                    <CopyButton
-                        value={connection.url}
-                        label="Copy MySQL connection URL"
+                    <ForgeStatusBadge
+                        label={remote ? 'Remote' : 'Local'}
+                    />
+                    <ConfirmDialog
+                        trigger={
+                            <Button
+                                size="icon-sm"
+                                variant="ghost"
+                                aria-label={`Drop ${database.name}`}
+                                disabled={database.sites.length > 0}
+                            >
+                                <Trash2 className="size-3.5" />
+                            </Button>
+                        }
+                        title={`Drop ${database.name}?`}
+                        description={
+                            database.sites.length > 0
+                                ? 'Detach all sites from this database before dropping it.'
+                                : 'Every table and all of its data is destroyed. This cannot be undone.'
+                        }
+                        confirmLabel="Drop database"
+                        destructive
+                        confirmationValue={database.name}
+                        onConfirm={() =>
+                            router.delete(destroyDatabase.url(database.id))
+                        }
                     />
                 </div>
-            ) : null}
-
-            <ConfirmDialog
-                trigger={
-                    <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        aria-label={`Delete ${user.username}`}
-                        disabled={user.sites.length > 0}
-                        className="sm:ml-auto"
+            }
+        >
+            {/* Access */}
+            <ForgeListRow className="flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+                <div className="flex min-w-0 flex-1 items-start gap-3">
+                    <div
+                        className={cn(
+                            'mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md',
+                            remote
+                                ? 'bg-[#18B69B]/10 text-[#18B69B]'
+                                : 'bg-[#f1f5f9] text-[#64748b] dark:bg-[#1f2123]',
+                        )}
                     >
-                        <Trash2 className="size-3.5" />
+                        {remote ? (
+                            <Globe className="size-4" />
+                        ) : (
+                            <Lock className="size-4" />
+                        )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <ToggleSwitch
+                                id={`remote-access-${database.id}`}
+                                checked={remote}
+                                disabled={pendingRemote}
+                                onCheckedChange={(checked) => {
+                                    setPendingRemote(true);
+                                    router.patch(
+                                        updateDatabaseAccess.url(database.id),
+                                        { allow_remote: checked },
+                                        {
+                                            onFinish: () =>
+                                                setPendingRemote(false),
+                                        },
+                                    );
+                                }}
+                            />
+                            <label
+                                htmlFor={`remote-access-${database.id}`}
+                                className="text-sm font-medium text-[#0f172a] dark:text-[#f8fafc]"
+                            >
+                                Remote access
+                            </label>
+                        </div>
+                        <p className="mt-1 text-xs text-[#64748b]">
+                            {remote
+                                ? `Open on ${serverIp}:3306 — TablePlus links use this IP.`
+                                : 'Local only. Sites keep using 127.0.0.1. Turn on to connect from your laptop.'}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                    <Button size="sm" variant="secondary" onClick={onAddUser}>
+                        <Users className="size-3.5" />
+                        Add user
                     </Button>
-                }
-                title={`Delete ${user.username}?`}
-                description={
-                    user.sites.length > 0
-                        ? 'This user is linked to a site. Change the site database settings first.'
-                        : 'Removes the MySQL user and revokes all database access. This cannot be undone.'
-                }
-                confirmLabel="Delete user"
-                destructive
-                confirmationValue={user.username}
-                onConfirm={() =>
-                    router.delete(destroyDatabaseUser.url(user.id))
-                }
-            />
-        </ForgeListRow>
+                    <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() =>
+                            router.post(storeBackup.url(database.id))
+                        }
+                    >
+                        <HardDriveDownload className="size-3.5" />
+                        Back up
+                    </Button>
+                </div>
+            </ForgeListRow>
+
+            {/* Sites */}
+            {database.sites.length > 0 && (
+                <ForgeListRow className="flex-wrap gap-2">
+                    <span className="text-xs font-medium text-[#64748b]">
+                        Used by
+                    </span>
+                    {database.sites.map((site) => (
+                        <Link
+                            key={site.id}
+                            href={showSite(site.name)}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-[#e2e8f0] px-2 py-1 text-xs font-medium text-[#334155] transition-colors hover:border-[#18B69B]/40 hover:text-[#0f172a] dark:border-[#2e3032] dark:text-[#e2e8f0] dark:hover:border-[#18B69B]/40"
+                        >
+                            <SiteFrameworkIcon type={site.type} size="sm" />
+                            {site.primary_domain}
+                            <ExternalLink className="size-3 text-[#94a3b8]" />
+                        </Link>
+                    ))}
+                </ForgeListRow>
+            )}
+
+            {/* Users */}
+            {database.users.length === 0 ? (
+                <ForgeListRow className="justify-center py-8 text-sm text-[#64748b]">
+                    No users yet — add one to get a connection link.
+                </ForgeListRow>
+            ) : (
+                database.users.map((user) => {
+                    const connection = connectionForUser(database, user.id);
+
+                    return (
+                        <ForgeListRow
+                            key={user.id}
+                            className="flex-col items-stretch gap-3 sm:flex-row sm:items-center"
+                        >
+                            <div className="min-w-0 flex-1">
+                                <p className="font-mono text-sm font-medium text-[#0f172a] dark:text-[#f8fafc]">
+                                    {user.username}
+                                </p>
+                                <p className="mt-1 text-xs text-[#64748b]">
+                                    {formatPrivileges(user.privileges)}
+                                    {remote
+                                        ? ` · connects via ${serverIp}`
+                                        : ' · local only'}
+                                </p>
+                            </div>
+
+                            {connection ? (
+                                remote ? (
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <Button
+                                            size="sm"
+                                            variant="primary"
+                                            asChild
+                                        >
+                                            <a href={connection.tableplus}>
+                                                Open in TablePlus
+                                            </a>
+                                        </Button>
+                                        <CopyButton
+                                            value={connection.url}
+                                            label="Copy MySQL connection URL"
+                                        />
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-[#94a3b8]">
+                                        Turn on remote access to connect from
+                                        TablePlus
+                                    </p>
+                                )
+                            ) : null}
+
+                            <ConfirmDialog
+                                trigger={
+                                    <Button
+                                        size="icon-sm"
+                                        variant="ghost"
+                                        aria-label={`Delete ${user.username}`}
+                                        disabled={user.sites.length > 0}
+                                        className="sm:ml-auto"
+                                    >
+                                        <Trash2 className="size-3.5" />
+                                    </Button>
+                                }
+                                title={`Delete ${user.username}?`}
+                                description={
+                                    user.sites.length > 0
+                                        ? 'This user is linked to a site. Change the site database settings first.'
+                                        : 'Removes the MySQL user and revokes all database access. This cannot be undone.'
+                                }
+                                confirmLabel="Delete user"
+                                destructive
+                                confirmationValue={user.username}
+                                onConfirm={() =>
+                                    router.delete(
+                                        destroyDatabaseUser.url(user.id),
+                                    )
+                                }
+                            />
+                        </ForgeListRow>
+                    );
+                })
+            )}
+
+            {/* Backup */}
+            {latestBackup && (
+                <ForgeListRow className="flex-col items-stretch gap-2 border-t border-[#e2e8f0] bg-[#f8fafc] dark:border-[#2e3032] dark:bg-[#151718]">
+                    <p className="text-xs font-medium text-[#64748b]">
+                        Latest backup
+                    </p>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-mono text-xs text-[#64748b]">
+                            {latestBackup.filename} ·{' '}
+                            {bytes(latestBackup.size_bytes)}
+                        </span>
+                        <div className="flex items-center gap-2">
+                            <ForgeStatusBadge label={latestBackup.status} />
+                            {latestBackup.download_url && (
+                                <Button size="sm" variant="ghost" asChild>
+                                    <a href={latestBackup.download_url}>
+                                        <Download className="size-3.5" />
+                                        Download
+                                    </a>
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+                </ForgeListRow>
+            )}
+        </ForgeDividedCard>
     );
 }
 
@@ -474,6 +626,9 @@ export default function DatabasesIndex({
                                                         )}
                                                     >
                                                         {database.name}
+                                                        {database.allow_remote
+                                                            ? ' · remote'
+                                                            : ' · local'}
                                                     </SelectItem>
                                                 ))}
                                             </SelectContent>
@@ -495,7 +650,9 @@ export default function DatabasesIndex({
                                             value={privileges}
                                             onValueChange={(value) =>
                                                 setPrivileges(
-                                                    value as 'all' | 'readonly',
+                                                    value as
+                                                        | 'all'
+                                                        | 'readonly',
                                                 )
                                             }
                                         >
@@ -541,7 +698,9 @@ export default function DatabasesIndex({
                                             ) !== undefined
                                         }
                                     >
-                                        {processing ? 'Creating…' : 'Create user'}
+                                        {processing
+                                            ? 'Creating…'
+                                            : 'Create user'}
                                     </Button>
                                 </DialogFooter>
                             </>
@@ -566,7 +725,8 @@ export default function DatabasesIndex({
                         <DialogTitle>Create a database</DialogTitle>
                         <DialogDescription>
                             Created as utf8mb4 with a utf8mb4_unicode_ci
-                            collation.
+                            collation. Leave remote off unless you need laptop
+                            access.
                         </DialogDescription>
                     </DialogHeader>
 
@@ -624,9 +784,8 @@ export default function DatabasesIndex({
                                                 Allow remote connections
                                             </span>
                                             <span className="block text-[13px] leading-5 text-[#64748b]">
-                                                Opens MySQL port 3306 for this
-                                                database only. Users connect from
-                                                any IP using{' '}
+                                                You can toggle this later.
+                                                Connect from{' '}
                                                 <span className="font-mono">
                                                     {server.public_ip}
                                                 </span>
@@ -686,9 +845,10 @@ export default function DatabasesIndex({
                         Password shown once
                     </p>
                     <p className="mt-1 text-sm text-[#334155] dark:text-[#e2e8f0]">
-                        Copy it now, then use{' '}
-                        <strong>Open in TablePlus</strong> on the user row below.
-                        Beacon will not show this password again.
+                        Copy it now. Turn on{' '}
+                        <strong>Remote access</strong> on the database, then use{' '}
+                        <strong>Open in TablePlus</strong>. Beacon will not show
+                        this password again.
                     </p>
                     <code className="mt-2 block rounded-md bg-white px-2 py-1.5 font-mono text-xs text-[#0f172a] dark:bg-[#151718] dark:text-[#f8fafc]">
                         {revealedPassword}
@@ -702,7 +862,7 @@ export default function DatabasesIndex({
                         <ForgeEmptyState
                             icon={Database}
                             title="No databases yet"
-                            description="Create a MySQL database, add a user, then connect with TablePlus in one click."
+                            description="Create a MySQL database, add a user, then flip remote access on when you need TablePlus."
                         />
                     }
                     sidebar={
@@ -729,161 +889,14 @@ export default function DatabasesIndex({
                     main={
                         <div className="space-y-6">
                             {databases.map((database) => (
-                                <ForgeDividedCard
+                                <DatabaseCard
                                     key={database.id}
-                                    title={database.name}
-                                    action={
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <ForgeStatusBadge
-                                                label={database.status}
-                                            />
-                                            <RemoteAccessToggle
-                                                database={database}
-                                                serverIp={server.public_ip}
-                                            />
-                                            <Button
-                                                size="sm"
-                                                variant="secondary"
-                                                onClick={() =>
-                                                    openCreateUserDialog(
-                                                        database.id,
-                                                    )
-                                                }
-                                            >
-                                                <Users className="size-3.5" />
-                                                Add user
-                                            </Button>
-                                            <Button
-                                                size="sm"
-                                                variant="secondary"
-                                                onClick={() =>
-                                                    router.post(
-                                                        storeBackup.url(
-                                                            database.id,
-                                                        ),
-                                                    )
-                                                }
-                                            >
-                                                <HardDriveDownload className="size-3.5" />
-                                                Back up
-                                            </Button>
-                                            <ConfirmDialog
-                                                trigger={
-                                                    <Button
-                                                        size="icon-sm"
-                                                        variant="ghost"
-                                                        aria-label={`Drop ${database.name}`}
-                                                        disabled={
-                                                            database.sites
-                                                                .length > 0
-                                                        }
-                                                    >
-                                                        <Trash2 className="size-3.5" />
-                                                    </Button>
-                                                }
-                                                title={`Drop ${database.name}?`}
-                                                description={
-                                                    database.sites.length > 0
-                                                        ? 'Detach all sites from this database before dropping it.'
-                                                        : 'Every table and all of its data is destroyed. This cannot be undone.'
-                                                }
-                                                confirmLabel="Drop database"
-                                                destructive
-                                                confirmationValue={database.name}
-                                                onConfirm={() =>
-                                                    router.delete(
-                                                        destroyDatabase.url(
-                                                            database.id,
-                                                        ),
-                                                    )
-                                                }
-                                            />
-                                        </div>
+                                    database={database}
+                                    serverIp={server.public_ip}
+                                    onAddUser={() =>
+                                        openCreateUserDialog(database.id)
                                     }
-                                >
-                                    {database.sites.length > 0 && (
-                                        <ForgeListRow className="flex-wrap gap-2 border-b border-[#e2e8f0] dark:border-[#2e3032]">
-                                            <span className="text-xs font-medium text-[#64748b]">
-                                                Used by
-                                            </span>
-                                            {database.sites.map((site) => (
-                                                <Link
-                                                    key={site.id}
-                                                    href={showSite(site.name)}
-                                                    className="inline-flex items-center gap-1.5 rounded-md border border-[#e2e8f0] px-2 py-1 text-xs font-medium text-[#334155] transition-colors hover:border-[#18B69B]/40 hover:text-[#0f172a] dark:border-[#2e3032] dark:text-[#e2e8f0] dark:hover:border-[#18B69B]/40"
-                                                >
-                                                    <SiteFrameworkIcon
-                                                        type={site.type}
-                                                        size="sm"
-                                                    />
-                                                    {site.primary_domain}
-                                                    <ExternalLink className="size-3 text-[#94a3b8]" />
-                                                </Link>
-                                            ))}
-                                        </ForgeListRow>
-                                    )}
-
-                                    {database.users.length === 0 ? (
-                                        <ForgeListRow className="justify-center py-8 text-sm text-[#64748b]">
-                                            No users yet — add one to get a
-                                            TablePlus link.
-                                        </ForgeListRow>
-                                    ) : (
-                                        database.users.map((user) => (
-                                            <UserConnectRow
-                                                key={user.id}
-                                                database={database}
-                                                user={user}
-                                            />
-                                        ))
-                                    )}
-
-                                    {database.backups.length > 0 && (
-                                        <ForgeListRow className="flex-col items-stretch gap-2 border-t border-[#e2e8f0] bg-[#f8fafc] dark:border-[#2e3032] dark:bg-[#151718]">
-                                            <p className="text-xs font-medium text-[#64748b]">
-                                                Latest backup
-                                            </p>
-                                            {database.backups.slice(0, 1).map(
-                                                (backup) => (
-                                                    <div
-                                                        key={backup.uuid}
-                                                        className="flex flex-wrap items-center justify-between gap-2"
-                                                    >
-                                                        <span className="font-mono text-xs text-[#64748b]">
-                                                            {backup.filename} ·{' '}
-                                                            {bytes(
-                                                                backup.size_bytes,
-                                                            )}
-                                                        </span>
-                                                        <div className="flex items-center gap-2">
-                                                            <ForgeStatusBadge
-                                                                label={
-                                                                    backup.status
-                                                                }
-                                                            />
-                                                            {backup.download_url && (
-                                                                <Button
-                                                                    size="sm"
-                                                                    variant="ghost"
-                                                                    asChild
-                                                                >
-                                                                    <a
-                                                                        href={
-                                                                            backup.download_url
-                                                                        }
-                                                                    >
-                                                                        <Download className="size-3.5" />
-                                                                        Download
-                                                                    </a>
-                                                                </Button>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                ),
-                                            )}
-                                        </ForgeListRow>
-                                    )}
-                                </ForgeDividedCard>
+                                />
                             ))}
                         </div>
                     }

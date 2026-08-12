@@ -209,6 +209,10 @@ class DatabaseManagementTest extends TestCase
 
     public function test_update_access_toggles_remote_flag_and_syncs_mysql(): void
     {
+        $this->mock(MySqlService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('renameUserHost')->never();
+        });
+
         $this->mock(MySqlRemoteAccessService::class, function (MockInterface $mock): void {
             $mock->shouldReceive('sync')->once();
         });
@@ -229,8 +233,51 @@ class DatabaseManagementTest extends TestCase
         $this->assertTrue($database->fresh()->allow_remote);
     }
 
+    public function test_update_access_renames_existing_users_when_enabling_remote(): void
+    {
+        $this->mock(MySqlService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('renameUserHost')
+                ->once()
+                ->with('app_user', 'localhost', '%');
+        });
+
+        $this->mock(MySqlRemoteAccessService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('sync')->once();
+        });
+
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1, 'public_ip' => '203.0.113.10']);
+
+        $database = Database::factory()->create([
+            'server_id' => 1,
+            'allow_remote' => false,
+        ]);
+
+        $databaseUser = DatabaseUser::factory()->create([
+            'server_id' => 1,
+            'username' => 'app_user',
+            'host' => 'localhost',
+        ]);
+
+        $databaseUser->databases()->attach($database->id, ['privileges' => 'all']);
+
+        $response = $this->actingAs($user)->patch(route('databases.access.update', $database), [
+            'allow_remote' => true,
+        ]);
+
+        $response->assertRedirect();
+        $this->assertTrue($database->fresh()->allow_remote);
+        $this->assertSame('%', $databaseUser->fresh()->host);
+    }
+
     public function test_update_access_can_toggle_off_when_remote_users_exist(): void
     {
+        $this->mock(MySqlService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('renameUserHost')
+                ->once()
+                ->with('remote_user', '%', 'localhost');
+        });
+
         $this->mock(MySqlRemoteAccessService::class, function (MockInterface $mock): void {
             $mock->shouldReceive('sync')->once();
         });

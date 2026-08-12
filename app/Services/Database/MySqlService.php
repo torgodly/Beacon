@@ -51,6 +51,21 @@ class MySqlService
         $this->connection()->statement("DROP USER IF EXISTS {$user}@{$hostLiteral}");
     }
 
+    public function renameUserHost(string $username, string $fromHost, string $toHost): void
+    {
+        if ($fromHost === $toHost) {
+            return;
+        }
+
+        $user = SqlIdentifier::quoteUser($username);
+        $from = SqlIdentifier::quoteHost($fromHost);
+        $to = SqlIdentifier::quoteHost($toHost);
+
+        $this->connection()->statement(
+            "RENAME USER {$user}@{$from} TO {$user}@{$to}",
+        );
+    }
+
     public function grant(string $username, string $database, string $privileges, string $host = 'localhost'): void
     {
         $user = SqlIdentifier::quoteUser($username);
