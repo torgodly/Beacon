@@ -24,5 +24,6 @@ class SqlIdentifierTest extends TestCase
     {
         $this->assertSame("'app_user'", SqlIdentifier::quoteUser('app_user'));
         $this->assertSame("'localhost'", SqlIdentifier::quoteHost('localhost'));
+        $this->assertSame("'%'", SqlIdentifier::quoteHost('%'));
     }
 }

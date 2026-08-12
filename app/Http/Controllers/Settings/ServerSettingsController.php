@@ -19,6 +19,10 @@ class ServerSettingsController extends Controller
         $server = Server::current();
 
         return Inertia::render('settings/server', [
+            'server' => [
+                'hostname' => $server->hostname,
+                'public_ip' => $server->public_ip,
+            ],
             'panel' => [
                 'domain' => $server->panel_domain,
                 'port' => $server->panel_port,

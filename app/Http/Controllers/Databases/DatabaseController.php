@@ -6,9 +6,11 @@ use App\Actions\Database\CreateDatabase;
 use App\Actions\Database\CreateDatabaseUser;
 use App\Actions\Database\DeleteDatabase;
 use App\Actions\Database\DeleteDatabaseUser;
+use App\Actions\Database\UpdateDatabaseAccess;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreDatabaseRequest;
 use App\Http\Requests\StoreDatabaseUserRequest;
+use App\Http\Requests\UpdateDatabaseAccessRequest;
 use App\Models\Database;
 use App\Models\DatabaseBackup;
 use App\Models\DatabaseUser;
@@ -50,6 +52,7 @@ class DatabaseController extends Controller
                 'id' => $database->id,
                 'name' => $database->name,
                 'status' => $database->status,
+                'allow_remote' => (bool) $database->allow_remote,
                 'sites' => ($sitesByDatabaseId[$database->id] ?? collect())
                     ->map(fn (Site $site): array => $this->siteLinkPayload($site))
                     ->values()
@@ -73,13 +76,20 @@ class DatabaseController extends Controller
 
         return Inertia::render('databases/index', [
             'databases' => $databases,
+            'server' => [
+                'public_ip' => $server->public_ip,
+            ],
         ]);
     }
 
     public function store(StoreDatabaseRequest $request, CreateDatabase $createDatabase): RedirectResponse
     {
         try {
-            $createDatabase->handle(Server::current(), $request->validated('name'));
+            $createDatabase->handle(
+                Server::current(),
+                $request->validated('name'),
+                $request->boolean('allow_remote'),
+            );
         } catch (RuntimeException $e) {
             return back()->withErrors(['name' => $e->getMessage()]);
         }
@@ -98,6 +108,27 @@ class DatabaseController extends Controller
         }
 
         return back()->with('toast', ['type' => 'success', 'message' => 'Database deleted.']);
+    }
+
+    public function updateAccess(
+        Database $database,
+        UpdateDatabaseAccessRequest $request,
+        UpdateDatabaseAccess $updateDatabaseAccess,
+    ): RedirectResponse {
+        abort_unless($database->server_id === Server::current()->id, 404);
+
+        try {
+            $updateDatabaseAccess->handle($database, $request->boolean('allow_remote'));
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['database' => $e->getMessage()]);
+        }
+
+        return back()->with('toast', [
+            'type' => 'success',
+            'message' => $request->boolean('allow_remote')
+                ? 'Remote database access enabled.'
+                : 'Database is now local only.',
+        ]);
     }
 
     public function storeUser(

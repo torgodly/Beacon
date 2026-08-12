@@ -4,6 +4,7 @@ namespace App\Actions\Database;
 
 use App\Models\Database;
 use App\Models\Server;
+use App\Services\Database\MySqlRemoteAccessService;
 use App\Services\Database\MySqlService;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -13,9 +14,9 @@ class CreateDatabase
 {
     public function __construct(private readonly MySqlService $mysql) {}
 
-    public function handle(Server $server, string $name): Database
+    public function handle(Server $server, string $name, bool $allowRemote = false): Database
     {
-        return DB::transaction(function () use ($server, $name): Database {
+        return DB::transaction(function () use ($server, $name, $allowRemote): Database {
             try {
                 $this->mysql->createDatabase($name);
             } catch (Throwable $e) {
@@ -26,9 +27,14 @@ class CreateDatabase
                 'server_id' => $server->id,
                 'name' => $name,
                 'status' => 'active',
+                'allow_remote' => $allowRemote,
             ]);
 
-            activity()->with(['name' => $name])->log('database.created');
+            if ($allowRemote) {
+                app(MySqlRemoteAccessService::class)->sync();
+            }
+
+            activity()->with(['name' => $name, 'allow_remote' => $allowRemote])->log('database.created');
 
             return $database;
         });

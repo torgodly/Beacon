@@ -61,7 +61,7 @@ sync_wrappers() {
     [[ -d "$wrapper_src" ]] || return 0
 
     install -d -m 0755 "$BEACON_BIN"
-    for wrapper in nginx php supervisor certbot service pkg cron update run fs; do
+    for wrapper in nginx php supervisor certbot service pkg cron update run fs mysql; do
         [[ -f "${wrapper_src}/beacon-${wrapper}" ]] || continue
         install -m 0755 "${wrapper_src}/beacon-${wrapper}" "${BEACON_BIN}/beacon-${wrapper}"
     done

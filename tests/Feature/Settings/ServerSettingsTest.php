@@ -35,6 +35,7 @@ class ServerSettingsTest extends TestCase
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('settings/server')
+                ->has('server')
                 ->has('panel')
                 ->has('deployPolling')
                 ->where('panel.can_attach_domain', true));

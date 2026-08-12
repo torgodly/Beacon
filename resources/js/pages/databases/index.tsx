@@ -11,6 +11,7 @@ import {
     Users,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { cn } from '@/lib/utils';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import {
     ForgeDividedCard,
@@ -54,6 +55,7 @@ import {
     index as databasesIndex,
     store as storeDatabase,
 } from '@/routes/databases';
+import { update as updateDatabaseAccess } from '@/routes/databases/access';
 import { store as storeBackup } from '@/routes/databases/backups';
 import { show as showSite } from '@/routes/sites';
 import {
@@ -99,11 +101,89 @@ type DatabaseRow = {
     id: number;
     name: string;
     status: string;
+    allow_remote: boolean;
     sites: SiteLinkRow[];
     users: DatabaseUserRow[];
     backups: DatabaseBackupRow[];
     connections: ConnectionRow[];
 };
+
+function ToggleSwitch({
+    checked,
+    onCheckedChange,
+    id,
+    disabled,
+}: {
+    checked: boolean;
+    onCheckedChange: (checked: boolean) => void;
+    id: string;
+    disabled?: boolean;
+}) {
+    return (
+        <button
+            id={id}
+            type="button"
+            role="switch"
+            aria-checked={checked}
+            disabled={disabled}
+            onClick={() => onCheckedChange(!checked)}
+            className={cn(
+                'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                checked
+                    ? 'bg-[#18B69B]'
+                    : 'bg-[#e2e8f0] dark:bg-[#3f4244]',
+            )}
+        >
+            <span
+                className={cn(
+                    'pointer-events-none inline-block size-5 rounded-full bg-white shadow transition-transform',
+                    checked ? 'translate-x-5' : 'translate-x-0',
+                )}
+            />
+        </button>
+    );
+}
+
+function RemoteAccessToggle({
+    database,
+    serverIp,
+}: {
+    database: DatabaseRow;
+    serverIp: string;
+}) {
+    const [pending, setPending] = useState(false);
+
+    return (
+        <div className="flex items-center gap-3 rounded-lg border border-[#e2e8f0] px-3 py-2 dark:border-[#2e3032]">
+            <ToggleSwitch
+                id={`remote-access-${database.id}`}
+                checked={database.allow_remote}
+                disabled={pending}
+                onCheckedChange={(checked) => {
+                    setPending(true);
+                    router.patch(
+                        updateDatabaseAccess.url(database.id),
+                        { allow_remote: checked },
+                        { onFinish: () => setPending(false) },
+                    );
+                }}
+            />
+            <div className="min-w-0">
+                <label
+                    htmlFor={`remote-access-${database.id}`}
+                    className="block text-xs font-medium text-[#0f172a] dark:text-[#f8fafc]"
+                >
+                    Remote access
+                </label>
+                <p className="text-[11px] leading-4 text-[#64748b]">
+                    {database.allow_remote
+                        ? `Port 3306 open · connect via ${serverIp}`
+                        : 'Local only · turn on when you need TablePlus'}
+                </p>
+            </div>
+        </div>
+    );
+}
 
 function formatPrivileges(privileges: string): string {
     return privileges === 'readonly' ? 'Read only' : 'Full access';
@@ -230,11 +310,14 @@ function UserConnectRow({
 
 export default function DatabasesIndex({
     databases,
+    server,
 }: {
     databases: DatabaseRow[];
+    server: { public_ip: string };
 }) {
     const [createOpen, setCreateOpen] = useState(false);
     const [userOpen, setUserOpen] = useState(false);
+    const [allowRemote, setAllowRemote] = useState(false);
     const [selectedDatabase, setSelectedDatabase] = useState('');
     const [privileges, setPrivileges] = useState<'all' | 'readonly'>('all');
     const [databaseName, setDatabaseName] = useState('');
@@ -269,6 +352,7 @@ export default function DatabasesIndex({
 
         setDatabaseName('');
         setCreateNameError(undefined);
+        setAllowRemote(false);
     }, [createOpen]);
 
     const page = usePage<{
@@ -526,6 +610,35 @@ export default function DatabasesIndex({
                                             }}
                                         />
                                     </Field>
+
+                                    <label className="flex cursor-pointer items-start gap-3">
+                                        <div className="mt-0.5">
+                                            <ToggleSwitch
+                                                id="allow_remote_create"
+                                                checked={allowRemote}
+                                                onCheckedChange={setAllowRemote}
+                                            />
+                                        </div>
+                                        <span className="space-y-1">
+                                            <span className="block text-[13px] font-medium leading-5 text-[#0f172a] dark:text-[#f8fafc]">
+                                                Allow remote connections
+                                            </span>
+                                            <span className="block text-[13px] leading-5 text-[#64748b]">
+                                                Opens MySQL port 3306 for this
+                                                database only. Users connect from
+                                                any IP using{' '}
+                                                <span className="font-mono">
+                                                    {server.public_ip}
+                                                </span>
+                                                .
+                                            </span>
+                                        </span>
+                                    </label>
+                                    <input
+                                        type="hidden"
+                                        name="allow_remote"
+                                        value={allowRemote ? '1' : '0'}
+                                    />
                                 </DialogBody>
 
                                 <DialogFooter>
@@ -595,8 +708,15 @@ export default function DatabasesIndex({
                     sidebar={
                         <>
                             <ForgeDetailsSection title="Storage">
-                                <ForgeDetailRow label="Databases" value="0" />
+                                <ForgeDetailRow
+                                    label="Databases"
+                                    value="0"
+                                />
                                 <ForgeDetailRow label="Users" value="0" />
+                                <ForgeDetailRow
+                                    label="Server IP"
+                                    value={server.public_ip}
+                                />
                             </ForgeDetailsSection>
                             <ForgeActionsPanel>
                                 {sidebarActions}
@@ -616,6 +736,10 @@ export default function DatabasesIndex({
                                         <div className="flex flex-wrap items-center gap-2">
                                             <ForgeStatusBadge
                                                 label={database.status}
+                                            />
+                                            <RemoteAccessToggle
+                                                database={database}
+                                                serverIp={server.public_ip}
                                             />
                                             <Button
                                                 size="sm"
@@ -773,6 +897,10 @@ export default function DatabasesIndex({
                                 <ForgeDetailRow
                                     label="Users"
                                     value={String(totalUsers)}
+                                />
+                                <ForgeDetailRow
+                                    label="Server IP"
+                                    value={server.public_ip}
                                 />
                             </ForgeDetailsSection>
                             <ForgeActionsPanel>

@@ -7,6 +7,7 @@ use App\Models\DatabaseUser;
 use App\Models\Server;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\Database\MySqlRemoteAccessService;
 use App\Services\Database\MySqlService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery\MockInterface;
@@ -40,7 +41,7 @@ class DatabaseManagementTest extends TestCase
     {
         $this->mock(MySqlService::class, function (MockInterface $mock): void {
             $mock->shouldReceive('createUser')->once();
-            $mock->shouldReceive('grant')->once()->with('app_user', 'app_production', 'all');
+            $mock->shouldReceive('grant')->once()->with('app_user', 'app_production', 'all', 'localhost');
         });
 
         $user = User::factory()->create();
@@ -150,5 +151,109 @@ class DatabaseManagementTest extends TestCase
         $response->assertSessionHasErrors('database_user');
         $this->assertDatabaseHas('database_users', ['id' => $databaseUser->id]);
         $this->assertDatabaseHas('sites', ['id' => $site->id]);
+    }
+
+    public function test_store_can_create_remote_database(): void
+    {
+        $this->mock(MySqlService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('createDatabase')->once()->with('remote_app');
+        });
+
+        $this->mock(MySqlRemoteAccessService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('sync')->once();
+        });
+
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+
+        $response = $this->actingAs($user)->post(route('databases.store'), [
+            'name' => 'remote_app',
+            'allow_remote' => true,
+        ]);
+
+        $response->assertRedirect();
+        $this->assertDatabaseHas('databases', [
+            'name' => 'remote_app',
+            'allow_remote' => true,
+        ]);
+    }
+
+    public function test_store_user_for_remote_database_uses_wildcard_host(): void
+    {
+        $this->mock(MySqlService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('createUser')->once();
+            $mock->shouldReceive('grant')->once()->with('remote_user', 'remote_app', 'all', '%');
+        });
+
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+
+        $database = Database::factory()->create([
+            'server_id' => 1,
+            'name' => 'remote_app',
+            'allow_remote' => true,
+        ]);
+
+        $response = $this->actingAs($user)->post(route('database-users.store'), [
+            'username' => 'remote_user',
+            'database_id' => $database->id,
+            'privileges' => 'all',
+        ]);
+
+        $response->assertRedirect();
+        $this->assertDatabaseHas('database_users', [
+            'username' => 'remote_user',
+            'host' => '%',
+        ]);
+    }
+
+    public function test_update_access_toggles_remote_flag_and_syncs_mysql(): void
+    {
+        $this->mock(MySqlRemoteAccessService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('sync')->once();
+        });
+
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+
+        $database = Database::factory()->create([
+            'server_id' => 1,
+            'allow_remote' => false,
+        ]);
+
+        $response = $this->actingAs($user)->patch(route('databases.access.update', $database), [
+            'allow_remote' => true,
+        ]);
+
+        $response->assertRedirect();
+        $this->assertTrue($database->fresh()->allow_remote);
+    }
+
+    public function test_update_access_can_toggle_off_when_remote_users_exist(): void
+    {
+        $this->mock(MySqlRemoteAccessService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('sync')->once();
+        });
+
+        $user = User::factory()->create();
+        Server::factory()->create(['id' => 1]);
+
+        $database = Database::factory()->create([
+            'server_id' => 1,
+            'allow_remote' => true,
+        ]);
+
+        DatabaseUser::factory()->create([
+            'server_id' => 1,
+            'username' => 'remote_user',
+            'host' => '%',
+        ])->databases()->attach($database->id, ['privileges' => 'all']);
+
+        $response = $this->actingAs($user)->patch(route('databases.access.update', $database), [
+            'allow_remote' => false,
+        ]);
+
+        $response->assertRedirect();
+        $this->assertFalse($database->fresh()->allow_remote);
     }
 }

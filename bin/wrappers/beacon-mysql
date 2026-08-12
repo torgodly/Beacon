@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# /opt/beacon/bin/beacon-mysql — root:root 0755
+set -euo pipefail
+
+CONF="/etc/mysql/mysql.conf.d/99-beacon-remote.cnf"
+
+die() { printf 'beacon-mysql: %s\n' "$*" >&2; exit 64; }
+
+action="${1:-}"; shift || true
+
+case "$action" in
+    remote-access)
+        mode="${1:-}"; [[ -n "$mode" ]] || die "missing mode (enabled|disabled)"
+        case "$mode" in
+            enabled)
+                cat > "$CONF" <<'EOF'
+# Managed by Beacon — do not edit by hand.
+[mysqld]
+bind-address = 0.0.0.0
+EOF
+                chmod 0644 "$CONF"
+                if command -v ufw >/dev/null 2>&1; then
+                    ufw allow 3306/tcp comment 'Beacon MySQL remote' >/dev/null 2>&1 || true
+                fi
+                ;;
+            disabled)
+                rm -f "$CONF"
+                if command -v ufw >/dev/null 2>&1; then
+                    ufw delete allow 3306/tcp >/dev/null 2>&1 || true
+                fi
+                ;;
+            *)
+                die "invalid mode: ${mode}"
+                ;;
+        esac
+        systemctl restart mysql
+        ;;
+    *)
+        die "unknown action: ${action:-<none>}"
+        ;;
+esac

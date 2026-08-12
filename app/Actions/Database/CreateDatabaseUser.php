@@ -26,12 +26,13 @@ class CreateDatabaseUser
     ): array {
         return DB::transaction(function () use ($server, $username, $database, $privileges): array {
             $password = Str::password(24);
+            $host = $database?->userHost() ?? 'localhost';
 
             try {
-                $this->mysql->createUser($username, $password);
+                $this->mysql->createUser($username, $password, $host);
 
                 if ($database !== null) {
-                    $this->mysql->grant($username, $database->name, $privileges);
+                    $this->mysql->grant($username, $database->name, $privileges, $host);
                 }
             } catch (Throwable $e) {
                 throw new RuntimeException("Could not create database user: {$e->getMessage()}");
@@ -41,7 +42,7 @@ class CreateDatabaseUser
                 'server_id' => $server->id,
                 'username' => $username,
                 'password' => $password,
-                'host' => 'localhost',
+                'host' => $host,
                 'status' => 'active',
             ]);
 

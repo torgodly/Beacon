@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Database;
 use App\Models\Server;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -18,13 +19,27 @@ class StoreDatabaseUserRequest extends FormRequest
      */
     public function rules(): array
     {
+        $databaseId = $this->integer('database_id');
+        $host = 'localhost';
+
+        if ($databaseId > 0) {
+            $database = Database::query()
+                ->where('server_id', Server::current()->id)
+                ->whereKey($databaseId)
+                ->first();
+
+            if ($database !== null) {
+                $host = $database->userHost();
+            }
+        }
+
         return [
             'username' => [
                 'required',
                 'string',
                 'max:32',
                 'regex:/^[A-Za-z0-9_]{1,32}$/',
-                Rule::unique('database_users', 'username')->where('host', 'localhost'),
+                Rule::unique('database_users', 'username')->where('host', $host),
             ],
             'database_id' => [
                 'nullable',

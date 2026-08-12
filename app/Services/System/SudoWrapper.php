@@ -19,6 +19,7 @@ enum SudoWrapper: string
     case Package = 'pkg';
     case Cron = 'cron';
     case Update = 'update';
+    case MySql = 'mysql';
     case Run = 'run';
     case Fs = 'fs';
 

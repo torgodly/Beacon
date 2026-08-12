@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Server\ServerNetworkService;
 use Database\Factories\ServerFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -128,27 +129,29 @@ class Server extends Model
     {
         $server = static::query()->find(1);
 
-        if ($server !== null) {
-            return $server;
+        if ($server === null) {
+            // forceCreate() bypasses mass assignment: `id` is deliberately not
+            // fillable, and Model::shouldBeStrict() turns firstOrCreate(['id' => 1])
+            // into a MassAssignmentException on a fresh database.
+            $server = static::query()->forceCreate(
+                [
+                    'id' => 1,
+                    'hostname' => gethostname() ?: 'localhost',
+                    'public_ip' => '127.0.0.1',
+                    'os_release' => PHP_OS,
+                    'beacon_version' => '0.1.0-dev',
+                    'timezone' => config('app.timezone', 'UTC'),
+                    'default_php_version' => config('beacon.sites.default_php_version', '8.4'),
+                    'default_node_version' => config('beacon.sites.default_node_version', '22'),
+                    'default_package_manager' => config('beacon.sites.default_package_manager', 'npm'),
+                    'provisioned_at' => now(),
+                ],
+            );
         }
 
-        // forceCreate() bypasses mass assignment: `id` is deliberately not
-        // fillable, and Model::shouldBeStrict() turns firstOrCreate(['id' => 1])
-        // into a MassAssignmentException on a fresh database.
-        return static::query()->forceCreate(
-            [
-                'id' => 1,
-                'hostname' => gethostname() ?: 'localhost',
-                'public_ip' => '127.0.0.1',
-                'os_release' => PHP_OS,
-                'beacon_version' => '0.1.0-dev',
-                'timezone' => config('app.timezone', 'UTC'),
-                'default_php_version' => config('beacon.sites.default_php_version', '8.4'),
-                'default_node_version' => config('beacon.sites.default_node_version', '22'),
-                'default_package_manager' => config('beacon.sites.default_package_manager', 'npm'),
-                'provisioned_at' => now(),
-            ],
-        );
+        app(ServerNetworkService::class)->syncPublicIp($server);
+
+        return $server->fresh() ?? $server;
     }
 
     public function deployPollIntervalSeconds(): int

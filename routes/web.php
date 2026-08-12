@@ -82,6 +82,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('databases', [DatabaseController::class, 'index'])->name('databases.index');
     Route::post('databases', [DatabaseController::class, 'store'])->name('databases.store');
+    Route::patch('databases/{database}/access', [DatabaseController::class, 'updateAccess'])->name('databases.access.update');
     Route::delete('databases/{database}', [DatabaseController::class, 'destroy'])->name('databases.destroy');
     Route::post('databases/{database}/backups', [DatabaseBackupController::class, 'store'])->name('databases.backups.store');
     Route::get('database-backups/{backup:uuid}/download', [DatabaseBackupController::class, 'download'])

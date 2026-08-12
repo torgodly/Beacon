@@ -1,5 +1,5 @@
 import { Form, Head } from '@inertiajs/react';
-import { Clock, Globe, Shield } from 'lucide-react';
+import { Clock, Globe, Server, Shield } from 'lucide-react';
 import { ForgeFormCard } from '@/components/forge/forge-form-card';
 import { ForgeStatusBadge } from '@/components/forge/forge-badge';
 import InputError from '@/components/input-error';
@@ -9,6 +9,11 @@ import { Label } from '@/components/ui/label';
 import { edit as serverEdit } from '@/routes/server';
 import { update as updateDeployPolling } from '@/routes/server/deploy-polling';
 import { attach } from '@/routes/server/domain';
+
+type ServerPayload = {
+    hostname: string;
+    public_ip: string;
+};
 
 type PanelPayload = {
     domain: string | null;
@@ -27,9 +32,11 @@ type DeployPollingPayload = {
 };
 
 export default function ServerSettings({
+    server,
     panel,
     deployPolling,
 }: {
+    server: ServerPayload;
     panel: PanelPayload;
     deployPolling: DeployPollingPayload;
 }) {
@@ -38,8 +45,37 @@ export default function ServerSettings({
             <Head title="Server settings" />
 
             <ForgeFormCard
+                title="Server network"
+                description="Beacon uses this address for remote database connection strings and external links."
+            >
+                <dl className="grid gap-3 text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <dt className="text-[#64748b]">Hostname</dt>
+                        <dd className="font-mono text-[#0f172a] dark:text-[#f8fafc]">
+                            {server.hostname}
+                        </dd>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <dt className="text-[#64748b]">Primary IP</dt>
+                        <dd className="font-mono text-[#0f172a] dark:text-[#f8fafc]">
+                            {server.public_ip}
+                        </dd>
+                    </div>
+                </dl>
+                {server.public_ip === '127.0.0.1' && (
+                    <p className="mt-4 flex items-start gap-2 text-sm text-[#64748b]">
+                        <Server className="mt-0.5 size-4 shrink-0" />
+                        Still showing loopback? Beacon auto-detects the server IP
+                        on each request. Reload after deploy, or confirm the
+                        host has a routable interface.
+                    </p>
+                )}
+            </ForgeFormCard>
+
+            <ForgeFormCard
                 title="Panel access"
                 description="Beacon serves the control panel from this server."
+                className="mt-6"
             >
                 <dl className="grid gap-3 text-sm">
                     <div className="flex flex-wrap items-center justify-between gap-2">

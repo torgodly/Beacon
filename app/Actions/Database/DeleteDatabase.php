@@ -4,6 +4,7 @@ namespace App\Actions\Database;
 
 use App\Models\Database;
 use App\Models\Site;
+use App\Services\Database\MySqlRemoteAccessService;
 use App\Services\Database\MySqlService;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -23,6 +24,7 @@ class DeleteDatabase
 
         DB::transaction(function () use ($database): void {
             $name = $database->name;
+            $wasRemote = (bool) $database->allow_remote;
 
             try {
                 $this->mysql->dropDatabase($name);
@@ -31,6 +33,10 @@ class DeleteDatabase
             }
 
             $database->delete();
+
+            if ($wasRemote) {
+                app(MySqlRemoteAccessService::class)->sync();
+            }
 
             activity()->with(['name' => $name])->log('database.deleted');
         });

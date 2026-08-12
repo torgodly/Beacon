@@ -25,6 +25,7 @@ class StoreDatabaseRequest extends FormRequest
                 'regex:/^[A-Za-z0-9_]{1,64}$/',
                 Rule::unique('databases', 'name'),
             ],
+            'allow_remote' => ['sometimes', 'boolean'],
         ];
     }
 }

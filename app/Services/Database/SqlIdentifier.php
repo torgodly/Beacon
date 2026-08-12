@@ -26,7 +26,7 @@ class SqlIdentifier
 
     public static function quoteHost(string $host): string
     {
-        if ($host !== 'localhost' && ! filter_var($host, FILTER_VALIDATE_IP)) {
+        if ($host !== 'localhost' && $host !== '%' && ! filter_var($host, FILTER_VALIDATE_IP)) {
             throw new InvalidArgumentException("Invalid database host: {$host}");
         }
 

@@ -701,7 +701,7 @@ WRAPPER_SRC="${SCRIPT_DIR}/bin/wrappers"
 if [[ -z "$SCRIPT_DIR" || ! -d "$WRAPPER_SRC" ]]; then
     WRAPPER_SRC="$(pwd)/bin/wrappers"
 fi
-for wrapper in nginx php supervisor certbot service pkg cron update run fs; do
+for wrapper in nginx php supervisor certbot service pkg cron update run fs mysql; do
     src="${WRAPPER_SRC}/beacon-${wrapper}"
     if [[ -f "$src" ]]; then
         install -m 0755 "$src" "${BEACON_BIN}/beacon-${wrapper}"

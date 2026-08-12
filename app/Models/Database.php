@@ -17,6 +17,7 @@ use Illuminate\Support\Carbon;
  * @property string $charset
  * @property string $collation
  * @property string $status
+ * @property bool $allow_remote
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -36,6 +37,7 @@ class Database extends Model
         'charset',
         'collation',
         'status',
+        'allow_remote',
     ];
 
     /**
@@ -62,6 +64,21 @@ class Database extends Model
     public function backups(): HasMany
     {
         return $this->hasMany(DatabaseBackup::class);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'allow_remote' => 'boolean',
+        ];
+    }
+
+    public function userHost(): string
+    {
+        return $this->allow_remote ? '%' : 'localhost';
     }
 
     /**

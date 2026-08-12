@@ -7,11 +7,12 @@ Cmnd_Alias BEACON_SVC    = /opt/beacon/bin/beacon-service
 Cmnd_Alias BEACON_PKG    = /opt/beacon/bin/beacon-pkg
 Cmnd_Alias BEACON_CRON   = /opt/beacon/bin/beacon-cron
 Cmnd_Alias BEACON_UPDATE = /opt/beacon/bin/beacon-update
+Cmnd_Alias BEACON_MYSQL  = /opt/beacon/bin/beacon-mysql
 
-Defaults!BEACON_NGINX,BEACON_PHP,BEACON_SUP,BEACON_SSL,BEACON_SVC,BEACON_PKG,BEACON_CRON,BEACON_UPDATE \
+Defaults!BEACON_NGINX,BEACON_PHP,BEACON_SUP,BEACON_SSL,BEACON_SVC,BEACON_PKG,BEACON_CRON,BEACON_UPDATE,BEACON_MYSQL \
     !requiretty, env_reset, secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 beacon-panel ALL=(root) NOPASSWD: BEACON_NGINX, BEACON_PHP, BEACON_SUP, BEACON_SSL, \
-                                  BEACON_SVC, BEACON_PKG, BEACON_CRON, BEACON_UPDATE
+                                  BEACON_SVC, BEACON_PKG, BEACON_CRON, BEACON_UPDATE, BEACON_MYSQL
 
 beacon-panel ALL=(beacon) NOPASSWD: /opt/beacon/bin/beacon-run, /opt/beacon/bin/beacon-fs

@@ -6,6 +6,7 @@ use App\Jobs\BackupDatabase;
 use App\Models\Database;
 use App\Models\DatabaseBackup;
 use App\Models\DatabaseUser;
+use App\Models\Server;
 use App\Services\System\ProcessRunner;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
@@ -110,11 +111,12 @@ class DatabaseBackupService
     {
         $database->loadMissing('users');
 
-        $host = config('database.connections.mysql_admin.host', '127.0.0.1');
+        $serverIp = Server::current()->public_ip;
         $port = (string) config('database.connections.mysql_admin.port', '3306');
 
-        return $database->users->map(function (DatabaseUser $user) use ($database, $host, $port): array {
+        return $database->users->map(function (DatabaseUser $user) use ($database, $serverIp, $port): array {
             $password = $user->password;
+            $host = $user->host === '%' ? $serverIp : '127.0.0.1';
             $encodedUser = rawurlencode($user->username);
             $encodedPassword = rawurlencode($password);
 
