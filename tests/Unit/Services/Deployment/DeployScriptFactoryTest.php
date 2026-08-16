@@ -31,7 +31,7 @@ class DeployScriptFactoryTest extends TestCase
         $script = app(DeployScriptFactory::class)->forSite($site);
 
         $this->assertStringContainsString('if [ ! -f package.json ]', $script);
-        $this->assertStringContainsString('$BEACON_PM ci || $BEACON_PM install', $script);
+        $this->assertStringContainsString('--include=dev', $script);
         $this->assertStringContainsString('exit 1', $script);
     }
 
@@ -156,7 +156,7 @@ BASH;
         $script = app(DeployScriptFactory::class)->forSite($site);
 
         $this->assertStringContainsString('cp .env.example .env', $script);
-        $this->assertStringContainsString('$BEACON_PM ci || $BEACON_PM install', $script);
+        $this->assertStringContainsString('--include=dev', $script);
         $this->assertStringNotContainsString('fiif [', $script);
         $this->assertDoesNotMatchRegularExpression(
             '/cd "\$BEACON_SITE_DIR"[^\n]/',
@@ -255,10 +255,41 @@ BASH;
 
         $this->assertTrue($refreshed);
         $this->assertStringContainsString(
-            '$BEACON_PM ci || $BEACON_PM install',
+            '--include=dev',
             (string) $site->fresh()->deploy_script,
         );
         $this->assertStringNotContainsString('--frozen-lockfile', (string) $site->fresh()->deploy_script);
+    }
+
+    public function test_refresh_legacy_default_rewrites_npm_install_without_dev_dependencies(): void
+    {
+        $filesystem = Mockery::mock(SiteFilesystem::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('write')->once();
+        });
+
+        $legacy = <<<'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$BEACON_SITE_DIR"
+$BEACON_COMPOSER install --no-interaction --prefer-dist --optimize-autoloader
+if [ -f package.json ]; then
+  $BEACON_PM ci || $BEACON_PM install
+  $BEACON_PM run build
+fi
+BASH;
+
+        $site = Site::factory()->create([
+            'type' => 'laravel',
+            'deploy_script' => $legacy,
+        ]);
+
+        $refreshed = app(DeployScriptFactory::class)->refreshLegacyDefault(
+            $site,
+            $filesystem,
+        );
+
+        $this->assertTrue($refreshed);
+        $this->assertStringContainsString('--include=dev', (string) $site->fresh()->deploy_script);
     }
 
     public function test_refresh_legacy_default_leaves_custom_scripts_alone(): void

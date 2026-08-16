@@ -31,9 +31,13 @@ class DeployScriptFactory
                 && (
                     $this->runsArtisanBeforeComposer($site->deploy_script)
                     || $this->usesUnsafeEnvWriter($site->deploy_script)
+                    || $this->omitsNpmDevDependenciesOnInstall($site->deploy_script)
                 ) => $this->forSite($site),
             in_array($site->type, ['static', 'nextjs', 'nuxt'], true)
-                && $this->usesFrozenLockfileInstall($site->deploy_script) => $this->forSite($site),
+                && (
+                    $this->usesFrozenLockfileInstall($site->deploy_script)
+                    || $this->omitsNpmDevDependenciesOnInstall($site->deploy_script)
+                ) => $this->forSite($site),
             in_array($site->type, ['nextjs', 'nuxt'], true)
                 && (
                     ! $this->includesSsrEnvBootstrap($site->deploy_script)
@@ -174,7 +178,16 @@ fi
 $BEACON_COMPOSER install --no-interaction --prefer-dist --optimize-autoloader
 
 if [ -f package.json ]; then
-  $BEACON_PM ci || $BEACON_PM install
+  # Deploy env sets NODE_ENV=production; npm would skip vite and other
+  # build tooling in "devDependencies" without --include=dev.
+  case "$(basename "$BEACON_PM")" in
+    npm)
+      $BEACON_PM ci --include=dev || $BEACON_PM install --include=dev
+      ;;
+    *)
+      $BEACON_PM install
+      ;;
+  esac
   $BEACON_PM run build
 fi
 
@@ -202,7 +215,14 @@ BASH;
 set -euo pipefail
 cd "$BEACON_SITE_DIR"
 if [ -f package.json ]; then
-  $BEACON_PM ci || $BEACON_PM install
+  case "$(basename "$BEACON_PM")" in
+    npm)
+      $BEACON_PM ci --include=dev || $BEACON_PM install --include=dev
+      ;;
+    *)
+      $BEACON_PM install
+      ;;
+  esac
   $BEACON_PM run build
 else
   echo "No package.json — serving checked-out files as-is."
@@ -228,7 +248,14 @@ if [ ! -f package.json ]; then
   echo "Error: package.json not found. Check the repository URL and site type." >&2
   exit 1
 fi
-$BEACON_PM ci || $BEACON_PM install
+case "$(basename "$BEACON_PM")" in
+  npm)
+    $BEACON_PM ci --include=dev || $BEACON_PM install --include=dev
+    ;;
+  *)
+    $BEACON_PM install
+    ;;
+esac
 $BEACON_PM run build
 BASH;
     }
@@ -287,6 +314,25 @@ BASH;
     private function usesFrozenLockfileInstall(?string $script): bool
     {
         return str_contains((string) $script, '--frozen-lockfile');
+    }
+
+    /**
+     * Deploy sets NODE_ENV=production. Without --include=dev, npm skips
+     * vite and other build tooling listed under package.json "devDependencies".
+     */
+    private function omitsNpmDevDependenciesOnInstall(?string $script): bool
+    {
+        $script = (string) $script;
+
+        if ($script === '') {
+            return false;
+        }
+
+        if (! str_contains($script, '$BEACON_PM ci') && ! str_contains($script, '$BEACON_PM install')) {
+            return false;
+        }
+
+        return ! str_contains($script, '--include=dev');
     }
 
     private function includesSsrEnvBootstrap(?string $script): bool
