@@ -53,7 +53,10 @@ class GitHubBrowseController extends Controller
         ]);
 
         try {
-            $branches = $git->listRemoteBranches((string) $validated['repository']);
+            $branches = $git->listRemoteBranches(
+                (string) $validated['repository'],
+                $this->installationFor($request),
+            );
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }

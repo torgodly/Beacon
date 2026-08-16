@@ -11,6 +11,8 @@
 <p align="center">
   <a href="DOCS.md">Documentation</a>
   ·
+  <a href="PRODUCT_REVIEW.md">Product review</a>
+  ·
   <a href="#development">Development</a>
   ·
   <a href="#license">License</a>
@@ -155,7 +157,7 @@ Sudoers grants **exact wrapper paths only** (`env_reset`, `secure_path`). Wrappe
 
 ### Network and TLS
 
-- **UFW** (when available) — SSH, HTTP, HTTPS, and panel fallback port; MySQL bound to localhost only.
+- **UFW** (when available) — SSH, HTTP, HTTPS, and panel fallback port; MySQL stays on localhost unless a database has **Remote access** enabled (then port 3306 opens via `beacon-mysql`).
 - **TLS 1.2/1.3**, modern cipher suites, `server_tokens off` on Nginx.
 - **Security headers** on panel vhosts — `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`.
 - **HSTS** on site TLS vhosts; catch-all default server drops unmatched HTTP.
@@ -163,7 +165,7 @@ Sudoers grants **exact wrapper paths only** (`env_reset`, `secure_path`). Wrappe
 
 ### Database and credentials
 
-- **MySQL** — `bind-address=127.0.0.1`, `local_infile` off, `secure_file_priv` disabled.
+- **MySQL** — Defaults to `bind-address=127.0.0.1`, `local_infile` off, `secure_file_priv` disabled. Enabling **Remote access** on any database switches bind to `0.0.0.0` and opens UFW 3306 until no remote databases remain.
 - **`beacon_admin@localhost` only** — Grants exclude dangerous privileges (FILE, PROCESS, SUPER, etc.).
 - **SQL identifier validation** — Database and user names validated with strict regex before any DDL.
 - **Panel database** — SQLite with WAL; `.env` and DB files at restrictive permissions on install.
@@ -287,7 +289,11 @@ Concrete issues in the current codebase — things Beacon should fix, not generi
 
 ---
 
-These are tracked gaps for future Beacon releases. PRs welcome on the items above.
+## Product review
+
+For the full expert opinion (what to fix, enhance, add, defer, and in what order), see **[PRODUCT_REVIEW.md](PRODUCT_REVIEW.md)**.
+
+That document covers architecture, every feature area, security priorities, UX debt, competitor lens, release waves (Harden → Operate → Deploy → Depth → Platform), and concrete file starting points.
 
 ---
 

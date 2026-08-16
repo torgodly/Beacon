@@ -3,10 +3,13 @@
 namespace Tests\Unit\Services\Deployment;
 
 use App\Contracts\OutputStream;
+use App\Models\GithubInstallation;
 use App\Models\Site;
 use App\Services\Deployment\GitService;
+use App\Services\Github\GitHubAppClient;
 use App\Services\System\ProcessFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Mockery\MockInterface;
 use Tests\Support\FakeProcessFactory;
 use Tests\TestCase;
 
@@ -68,6 +71,8 @@ class GitServiceTest extends TestCase
     {
         $this->processFactory->willReturnSequence([
             0, // is a git repository
+            1, // remote get-url missing during ensure
+            0, // remote add
             0, // fetch
             0, // reset
         ]);
@@ -85,6 +90,8 @@ class GitServiceTest extends TestCase
         $this->assertSame(
             [
                 ['/usr/bin/test', '-d', '.git'],
+                ['/usr/bin/git', 'remote', 'get-url', 'origin'],
+                ['/usr/bin/git', 'remote', 'add', 'origin', 'https://github.com/example/app.git'],
                 ['/usr/bin/git', 'fetch', 'origin', 'main'],
                 ['/usr/bin/git', 'reset', '--hard', 'origin/main'],
             ],
@@ -119,6 +126,54 @@ class GitServiceTest extends TestCase
                 ],
             ),
         );
+    }
+
+    public function test_sync_working_tree_injects_github_app_token_for_private_https_repos(): void
+    {
+        $this->mock(GitHubAppClient::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('installationToken')
+                ->andReturn('ghs_test_token');
+        });
+
+        $this->processFactory->willReturnSequence([
+            1, // not a git repository yet
+            0, // git init
+            1, // remote get-url
+            0, // remote add
+            0, // fetch
+            0, // reset
+        ]);
+
+        $installation = GithubInstallation::factory()->create([
+            'installation_id' => 12345,
+        ]);
+
+        $site = Site::factory()->laravel()->create([
+            'repository' => 'https://github.com/torgodly/medical-claims.git',
+            'repository_branch' => 'master',
+            'repository_provider' => 'github',
+            'github_installation_id' => $installation->id,
+            'path' => '/home/beacon/medical.abdo.ly',
+        ]);
+
+        app(GitService::class)->syncWorkingTree($site, $this->outputStream());
+
+        $fetch = collect($this->siteJobs())->first(
+            fn (array $job): bool => in_array('fetch', $job['argv'], true),
+        );
+
+        $this->assertNotNull($fetch);
+        $this->assertSame('/usr/bin/git', $fetch['argv'][0]);
+        $this->assertSame('-c', $fetch['argv'][1]);
+        $this->assertStringStartsWith(
+            'http.https://github.com/.extraheader=AUTHORIZATION: basic ',
+            $fetch['argv'][2],
+        );
+
+        $expectedBasic = base64_encode('x-access-token:ghs_test_token');
+        $this->assertStringContainsString($expectedBasic, $fetch['argv'][2]);
+        $this->assertContains('fetch', $fetch['argv']);
+        $this->assertContains('origin', $fetch['argv']);
     }
 
     /**

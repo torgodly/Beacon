@@ -3,7 +3,9 @@
 namespace App\Services\Deployment;
 
 use App\Contracts\OutputStream;
+use App\Models\GithubInstallation;
 use App\Models\Site;
+use App\Services\Github\GitHubAppClient;
 use App\Services\System\ProcessRunner;
 use App\Services\System\SiteFilesystem;
 use RuntimeException;
@@ -13,6 +15,7 @@ class GitService
     public function __construct(
         private readonly ProcessRunner $runner,
         private readonly SiteFilesystem $filesystem,
+        private readonly GitHubAppClient $github,
     ) {}
 
     public function syncWorkingTree(Site $site, OutputStream $stream): void
@@ -35,8 +38,10 @@ class GitService
 
         $stream->append("Fetching latest from origin/{$branch}...\n");
 
+        $this->ensureRemoteOrigin($site, $repository, $env, $stream);
+
         $fetch = $this->runner->asSite(
-            argv: ['/usr/bin/git', 'fetch', 'origin', $branch],
+            argv: $this->gitArgv($site, ['fetch', 'origin', $branch]),
             cwd: $site->path,
             env: $env,
             timeout: 300,
@@ -45,12 +50,15 @@ class GitService
 
         if ($fetch->failed()) {
             throw new RuntimeException(
-                "Git fetch failed with exit code {$fetch->exitCode()}.",
+                $this->authHint(
+                    $site,
+                    "Git fetch failed with exit code {$fetch->exitCode()}.",
+                ),
             );
         }
 
         $reset = $this->runner->asSite(
-            argv: ['/usr/bin/git', 'reset', '--hard', "origin/{$branch}"],
+            argv: $this->gitArgv($site, ['reset', '--hard', "origin/{$branch}"]),
             cwd: $site->path,
             env: $env,
             timeout: 120,
@@ -67,13 +75,14 @@ class GitService
     /**
      * @return list<string>
      */
-    public function listRemoteBranches(string $repository): array
+    public function listRemoteBranches(string $repository, ?GithubInstallation $installation = null): array
     {
         $url = $this->normalizeRepositoryUrl($repository);
         $sitesHome = rtrim((string) config('beacon.paths.sites_home'), '/');
+        $argv = ['/usr/bin/git', ...$this->githubHttpsConfig($installation, $url), 'ls-remote', '--heads', $url];
 
         $result = $this->runner->asSite(
-            argv: ['/usr/bin/git', 'ls-remote', '--heads', $url],
+            argv: $argv,
             cwd: $sitesHome,
             env: ['GIT_TERMINAL_PROMPT' => '0'],
             timeout: 30,
@@ -124,9 +133,10 @@ class GitService
         }
 
         $branch = $site->repository_branch ?: 'main';
+        $url = $this->repositoryUrl($site);
 
         $result = $this->runner->asSite(
-            argv: ['/usr/bin/git', 'ls-remote', $this->normalizeRepositoryUrl((string) $site->repository), "refs/heads/{$branch}"],
+            argv: $this->gitArgv($site, ['ls-remote', $url, "refs/heads/{$branch}"]),
             cwd: $site->path,
             env: $this->gitEnvironment($site),
             timeout: 60,
@@ -182,6 +192,8 @@ class GitService
      * Site provisioning creates storage/ and web roots before the first
      * deploy, so `git clone .` into the site path always fails. Instead we
      * init the repo in place and fetch the requested branch.
+     *
+     * @param  array<string, string>  $env
      */
     private function initializeRepository(
         Site $site,
@@ -193,7 +205,7 @@ class GitService
         $stream->append("Initializing {$repository} (branch {$branch})...\n");
 
         $init = $this->runner->asSite(
-            argv: ['/usr/bin/git', 'init'],
+            argv: $this->gitArgv($site, ['init']),
             cwd: $site->path,
             env: $env,
             timeout: 60,
@@ -209,7 +221,7 @@ class GitService
         $this->ensureRemoteOrigin($site, $repository, $env, $stream);
 
         $fetch = $this->runner->asSite(
-            argv: ['/usr/bin/git', 'fetch', 'origin', $branch, '--depth', '1'],
+            argv: $this->gitArgv($site, ['fetch', 'origin', $branch, '--depth', '1']),
             cwd: $site->path,
             env: $env,
             timeout: 600,
@@ -218,12 +230,15 @@ class GitService
 
         if ($fetch->failed()) {
             throw new RuntimeException(
-                "Git fetch failed with exit code {$fetch->exitCode()}.",
+                $this->authHint(
+                    $site,
+                    "Git fetch failed with exit code {$fetch->exitCode()}.",
+                ),
             );
         }
 
         $reset = $this->runner->asSite(
-            argv: ['/usr/bin/git', 'reset', '--hard', "origin/{$branch}"],
+            argv: $this->gitArgv($site, ['reset', '--hard', "origin/{$branch}"]),
             cwd: $site->path,
             env: $env,
             timeout: 120,
@@ -247,15 +262,15 @@ class GitService
         OutputStream $stream,
     ): void {
         $existing = $this->runner->asSite(
-            argv: ['/usr/bin/git', 'remote', 'get-url', 'origin'],
+            argv: $this->gitArgv($site, ['remote', 'get-url', 'origin']),
             cwd: $site->path,
             env: $env,
             timeout: 10,
         );
 
         $argv = $existing->successful()
-            ? ['/usr/bin/git', 'remote', 'set-url', 'origin', $repository]
-            : ['/usr/bin/git', 'remote', 'add', 'origin', $repository];
+            ? $this->gitArgv($site, ['remote', 'set-url', 'origin', $repository])
+            : $this->gitArgv($site, ['remote', 'add', 'origin', $repository]);
 
         $result = $this->runner->asSite(
             argv: $argv,
@@ -267,7 +282,7 @@ class GitService
 
         if ($result->failed()) {
             throw new RuntimeException(
-                'Could not configure git remote origin.'
+                'Could not configure git remote origin.',
             );
         }
     }
@@ -281,6 +296,73 @@ class GitService
         );
 
         return $result->successful();
+    }
+
+    /**
+     * @param  list<string>  $args
+     * @return list<string>
+     */
+    private function gitArgv(Site $site, array $args): array
+    {
+        $site->loadMissing('githubInstallation');
+
+        return [
+            '/usr/bin/git',
+            ...$this->githubHttpsConfig($site->githubInstallation, $this->repositoryUrl($site)),
+            ...$args,
+        ];
+    }
+
+    /**
+     * Authenticate private GitHub HTTPS remotes with an App installation token.
+     * Token is passed only via a one-shot git config flag — never written into .git/config.
+     *
+     * @return list<string>
+     */
+    private function githubHttpsConfig(?GithubInstallation $installation, string $repositoryUrl): array
+    {
+        if ($installation === null || $installation->installation_id === null) {
+            return [];
+        }
+
+        if (! $this->isGitHubHttpsUrl($repositoryUrl)) {
+            return [];
+        }
+
+        try {
+            $token = $this->github->installationToken($installation);
+        } catch (RuntimeException) {
+            return [];
+        }
+
+        $basic = base64_encode("x-access-token:{$token}");
+
+        return [
+            '-c',
+            "http.https://github.com/.extraheader=AUTHORIZATION: basic {$basic}",
+        ];
+    }
+
+    private function isGitHubHttpsUrl(string $url): bool
+    {
+        return (bool) preg_match('#^https://github\.com/#i', $url);
+    }
+
+    private function authHint(Site $site, string $message): string
+    {
+        $site->loadMissing('githubInstallation');
+
+        if ($site->githubInstallation?->installation_id !== null) {
+            return $message;
+        }
+
+        if (filled($site->deploy_key_path)) {
+            return $message.' If this is a private repo, add the site deploy key on GitHub or reconnect the GitHub App.';
+        }
+
+        return $message
+            .' Private GitHub repos need the GitHub App connected (Settings → GitHub)'
+            .' or an SSH deploy key on the site.';
     }
 
     /**
